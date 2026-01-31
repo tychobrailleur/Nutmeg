@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=hoctane
+Exec=hoctane
+Icon=org.gnome.Hoctane
+Terminal=false
+Type=Application
+Categories=Utility;
+Keywords=GTK;
+StartupNotify=true
+DBusActivatable=true
