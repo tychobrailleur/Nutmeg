@@ -8,6 +8,7 @@ pub mod error;
 pub mod model;
 pub mod oauth;
 pub mod request;
+//pub mod authenticator;
 
 pub use oauth::OauthSettings;
 pub use oauth::request_token;

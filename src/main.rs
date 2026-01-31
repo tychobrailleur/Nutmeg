@@ -32,11 +32,6 @@ use config::{GETTEXT_PACKAGE, LOCALEDIR, PKGDATADIR};
 use gettextrs::{bind_textdomain_codeset, bindtextdomain, textdomain};
 use gtk::{gio, glib};
 use gtk::prelude::*;
-use std::env;
-
-fn prompt_browser(url: &str) {
-    open::that(url).expect("Failed to open URL in browser");
-}
 
 fn main() -> glib::ExitCode {
     // Set up gettext translations
@@ -63,4 +58,14 @@ fn main() -> glib::ExitCode {
     // is the code you see when you do `echo $?` after running a command in a
     // terminal.
     app.run()
+
+    /*
+    // Load env vars
+    if let Err(_) = dotenvy::dotenv() {
+        // Fallback to .zshrc if .env fails (as requested originally)
+        let _ = dotenvy::from_filename(".zshrc");
+    }
+
+    crate::chpp::authenticator::perform_cli_auth()
+    */
 }
