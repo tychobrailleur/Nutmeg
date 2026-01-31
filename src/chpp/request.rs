@@ -8,12 +8,15 @@ use crate::chpp::{CHPP_URL, HOCTANE_USER_AGENT};
 use crate::chpp::model::HattrickData;
 use crate::chpp::error::Error;
 
-pub async fn chpp_request(
+use serde::de::DeserializeOwned;
+
+pub async fn chpp_request<T: DeserializeOwned>(
     file: &str,
     version: &str,
+    extra_params: Option<&Vec<(&str, &str)>>,
     mut data: OAuthData,
     key: SigningKey
-) -> Result<HattrickData, Error> {
+) -> Result<T, Error> {
 
     let chpp_str_url = CHPP_URL.replace(":file", file)
         .replace(":version", version);
@@ -29,9 +32,14 @@ pub async fn chpp_request(
         let mut pairs = send_url.query_pairs_mut();
         pairs.append_pair("file", file);
         pairs.append_pair("version", version);
-    }
 
-    // TODO Insert the other parameters, for example specific TeamID
+        if let Some(extras) = extra_params {
+            for (k, v) in extras {
+                pairs.append_pair(k, v);
+                params.insert(k.to_string(), v.to_string());
+            }
+        }
+    }
 
     data.regen_nonce();
     for (k, v) in data.parameters() {
@@ -58,7 +66,7 @@ pub async fn chpp_request(
         Ok(resp) => {
             let data_str = resp.text().await.unwrap();
             info!("Output: {}", data_str);
-            let hattrick_data: HattrickData = from_str(data_str.as_str()).unwrap();
+            let hattrick_data: T = from_str(data_str.as_str()).unwrap();
             Ok(hattrick_data)
         },
         Err(e) => Err(Error::Network(e.to_string()))
@@ -67,14 +75,32 @@ pub async fn chpp_request(
 
 pub async fn team_details_request(
     data: OAuthData,
-    key: SigningKey
+    key: SigningKey,
+    team_id: Option<u32>
 ) -> Result<HattrickData, Error> {
-    chpp_request("teamdetails", "3.7", data, key).await
+    if let Some(tid) = team_id {
+         let tid_str = tid.to_string();
+         let p = vec![("teamID", tid_str.as_str())];
+         chpp_request::<HattrickData>("teamdetails", "3.7", Some(&p), data, key).await
+    } else {
+         chpp_request::<HattrickData>("teamdetails", "3.7", None, data, key).await
+    }
 }
+
+use crate::chpp::model::PlayersData;
 
 pub async fn players_request(
     data: OAuthData,
-    key: SigningKey
-) -> Result<HattrickData, Error> {
-    chpp_request("players", "2.7", data, key).await
+    key: SigningKey,
+    team_id: Option<u32>
+) -> Result<PlayersData, Error> {
+    let mut params = Vec::new();
+    let tid_str;
+    if let Some(tid) = team_id {
+        tid_str = tid.to_string();
+        params.push(("teamID", tid_str.as_str()));
+    }
+    params.push(("actionType", "view"));
+
+    chpp_request::<PlayersData>("players", "2.4", Some(&params), data, key).await
 }

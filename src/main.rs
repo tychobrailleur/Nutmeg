@@ -39,8 +39,13 @@ fn main() -> glib::ExitCode {
     textdomain(GETTEXT_PACKAGE).expect("Unable to switch to the text domain");
 
     // Load resources
-    let resources = gio::Resource::load(PKGDATADIR.to_owned() + "/hoctane.gresource")
+    let res_path = PKGDATADIR.to_owned() + "/hoctane.gresource";
+    let fallback_path = "src/hoctane.gresource";
+
+    let resources = gio::Resource::load(&res_path)
+        .or_else(|_| gio::Resource::load(fallback_path))
         .expect("Could not load resources");
+
     gio::resources_register(&resources);
 
     // Create a new GtkApplication. The application manages our main loop,
@@ -57,8 +62,8 @@ fn main() -> glib::ExitCode {
     // terminal.
     app.run()
 
-    /*
     // Load env vars
+    /*
     if let Err(_) = dotenvy::dotenv() {
         // Fallback to .zshrc if .env fails (as requested originally)
         let _ = dotenvy::from_filename(".zshrc");

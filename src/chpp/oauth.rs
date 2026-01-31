@@ -195,4 +195,12 @@ mod tests {
         // HmacSha1 is the hardcoded signature method.
         matches!(data.signature_method, SignatureMethod::HmacSha1);
     }
+    #[test]
+    fn test_oauth_settings_default() {
+        let settings = OauthSettings::default();
+        assert!(settings.request_token.borrow().is_empty());
+        assert!(settings.oauth_secret_token.borrow().is_empty());
+        assert!(settings.client_id.borrow().is_empty());
+        assert!(settings.client_secret.borrow().is_empty());
+    }
 }

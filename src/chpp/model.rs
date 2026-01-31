@@ -7,10 +7,22 @@ use serde::Deserialize;
 // Utility function for deserialisation
 fn deserialize_bool<'de, D>(deserializer: D) -> Result<bool, D::Error> where D: serde::Deserializer<'de> {
     let s: String = Deserialize::deserialize(deserializer)?;
-    match s.to_lowercase().as_str() {
-        "true" => Ok(true),
-        "false" => Ok(false),
-        _ => Err(serde::de::Error::custom(format!("Expected True or False, got {}", s))),
+    match s.trim().to_lowercase().as_str() {
+        "true" | "1" => Ok(true),
+        "false" | "0" | "" => Ok(false),
+        _ => Err(serde::de::Error::custom(format!("Expected True/False/1/0, got '{}'", s))),
+    }
+}
+
+fn deserialize_option_bool<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error> where D: serde::Deserializer<'de> {
+    let s: Option<String> = Deserialize::deserialize(deserializer)?;
+    match s {
+        Some(s) => match s.trim().to_lowercase().as_str() {
+            "true" | "1" => Ok(Some(true)),
+            "false" | "0" | "" => Ok(Some(false)),
+            _ => Ok(None),
+        },
+        None => Ok(None),
     }
 }
 
@@ -177,44 +189,107 @@ pub struct TrophyListWrapper {
 
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug)]
+pub struct PlayerSkills {
+    pub StaminaSkill: u32,
+    pub KeeperSkill: u32,
+    pub PlaymakerSkill: u32,
+    pub ScorerSkill: u32,
+    pub PasserSkill: u32,
+    pub WingerSkill: u32,
+    pub DefenderSkill: u32,
+    pub SetPiecesSkill: u32,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+pub struct Player {
+    pub PlayerID: u32,
+    pub FirstName: String,
+    pub LastName: String,
+    pub PlayerNumber: u32,
+    pub Age: u32,
+    pub AgeDays: Option<u32>,
+    pub TSI: u32,
+    pub PlayerForm: u32,
+    pub Statement: Option<String>,
+    pub Experience: u32,
+    pub Loyalty: u32,
+    pub ReferencePlayerID: Option<u32>,
+    #[serde(deserialize_with = "deserialize_bool")]
+    pub MotherClubBonus: bool,
+    pub Leadership: u32,
+    pub Salary: u32,
+    #[serde(deserialize_with = "deserialize_bool")]
+    pub IsAbroad: bool,
+    pub Agreeability: u32,
+    pub Aggressiveness: u32,
+    pub Honesty: u32,
+    pub LeagueGoals: Option<u32>,
+    pub CupGoals: Option<u32>,
+    pub FriendliesGoals: Option<u32>,
+    pub CareerGoals: Option<u32>,
+    pub CareerHattricks: Option<u32>,
+    pub Speciality: Option<u32>,
+    #[serde(deserialize_with = "deserialize_bool")]
+    pub TransferListed: bool,
+    pub NationalTeamID: Option<u32>,
+    pub CountryID: u32,
+    pub Caps: Option<u32>,
+    pub CapsU20: Option<u32>,
+    pub Cards: Option<u32>,
+    pub InjuryLevel: Option<i32>, // -1 = No injury, 0 = Bruised, >0 = Weeks
+    pub Sticker: Option<String>,
+    pub PlayerSkills: Option<PlayerSkills>, // Only visible for own team or if authorized
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+pub struct PlayerList {
+    #[serde(rename = "Player")]
+    pub players: Vec<Player>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
 pub struct Team {
     pub TeamID: String,
     pub TeamName: String,
-    pub ShortTeamName: String,
-    #[serde(deserialize_with = "deserialize_bool")]
-    pub IsPrimaryClub: bool,
-    pub FoundedDate: String,
-    #[serde(deserialize_with = "deserialize_bool")]
-    pub IsDeactivated: bool,
-    pub Arena: Arena,
-    pub League: League,
-    pub Country: Country,
-    pub Region: Region,
-    pub Trainer: Trainer,
-    pub HomePage: String,
+    pub ShortTeamName: Option<String>,
+    #[serde(deserialize_with = "deserialize_option_bool", default)]
+    pub IsPrimaryClub: Option<bool>,
+    pub FoundedDate: Option<String>,
+    #[serde(deserialize_with = "deserialize_option_bool", default)]
+    pub IsDeactivated: Option<bool>,
+    pub Arena: Option<Arena>,
+    pub League: Option<League>,
+    pub Country: Option<Country>,
+    pub Region: Option<Region>,
+    pub Trainer: Option<Trainer>,
+    pub HomePage: Option<String>,
     pub Cup: Option<Cup>,
-    pub PowerRating: PowerRating,
-    pub FriendlyTeamID: u32,
-    pub LeagueLevelUnit: LeagueLevelUnit,
-    pub NumberOfVictories: u32,
-    pub NumberOfUndefeated: u32,
-    pub Fanclub: Fanclub,
-    pub LogoURL: String,
-    pub TeamColors: TeamColors,
-    pub DressURI: String,
-    pub DressAlternateURI: String,
-    pub BotStatus: BotStatus,
-    pub TeamRank: u32,
-    pub YouthTeamID: u32,
-    pub YouthTeamName: String,
-    pub NumberOfVisits: u32,
+    pub PowerRating: Option<PowerRating>,
+    pub FriendlyTeamID: Option<u32>,
+    pub LeagueLevelUnit: Option<LeagueLevelUnit>,
+    pub NumberOfVictories: Option<u32>,
+    pub NumberOfUndefeated: Option<u32>,
+    pub Fanclub: Option<Fanclub>,
+    pub LogoURL: Option<String>,
+    pub TeamColors: Option<TeamColors>,
+    pub DressURI: Option<String>,
+    pub DressAlternateURI: Option<String>,
+    pub BotStatus: Option<BotStatus>,
+    pub TeamRank: Option<u32>,
+    pub YouthTeamID: Option<u32>,
+    pub YouthTeamName: Option<String>,
+    pub NumberOfVisits: Option<u32>,
     //  pub Flags: Flags,
     //#[serde(rename = "TrophyList")]
     //pub TrophyList: Option<TrophyListWrapper>,
-    #[serde(deserialize_with = "deserialize_bool")]
-    pub PossibleToChallengeMidweek: bool,
-    #[serde(deserialize_with = "deserialize_bool")]
-    pub PossibleToChallengeWeekend: bool
+    pub PlayerList: Option<PlayerList>,
+    #[serde(deserialize_with = "deserialize_option_bool", default)]
+    pub PossibleToChallengeMidweek: Option<bool>,
+    #[serde(deserialize_with = "deserialize_option_bool", default)]
+    pub PossibleToChallengeWeekend: Option<bool>
 }
 
 #[allow(non_snake_case)]
@@ -230,6 +305,13 @@ pub struct HattrickData {
     pub Teams:Teams,
     #[allow(dead_code)]
     pub User:User
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+#[serde(rename = "HattrickData")]
+pub struct PlayersData {
+    pub Team: Team,
 }
 
 #[cfg(test)]
@@ -281,5 +363,279 @@ mod tests {
         let xml = "<TierWrapper><tier>Silver</tier></TierWrapper>";
         let res: TierWrapper = from_str(xml).unwrap();
         assert_eq!(res.tier, SupporterTier::Silver);
+    }
+    #[test]
+    fn test_deserialize_team() {
+        let xml = r#"
+        <HattrickData>
+            <Teams>
+                <Team>
+                    <TeamID>1000</TeamID>
+                    <TeamName>Test Team A</TeamName>
+                    <ShortTeamName>Testers</ShortTeamName>
+                    <IsPrimaryClub>True</IsPrimaryClub>
+                    <FoundedDate>2019-10-24 20:20:00</FoundedDate>
+                    <IsDeactivated>False</IsDeactivated>
+                    <Arena>
+                        <ArenaID>1000</ArenaID>
+                        <ArenaName>Test Arena</ArenaName>
+                    </Arena>
+                    <League>
+                        <LeagueID>1</LeagueID>
+                        <LeagueName>Test League</LeagueName>
+                    </League>
+                    <Country>
+                        <CountryID>1</CountryID>
+                        <CountryName>Test Country</CountryName>
+                    </Country>
+                    <Region>
+                        <RegionID>10</RegionID>
+                        <RegionName>Test Region</RegionName>
+                    </Region>
+                    <Trainer>
+                        <PlayerID>2000</PlayerID>
+                    </Trainer>
+                    <HomePage></HomePage>
+                    <PowerRating>
+                        <GlobalRanking>45701</GlobalRanking>
+                        <LeagueRanking>148</LeagueRanking>
+                        <RegionRanking>7</RegionRanking>
+                        <PowerRating>936</PowerRating>
+                    </PowerRating>
+                    <FriendlyTeamID>0</FriendlyTeamID>
+                    <LeagueLevelUnit>
+                        <LeagueLevelUnitID>8000</LeagueLevelUnitID>
+                        <LeagueLevelUnitName>IV.1</LeagueLevelUnitName>
+                        <LeagueLevel>4</LeagueLevel>
+                    </LeagueLevelUnit>
+                    <NumberOfVictories>2</NumberOfVictories>
+                    <NumberOfUndefeated>2</NumberOfUndefeated>
+                    <Fanclub>
+                        <FanclubID>3000</FanclubID>
+                        <FanclubName>Test Ultras</FanclubName>
+                        <FanclubSize>100</FanclubSize>
+                    </Fanclub>
+                    <LogoURL>//res.hattrick.org/teamlogo/0/0/0/0/0.png</LogoURL>
+                    <TeamColors>
+                        <BackgroundColor>288032</BackgroundColor>
+                        <Color>ffffff</Color>
+                    </TeamColors>
+                    <DressURI>//res.hattrick.org/kits/0/0/0/0/matchKitSmall.png</DressURI>
+                    <DressAlternateURI>//res.hattrick.org/kits/0/0/0/1/matchKitSmall.png</DressAlternateURI>
+                    <BotStatus>
+                        <IsBot>False</IsBot>
+                    </BotStatus>
+                    <TeamRank>1</TeamRank>
+                    <YouthTeamID>0</YouthTeamID>
+                    <YouthTeamName></YouthTeamName>
+                    <NumberOfVisits>1</NumberOfVisits>
+                    <PossibleToChallengeMidweek>False</PossibleToChallengeMidweek>
+                    <PossibleToChallengeWeekend>False</PossibleToChallengeWeekend>
+                </Team>
+            </Teams>
+            <User>
+               <UserID>1</UserID>
+               <Language>
+                 <LanguageID>1</LanguageID>
+                 <LanguageName>English</LanguageName>
+               </Language>
+               <Name>Test User</Name>
+               <Loginname>TestUser</Loginname>
+               <SupporterTier>None</SupporterTier>
+               <SignupDate>Date</SignupDate>
+               <ActivationDate>Date</ActivationDate>
+               <LastLoginDate>Date</LastLoginDate>
+               <HasManagerLicense>True</HasManagerLicense>
+            </User>
+        </HattrickData>
+        "#;
+
+        let res: HattrickData = from_str(xml).expect("Failed to deserialize team XML");
+        let team = &res.Teams.Teams[0];
+
+        assert_eq!(team.TeamID, "1000");
+        assert_eq!(team.TeamName, "Test Team A");
+        assert_eq!(team.IsPrimaryClub, Some(true));
+        assert_eq!(team.IsDeactivated, Some(false));
+    }
+    #[test]
+    fn test_deserialize_team_without_colors() {
+        let xml = r#"
+        <HattrickData>
+            <Teams>
+                <Team>
+                    <TeamID>2000</TeamID>
+                    <TeamName>Test Team B</TeamName>
+                    <ShortTeamName>Testers B</ShortTeamName>
+                    <IsPrimaryClub>True</IsPrimaryClub>
+                    <FoundedDate>2023-02-17 20:58:00</FoundedDate>
+                    <IsDeactivated>False</IsDeactivated>
+                    <Arena>
+                        <ArenaID>2000</ArenaID>
+                        <ArenaName>Test Arena B</ArenaName>
+                    </Arena>
+                    <League>
+                        <LeagueID>2</LeagueID>
+                        <LeagueName>Test League B</LeagueName>
+                    </League>
+                    <Country>
+                        <CountryID>2</CountryID>
+                        <CountryName>Test Country B</CountryName>
+                    </Country>
+                    <Region>
+                        <RegionID>20</RegionID>
+                        <RegionName>Test Region B</RegionName>
+                    </Region>
+                    <Trainer>
+                        <PlayerID>3000</PlayerID>
+                    </Trainer>
+                    <HomePage></HomePage>
+                    <PowerRating>
+                        <GlobalRanking>1000</GlobalRanking>
+                        <LeagueRanking>100</LeagueRanking>
+                        <RegionRanking>10</RegionRanking>
+                        <PowerRating>500</PowerRating>
+                    </PowerRating>
+                    <FriendlyTeamID>0</FriendlyTeamID>
+                    <LeagueLevelUnit>
+                        <LeagueLevelUnitID>9000</LeagueLevelUnitID>
+                        <LeagueLevelUnitName>V.1</LeagueLevelUnitName>
+                        <LeagueLevel>5</LeagueLevel>
+                    </LeagueLevelUnit>
+                    <NumberOfVictories>0</NumberOfVictories>
+                    <NumberOfUndefeated>0</NumberOfUndefeated>
+                    <Fanclub>
+                        <FanclubID>0</FanclubID>
+                        <FanclubName></FanclubName>
+                        <FanclubSize>500</FanclubSize>
+                    </Fanclub>
+                    <LogoURL></LogoURL>
+                    <!-- TeamColors missing here -->
+                    <DressURI>//res.hattrick.org/kits/0/0/0/0/matchKitSmall.png</DressURI>
+                    <DressAlternateURI>//res.hattrick.org/kits/0/0/0/1/matchKitSmall.png</DressAlternateURI>
+                    <BotStatus>
+                        <IsBot>False</IsBot>
+                    </BotStatus>
+                    <TeamRank>100</TeamRank>
+                    <YouthTeamID>0</YouthTeamID>
+                    <YouthTeamName></YouthTeamName>
+                    <NumberOfVisits>1</NumberOfVisits>
+                    <PossibleToChallengeMidweek>False</PossibleToChallengeMidweek>
+                    <PossibleToChallengeWeekend>False</PossibleToChallengeWeekend>
+                </Team>
+            </Teams>
+            <User>
+               <UserID>2</UserID>
+               <Language>
+                 <LanguageID>1</LanguageID>
+                 <LanguageName>English</LanguageName>
+               </Language>
+               <Name>Test User B</Name>
+               <Loginname>TestUserB</Loginname>
+               <SupporterTier>None</SupporterTier>
+               <SignupDate>Date</SignupDate>
+               <ActivationDate>Date</ActivationDate>
+               <LastLoginDate>Date</LastLoginDate>
+               <HasManagerLicense>True</HasManagerLicense>
+            </User>
+        </HattrickData>
+        "#;
+
+        let res: HattrickData = from_str(xml).expect("Failed to deserialize team XML without colors");
+        let team = &res.Teams.Teams[0];
+
+        assert_eq!(team.TeamID, "2000");
+        assert!(team.TeamColors.is_none(), "TeamColors should be None");
+    }
+    #[test]
+    fn test_deserialize_players_data() {
+        let xml = r#"
+        <HattrickData>
+            <Team>
+                <TeamID>3000</TeamID>
+                <TeamName>Test Team C</TeamName>
+                <ShortTeamName>Testers C</ShortTeamName>
+                <PlayerList>
+                    <Player>
+                        <PlayerID>40001</PlayerID>
+                        <FirstName>John</FirstName>
+                        <LastName>Doe</LastName>
+                        <PlayerNumber>1</PlayerNumber>
+                        <Age>20</Age>
+                        <AgeDays>10</AgeDays>
+                        <TSI>1500</TSI>
+                        <PlayerForm>6</PlayerForm>
+                        <Statement></Statement>
+                        <Experience>3</Experience>
+                        <Loyalty>5</Loyalty>
+                        <MotherClubBonus>True</MotherClubBonus>
+                        <Leadership>5</Leadership>
+                        <Salary>1000</Salary>
+                        <IsAbroad>False</IsAbroad>
+                        <Agreeability>3</Agreeability>
+                        <Aggressiveness>3</Aggressiveness>
+                        <Honesty>3</Honesty>
+                        <LeagueGoals>0</LeagueGoals>
+                        <CupGoals>0</CupGoals>
+                        <FriendliesGoals>0</FriendliesGoals>
+                        <CareerGoals>0</CareerGoals>
+                        <CareerHattricks>0</CareerHattricks>
+                        <Speciality>0</Speciality>
+                        <TransferListed>False</TransferListed>
+                        <NationalTeamID>0</NationalTeamID>
+                        <CountryID>1</CountryID>
+                        <Caps>0</Caps>
+                        <CapsU20>0</CapsU20>
+                        <Cards>0</Cards>
+                        <InjuryLevel>-1</InjuryLevel>
+                        <Sticker></Sticker>
+                    </Player>
+                    <Player>
+                        <PlayerID>40002</PlayerID>
+                        <FirstName>Jane</FirstName>
+                        <LastName>Smith</LastName>
+                        <PlayerNumber>10</PlayerNumber>
+                        <Age>25</Age>
+                        <TSI>5000</TSI>
+                        <PlayerForm>7</PlayerForm>
+                        <Experience>5</Experience>
+                        <Loyalty>10</Loyalty>
+                        <MotherClubBonus>False</MotherClubBonus>
+                        <Leadership>3</Leadership>
+                        <Salary>5000</Salary>
+                        <IsAbroad>True</IsAbroad>
+                        <Agreeability>3</Agreeability>
+                        <Aggressiveness>3</Aggressiveness>
+                        <Honesty>3</Honesty>
+                        <TransferListed>True</TransferListed>
+                        <CountryID>2</CountryID>
+                    </Player>
+                </PlayerList>
+            </Team>
+        </HattrickData>
+        "#;
+
+        let res: PlayersData = from_str(xml).expect("Failed to deserialize players data");
+        assert_eq!(res.Team.TeamID, "3000");
+        assert_eq!(res.Team.TeamName, "Test Team C");
+
+        // Check optional short name
+        assert_eq!(res.Team.ShortTeamName, Some("Testers C".to_string()));
+
+        let player_list = res.Team.PlayerList.expect("PlayerList should exist");
+        assert_eq!(player_list.players.len(), 2);
+
+        let p1 = &player_list.players[0];
+        assert_eq!(p1.PlayerID, 40001);
+        assert_eq!(p1.FirstName, "John");
+        assert_eq!(p1.MotherClubBonus, true);
+        assert_eq!(p1.AgeDays, Some(10));
+
+        let p2 = &player_list.players[1];
+        assert_eq!(p2.PlayerID, 40002);
+        assert_eq!(p2.FirstName, "Jane");
+        assert_eq!(p2.IsAbroad, true);
+        assert_eq!(p2.AgeDays, None); // Missing field test
+        assert_eq!(p2.TransferListed, true);
     }
 }
