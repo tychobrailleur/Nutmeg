@@ -10,6 +10,9 @@ pub enum Error {
     #[error("Parse error: {0}")]
     Parse(String),
 
+    #[error("XML error: {0}")]
+    Xml(String),
+
     #[error("Authentication error: {0}")]
     Auth(String),
 

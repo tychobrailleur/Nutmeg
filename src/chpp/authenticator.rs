@@ -72,103 +72,113 @@ pub fn perform_cli_auth() -> glib::ExitCode {
         let oauth_settings = request_token(
             OauthSettings::default(),
             &consumer_key,
+            // Get Request Token and authorize
+            let settings = match request_token(
+                OauthSettings::default(),
+                &consumer_key,
+                &consumer_secret,
+                |url| prompt_browser(url),
+            ) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("Error requesting token: {:?}", e);
+                    return glib::ExitCode::FAILURE;
+                }
+            };
+
+            println!("Please enter the verification code from the browser:");
+            let mut verification_code = String::new();
+            if let Err(e) = io::stdout().flush() {
+                eprintln!("Failed to flush stdout: {}", e);
+            }
+            match io::stdin().read_line(&mut verification_code) {
+                Ok(_) => {},
+                Err(e) => {
+                    eprintln!("Failed to read line: {}", e);
+                    return glib::ExitCode::FAILURE;
+                }
+            }
+            let verification_code = verification_code.trim();
+
+            // Exchange for Access Token
+            println!("Exchanging verification code: {}", verification_code);
+            match exchange_verification_code(verification_code, &settings) {
+                Ok((t, s)) => {
+                    println!("Access Token: {}", t);
+                    println!("Access Secret: {}", s);
+                    if let Err(e) = save_credentials(&t, &s) {
+                        eprintln!("Warning: Failed to save credentials: {}", e);
+                    }
+                    (t, s)
+                }
+                Err(e) => {
+                    eprintln!("Error exchanging verification code: {:?}", e);
+                    return glib::ExitCode::FAILURE;
+                }
+            }
+        };
+
+        // Prepare for team details request
+        let (data, key) = create_oauth_context(
+            &consumer_key,
             &consumer_secret,
-            prompt_browser,
+            &access_token,
+            &access_secret,
         );
 
-        // Check request token is available.
-        if oauth_settings.request_token.borrow().is_empty() {
-            eprintln!("Error: Request token is empty. Auth flow failed.");
-            return glib::ExitCode::FAILURE;
-        }
+        // Execute async request
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
 
-        println!("Please enter the verification code from the browser:");
-        let mut verification_code = String::new();
-        io::stdout().flush().unwrap();
-        io::stdin()
-            .read_line(&mut verification_code)
-            .expect("Failed to read line");
-        let verification_code = verification_code.trim();
+        match rt.block_on(team_details_request(data, key, Some(281726))) {
+            Ok(data) => {
+                println!("Successfully retrieved team details!");
+                // println!("{:#?}", data);
 
-        // Exchange for Access Token
-        println!("Exchanging verification code: {}", verification_code);
-        match exchange_verification_code(verification_code, &oauth_settings) {
-            Ok((t, s)) => {
-                println!("Access Token: {}", t);
-                println!("Access Secret: {}", s);
-                if let Err(e) = save_credentials(&t, &s) {
-                    eprintln!("Warning: Failed to save credentials: {}", e);
+                let team = &data.Teams.Teams[0];
+                let team_id_str = &team.TeamID;
+                println!("Fetched Team: {} ({})", team.TeamName, team_id_str);
+
+                if let Ok(team_id) = team_id_str.parse::<u32>() {
+                    println!("Fetching players for TeamID: {}", team_id);
+
+                    // Re-create context for the second request since OAuthData is not Clone
+                    let (data2, key2) = create_oauth_context(
+                        &consumer_key,
+                        &consumer_secret,
+                        &access_token,
+                        &access_secret,
+                    );
+
+                    match rt.block_on(crate::chpp::request::players_request(
+                        data2,
+                        key2,
+                        Some(team_id),
+                    )) {
+                        Ok(players_data) => {
+                            println!("Successfully retrieved players!");
+                            let team_w_players = &players_data.Team;
+                            if let Some(player_list) = &team_w_players.PlayerList {
+                                println!("Found {} players.", player_list.players.len());
+                                for p in &player_list.players {
+                                    println!("- {} {} (ID: {})", p.FirstName, p.LastName, p.PlayerID);
+                                }
+                            } else {
+                                println!("No PlayerList found in response.");
+                            }
+                        }
+                        Err(e) => eprintln!("Error fetching players: {:?}", e),
+                    }
                 }
-                (t, s)
             }
             Err(e) => {
-                eprintln!("Error exchanging verification code: {:?}", e);
+                eprintln!("Error fetching team details: {:?}", e);
+                // If error is 401, maybe delete credentials? But for now user asked to store it.
                 return glib::ExitCode::FAILURE;
             }
         }
-    };
 
-    // Prepare for team details request
-    let (data, key) = create_oauth_context(
-        &consumer_key,
-        &consumer_secret,
-        &access_token,
-        &access_secret,
-    );
-
-    // Execute async request
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-
-    match rt.block_on(team_details_request(data, key, Some(281726))) {
-        Ok(data) => {
-            println!("Successfully retrieved team details!");
-            // println!("{:#?}", data);
-
-            let team = &data.Teams.Teams[0];
-            let team_id_str = &team.TeamID;
-            println!("Fetched Team: {} ({})", team.TeamName, team_id_str);
-
-            if let Ok(team_id) = team_id_str.parse::<u32>() {
-                println!("Fetching players for TeamID: {}", team_id);
-
-                // Re-create context for the second request since OAuthData is not Clone
-                let (data2, key2) = create_oauth_context(
-                    &consumer_key,
-                    &consumer_secret,
-                    &access_token,
-                    &access_secret,
-                );
-
-                match rt.block_on(crate::chpp::request::players_request(
-                    data2,
-                    key2,
-                    Some(team_id),
-                )) {
-                    Ok(players_data) => {
-                        println!("Successfully retrieved players!");
-                        let team_w_players = &players_data.Team;
-                        if let Some(player_list) = &team_w_players.PlayerList {
-                            println!("Found {} players.", player_list.players.len());
-                            for p in &player_list.players {
-                                println!("- {} {} (ID: {})", p.FirstName, p.LastName, p.PlayerID);
-                            }
-                        } else {
-                            println!("No PlayerList found in response.");
-                        }
-                    }
-                    Err(e) => eprintln!("Error fetching players: {:?}", e),
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Error fetching team details: {:?}", e);
-            // If error is 401, maybe delete credentials? But for now user asked to store it.
-            return glib::ExitCode::FAILURE;
-        }
+        glib::ExitCode::SUCCESS
     }
-
-    glib::ExitCode::SUCCESS
-}

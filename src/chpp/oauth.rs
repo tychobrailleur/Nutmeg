@@ -36,7 +36,7 @@ pub fn request_token(
     consumer_key: &str,
     consumer_secret: &str,
     verif_callback: fn(&str) -> i32,
-) -> OauthSettings {
+) -> Result<OauthSettings, Error> {
     let client_id = ClientId(consumer_key.to_string());
     let client_secret = ClientSecret(consumer_secret.to_string());
 
@@ -49,7 +49,8 @@ pub fn request_token(
     };
 
     // Request temporary credentials (Request Token)
-    let initiate = Url::parse(CHPP_OAUTH_REQUEST_TOKEN_URL).unwrap();
+    let initiate = Url::parse(CHPP_OAUTH_REQUEST_TOKEN_URL)
+        .map_err(|e| Error::Parse(format!("Invalid request token URL: {}", e)))?;
 
     settings.client_secret.replace(consumer_secret.to_string());
     settings.client_id.replace(consumer_key.to_string());
@@ -65,19 +66,22 @@ pub fn request_token(
         .header("Authorization", authorization)
         .header("Content-Length", "0")
         .send()
-        .unwrap()
+        .map_err(|e| Error::Network(format!("Failed to send request: {}", e)))?
         .text()
-        .unwrap();
+        .map_err(|e| Error::Network(format!("Failed to read text: {}", e)))?;
 
     info!("---\n{}", resp);
     data.regen_nonce();
 
     // authorize: https://chpp.hattrick.org/oauth/authorize.aspx
-    let token = receive_token(&mut data, &mut key, &resp).unwrap();
+    let token = receive_token(&mut data, &mut key, &resp)
+        .map_err(|e| Error::Auth(format!("Failed to receive token: {}", e)))?;
     info!("---\n{}", token.0);
 
     settings.request_token.replace(token.0.clone());
-    let token_secret = key.token_secret.unwrap();
+    let token_secret = key
+        .token_secret
+        .ok_or_else(|| Error::Auth("No token secret in key".to_string()))?;
     match token_secret {
         TokenSecret(s) => {
             settings.oauth_secret_token.replace(s.clone());
@@ -91,7 +95,7 @@ pub fn request_token(
         CHPP_OAUTH_AUTH_URL, &token.0
     ));
 
-    settings
+    Ok(settings)
 }
 
 /// Exchange verification code for access token

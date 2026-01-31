@@ -18,16 +18,17 @@ pub async fn chpp_request<T: DeserializeOwned>(
     key: SigningKey,
 ) -> Result<T, Error> {
     let chpp_str_url = CHPP_URL.replace(":file", file).replace(":version", version);
-    let chpp_url = Url::parse(chpp_str_url.as_str()).unwrap();
+    let chpp_url = Url::parse(chpp_str_url.as_str())
+        .map_err(|e| Error::Network(format!("Invalid URL: {}", e)))?;
 
     let mut params = BTreeMap::new();
     params.insert(String::from("file"), String::from(file));
     params.insert(String::from("version"), String::from(version));
 
     // Build URL for request with query parameters
-    let mut send_url = chpp_url.clone();
+    let mut send_url_builder = chpp_url.clone();
     {
-        let mut pairs = send_url.query_pairs_mut();
+        let mut pairs = send_url_builder.query_pairs_mut();
         pairs.append_pair("file", file);
         pairs.append_pair("version", version);
 
@@ -38,6 +39,8 @@ pub async fn chpp_request<T: DeserializeOwned>(
             }
         }
     }
+    let send_url = Url::parse(&send_url_builder.to_string())
+        .map_err(|e| Error::Network(format!("Invalid send URL: {}", e)))?;
 
     data.regen_nonce();
     for (k, v) in data.parameters() {
@@ -49,7 +52,7 @@ pub async fn chpp_request<T: DeserializeOwned>(
     let req = SignableRequest::new(Method::Get, chpp_url.clone(), params);
     debug!(
         "Signable request: {}",
-        std::str::from_utf8(&req.to_bytes()).unwrap()
+        std::str::from_utf8(&req.to_bytes()).unwrap_or("Invalid UTF-8")
     );
     let authorization = data.authorization(req, AuthorizationType::Request, &key);
     debug!("---\nAuthorization: {}", authorization);
@@ -70,9 +73,13 @@ pub async fn chpp_request<T: DeserializeOwned>(
 
     match response {
         Ok(resp) => {
-            let data_str = resp.text().await.unwrap();
+            let data_str = resp
+                .text()
+                .await
+                .map_err(|e| Error::Network(format!("Failed to read response: {}", e)))?;
             info!("Output: {}", data_str);
-            let hattrick_data: T = from_str(data_str.as_str()).unwrap();
+            let hattrick_data: T = from_str(data_str.as_str())
+                .map_err(|e| Error::Xml(format!("Failed to deserialize XML: {}", e)))?;
             Ok(hattrick_data)
         }
         Err(e) => Err(Error::Network(e.to_string())),
