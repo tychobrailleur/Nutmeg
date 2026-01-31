@@ -115,8 +115,8 @@ pub struct Cup {
     pub CupID: Option<u32>,
     pub CupName: Option<String>,
     pub CupLeagueLevel: Option<u32>, // 0 = National (LeagueLevel 1-6), 7-9 = Divisional.
-    pub CupLevel: Option<u32>, // 1 = National/Divisional, 2 = Challenger, 3 = Consolation.
-    pub CupLevelIndex: Option<u32>, // Always 1 for National and Consolation cups, for Challenger cup: 1 = Emerald, 2 = Ruby, 3 = Sapphire
+    pub CupLevel: Option<u32>,       // 1 = National/Divisional, 2 = Challenger, 3 = Consolation.
+    pub CupLevelIndex: Option<u32>,  // Always 1 for National and Consolation cups, for Challenger cup: 1 = Emerald, 2 = Ruby, 3 = Sapphire
     pub MatchRound: Option<u32>,
     pub MatchRoundsLeft: Option<u32>
 }

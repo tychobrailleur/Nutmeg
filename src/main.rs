@@ -23,10 +23,7 @@ mod config;
 mod window;
 mod chpp;
 
-use std::ptr;
-
 use self::application::HoctaneApplication;
-use self::window::HoctaneWindow;
 
 use config::{GETTEXT_PACKAGE, LOCALEDIR, PKGDATADIR};
 use gettextrs::{bind_textdomain_codeset, bindtextdomain, textdomain};
@@ -35,7 +32,8 @@ use gtk::prelude::*;
 
 fn main() -> glib::ExitCode {
     // Set up gettext translations
-    bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR).expect("Unable to bind the text domain");
+    bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR)
+        .expect("Unable to bind the text domain");
     bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8")
         .expect("Unable to set the text domain encoding");
     textdomain(GETTEXT_PACKAGE).expect("Unable to switch to the text domain");
@@ -50,7 +48,7 @@ fn main() -> glib::ExitCode {
     // desktop features such as file opening and single-instance applications.
     let app = HoctaneApplication::new(
         "org.gnome.Hoctane",
-        &gio::ApplicationFlags::empty()
+        &gio::ApplicationFlags::NON_UNIQUE
     );
 
     // Run the application. This function will block until the application
