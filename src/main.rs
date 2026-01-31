@@ -39,42 +39,28 @@ fn prompt_browser(url: &str) {
 }
 
 fn main() -> glib::ExitCode {
-    // // Set up gettext translations
-    // bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR).expect("Unable to bind the text domain");
-    // bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8")
-    //     .expect("Unable to set the text domain encoding");
-    // textdomain(GETTEXT_PACKAGE).expect("Unable to switch to the text domain");
+    // Set up gettext translations
+    bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR).expect("Unable to bind the text domain");
+    bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8")
+        .expect("Unable to set the text domain encoding");
+    textdomain(GETTEXT_PACKAGE).expect("Unable to switch to the text domain");
 
-    // // Load resources
-    // let resources = gio::Resource::load(PKGDATADIR.to_owned() + "/hoctane.gresource")
-    //     .expect("Could not load resources");
-    // gio::resources_register(&resources);
+    // Load resources
+    let resources = gio::Resource::load(PKGDATADIR.to_owned() + "/hoctane.gresource")
+        .expect("Could not load resources");
+    gio::resources_register(&resources);
 
-    // // Create a new GtkApplication. The application manages our main loop,
-    // // application windows, integration with the window manager/compositor, and
-    // // desktop features such as file opening and single-instance applications.
-    // let app = HoctaneApplication::new(
-    //     "org.gnome.Hoctane",
-    //     &gio::ApplicationFlags::empty()
-    // );
+    // Create a new GtkApplication. The application manages our main loop,
+    // application windows, integration with the window manager/compositor, and
+    // desktop features such as file opening and single-instance applications.
+    let app = HoctaneApplication::new(
+        "org.gnome.Hoctane",
+        &gio::ApplicationFlags::empty()
+    );
 
-    // // Run the application. This function will block until the application
-    // // exits. Upon return, we have our exit code to return to the shell. (This
-    // // is the code you see when you do `echo $?` after running a command in a
-    // // terminal.
-    // app.run()
-
-    let consumer_key = env::var("HT_CONSUMER_KEY").unwrap().to_string();
-    let consumer_secret = env::var("HT_CONSUMER_SECRET").unwrap().to_string();
-
-
-    let oauth_settings = OAuthSettings.default();
-    let oauth_settings_with_keys = request_token(
-        &oauth_settings,
-        &consumer_key,
-        &consumer_secret,
-        prompt_browser,
-    ).expect("Failed to obtain request token");
-
-    glib::ExitCode::SUCCESS
+    // Run the application. This function will block until the application
+    // exits. Upon return, we have our exit code to return to the shell. (This
+    // is the code you see when you do `echo $?` after running a command in a
+    // terminal.
+    app.run()
 }

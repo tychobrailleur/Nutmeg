@@ -9,5 +9,5 @@ pub mod model;
 pub mod oauth;
 pub mod request;
 
-pub use oauth::OAuthSettings;
-pub use request::request_token;
+pub use oauth::OauthSettings;
+pub use oauth::request_token;

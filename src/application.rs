@@ -24,7 +24,7 @@ use gtk::subclass::prelude::*;
 use gtk::{gio, glib};
 
 use crate::config::VERSION;
-use crate::HoctaneWindow;
+use crate::window::HoctaneWindow;
 
 mod imp {
     use super::*;

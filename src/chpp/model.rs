@@ -1,8 +1,20 @@
 use serde::Deserialize;
 //use uuid::Uuid;
 
+
+// Utility function for deserialisation
+fn deserialize_bool<'de, D>(deserializer: D) -> Result<bool, D::Error> where D: serde::Deserializer<'de> {
+    let s: String = Deserialize::deserialize(deserializer)?;
+    match s.to_lowercase().as_str() {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(serde::de::Error::custom(format!("Expected True or False, got {}", s))),
+    }
+}
+
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "lowercase")]
 pub enum SupporterTier {
     None,
     Silver,
@@ -42,8 +54,10 @@ pub struct Team {
     pub TeamID: String,
     pub TeamName: String,
     pub ShortTeamName: String,
+    #[serde(deserialize_with = "deserialize_bool")]
     pub IsPrimaryClub: bool,
     pub FoundedDate: String,
+    #[serde(deserialize_with = "deserialize_bool")]
     pub IsDeactivated: bool,
     pub Arena: Arena,
     pub League: League

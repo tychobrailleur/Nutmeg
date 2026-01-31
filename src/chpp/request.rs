@@ -23,6 +23,14 @@ pub async fn chpp_request(
     params.insert(String::from("file"), String::from(file));
     params.insert(String::from("version"), String::from(version));
 
+    // Build URL for request with query parameters
+    let mut send_url = chpp_url.clone();
+    {
+        let mut pairs = send_url.query_pairs_mut();
+        pairs.append_pair("file", file);
+        pairs.append_pair("version", version);
+    }
+
     // TODO Insert the other parameters, for example specific TeamID
 
     data.regen_nonce();
@@ -38,7 +46,7 @@ pub async fn chpp_request(
     debug!("---\nAuthorization: {}", authorization);
 
     let client = reqwest::Client::new();
-    let response = client.get(chpp_url)
+    let response = client.get(send_url)
         .header("Authorization", authorization)
         .header("Content-Length", "0")
         .header("User-Agent", HOCTANE_USER_AGENT)
