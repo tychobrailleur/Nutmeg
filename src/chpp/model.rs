@@ -5,16 +5,25 @@ use serde::Deserialize;
 // https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=teamdetails
 
 // Utility function for deserialisation
-fn deserialize_bool<'de, D>(deserializer: D) -> Result<bool, D::Error> where D: serde::Deserializer<'de> {
+fn deserialize_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
     let s: String = Deserialize::deserialize(deserializer)?;
     match s.trim().to_lowercase().as_str() {
         "true" | "1" => Ok(true),
         "false" | "0" | "" => Ok(false),
-        _ => Err(serde::de::Error::custom(format!("Expected True/False/1/0, got '{}'", s))),
+        _ => Err(serde::de::Error::custom(format!(
+            "Expected True/False/1/0, got '{}'",
+            s
+        ))),
     }
 }
 
-fn deserialize_option_bool<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error> where D: serde::Deserializer<'de> {
+fn deserialize_option_bool<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
     let s: Option<String> = Deserialize::deserialize(deserializer)?;
     match s {
         Some(s) => match s.trim().to_lowercase().as_str() {
@@ -33,7 +42,7 @@ pub enum SupporterTier {
     Silver,
     Gold,
     Platinum,
-    Diamond
+    Diamond,
 }
 
 impl<'de> Deserialize<'de> for SupporterTier {
@@ -48,7 +57,10 @@ impl<'de> Deserialize<'de> for SupporterTier {
             "gold" => Ok(SupporterTier::Gold),
             "platinum" => Ok(SupporterTier::Platinum),
             "diamond" => Ok(SupporterTier::Diamond),
-            _ => Err(serde::de::Error::custom(format!("Unknown SupporterTier: {}", s))),
+            _ => Err(serde::de::Error::custom(format!(
+                "Unknown SupporterTier: {}",
+                s
+            ))),
         }
     }
 }
@@ -57,58 +69,58 @@ impl<'de> Deserialize<'de> for SupporterTier {
 #[derive(Deserialize, Debug)]
 pub struct Language {
     pub LanguageID: u32,
-    pub LanguageName: String
+    pub LanguageName: String,
 }
 
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug)]
 pub struct User {
     #[allow(dead_code)]
-    pub UserID:u32,
+    pub UserID: u32,
     #[allow(dead_code)]
     pub Language: Language,
-    pub Name:String,
-    pub Loginname:String,
-    pub SupporterTier:SupporterTier,
-    pub SignupDate:String,
+    pub Name: String,
+    pub Loginname: String,
+    pub SupporterTier: SupporterTier,
+    pub SignupDate: String,
     pub ActivationDate: String,
     pub LastLoginDate: String,
     #[serde(deserialize_with = "deserialize_bool")]
-    pub HasManagerLicense: bool
+    pub HasManagerLicense: bool,
 }
 
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug)]
 pub struct Arena {
     pub ArenaID: u32,
-    pub ArenaName: String
+    pub ArenaName: String,
 }
 
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug)]
 pub struct League {
     pub LeagueID: u32,
-    pub LeagueName: String
+    pub LeagueName: String,
 }
 
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug)]
 pub struct Country {
     pub CountryID: u32,
-    pub CountryName: String
+    pub CountryName: String,
 }
 
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug)]
 pub struct Region {
     pub RegionID: u32,
-    pub RegionName: String
+    pub RegionName: String,
 }
 
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug)]
 pub struct Trainer {
-    pub PlayerID: u32
+    pub PlayerID: u32,
 }
 
 #[allow(non_snake_case)]
@@ -116,7 +128,7 @@ pub struct Trainer {
 pub struct Fanclub {
     pub FanclubID: u32,
     pub FanclubName: String,
-    pub FanclubSize: u32
+    pub FanclubSize: u32,
 }
 
 #[allow(non_snake_case)]
@@ -128,9 +140,9 @@ pub struct Cup {
     pub CupName: Option<String>,
     pub CupLeagueLevel: Option<u32>, // 0 = National (LeagueLevel 1-6), 7-9 = Divisional.
     pub CupLevel: Option<u32>,       // 1 = National/Divisional, 2 = Challenger, 3 = Consolation.
-    pub CupLevelIndex: Option<u32>,  // Always 1 for National and Consolation cups, for Challenger cup: 1 = Emerald, 2 = Ruby, 3 = Sapphire
+    pub CupLevelIndex: Option<u32>, // Always 1 for National and Consolation cups, for Challenger cup: 1 = Emerald, 2 = Ruby, 3 = Sapphire
     pub MatchRound: Option<u32>,
-    pub MatchRoundsLeft: Option<u32>
+    pub MatchRoundsLeft: Option<u32>,
 }
 
 #[allow(non_snake_case)]
@@ -138,7 +150,7 @@ pub struct Cup {
 pub struct LeagueLevelUnit {
     pub LeagueLevelUnitID: u32,
     pub LeagueLevelUnitName: String,
-    pub LeagueLevel: u32
+    pub LeagueLevel: u32,
 }
 
 #[allow(non_snake_case)]
@@ -147,14 +159,14 @@ pub struct PowerRating {
     pub GlobalRanking: u32,
     pub LeagueRanking: u32,
     pub RegionRanking: u32,
-    pub PowerRating: u32
+    pub PowerRating: u32,
 }
 
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug)]
 pub struct TeamColors {
     pub BackgroundColor: String,
-    pub Color: String
+    pub Color: String,
 }
 
 #[allow(non_snake_case)]
@@ -162,7 +174,7 @@ pub struct TeamColors {
 pub struct BotStatus {
     #[serde(deserialize_with = "deserialize_bool")]
     pub IsBot: bool,
-    pub BotSince: Option<String>
+    pub BotSince: Option<String>,
 }
 
 #[allow(non_snake_case)]
@@ -289,22 +301,22 @@ pub struct Team {
     #[serde(deserialize_with = "deserialize_option_bool", default)]
     pub PossibleToChallengeMidweek: Option<bool>,
     #[serde(deserialize_with = "deserialize_option_bool", default)]
-    pub PossibleToChallengeWeekend: Option<bool>
+    pub PossibleToChallengeWeekend: Option<bool>,
 }
 
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug)]
 pub struct Teams {
     #[serde(rename = "Team")]
-    pub Teams:Vec<Team>,
+    pub Teams: Vec<Team>,
 }
 
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug)]
 pub struct HattrickData {
-    pub Teams:Teams,
+    pub Teams: Teams,
     #[allow(dead_code)]
-    pub User:User
+    pub User: User,
 }
 
 #[allow(non_snake_case)]
@@ -541,7 +553,8 @@ mod tests {
         </HattrickData>
         "#;
 
-        let res: HattrickData = from_str(xml).expect("Failed to deserialize team XML without colors");
+        let res: HattrickData =
+            from_str(xml).expect("Failed to deserialize team XML without colors");
         let team = &res.Teams.Teams[0];
 
         assert_eq!(team.TeamID, "2000");

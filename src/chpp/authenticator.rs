@@ -1,12 +1,14 @@
 use gtk::glib;
-use std::env;
-use std::io::{self, Write};
-use std::fs;
-use std::path::Path;
-use oauth_1a::{OAuthData, SigningKey, ClientSecret, Token, ClientId};
+use oauth_1a::{ClientId, ClientSecret, OAuthData, SigningKey, Token};
 use serde::{Deserialize, Serialize};
+use std::env;
+use std::fs;
+use std::io::{self, Write};
+use std::path::Path;
 
-use crate::chpp::oauth::{OauthSettings, request_token, exchange_verification_code, create_oauth_context};
+use crate::chpp::oauth::{
+    create_oauth_context, exchange_verification_code, request_token, OauthSettings,
+};
 use crate::chpp::request::team_details_request;
 
 // This file is useful to do a full end to end test of the CHPP OAuth flow.
@@ -42,14 +44,12 @@ fn save_credentials(access_token: &str, access_secret: &str) -> io::Result<()> {
 fn load_credentials() -> Option<(String, String)> {
     if Path::new(CREDENTIALS_FILE).exists() {
         match fs::read_to_string(CREDENTIALS_FILE) {
-            Ok(content) => {
-                match serde_json::from_str::<StoredCredentials>(&content) {
-                    Ok(creds) => {
-                        println!("Loaded credentials from {}", CREDENTIALS_FILE);
-                        return Some((creds.access_token, creds.access_secret));
-                    },
-                    Err(_) => eprintln!("Failed to parse credentials file."),
+            Ok(content) => match serde_json::from_str::<StoredCredentials>(&content) {
+                Ok(creds) => {
+                    println!("Loaded credentials from {}", CREDENTIALS_FILE);
+                    return Some((creds.access_token, creds.access_secret));
                 }
+                Err(_) => eprintln!("Failed to parse credentials file."),
             },
             Err(_) => eprintln!("Failed to read credentials file."),
         }
@@ -58,8 +58,10 @@ fn load_credentials() -> Option<(String, String)> {
 }
 
 pub fn perform_cli_auth() -> glib::ExitCode {
-    let consumer_key = env::var("HT_CONSUMER_KEY").expect("HT_CONSUMER_KEY not set env or .env/.zshrc");
-    let consumer_secret = env::var("HT_CONSUMER_SECRET").expect("HT_CONSUMER_SECRET not set env or .env/.zshrc");
+    let consumer_key =
+        env::var("HT_CONSUMER_KEY").expect("HT_CONSUMER_KEY not set env or .env/.zshrc");
+    let consumer_secret =
+        env::var("HT_CONSUMER_SECRET").expect("HT_CONSUMER_SECRET not set env or .env/.zshrc");
 
     println!("Starting CHPP Authentication Flow...");
 
@@ -83,7 +85,9 @@ pub fn perform_cli_auth() -> glib::ExitCode {
         println!("Please enter the verification code from the browser:");
         let mut verification_code = String::new();
         io::stdout().flush().unwrap();
-        io::stdin().read_line(&mut verification_code).expect("Failed to read line");
+        io::stdin()
+            .read_line(&mut verification_code)
+            .expect("Failed to read line");
         let verification_code = verification_code.trim();
 
         // Exchange for Access Token
@@ -96,7 +100,7 @@ pub fn perform_cli_auth() -> glib::ExitCode {
                     eprintln!("Warning: Failed to save credentials: {}", e);
                 }
                 (t, s)
-            },
+            }
             Err(e) => {
                 eprintln!("Error exchanging verification code: {:?}", e);
                 return glib::ExitCode::FAILURE;
@@ -105,7 +109,12 @@ pub fn perform_cli_auth() -> glib::ExitCode {
     };
 
     // Prepare for team details request
-    let (data, key) = create_oauth_context(&consumer_key, &consumer_secret, &access_token, &access_secret);
+    let (data, key) = create_oauth_context(
+        &consumer_key,
+        &consumer_secret,
+        &access_token,
+        &access_secret,
+    );
 
     // Execute async request
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -123,28 +132,37 @@ pub fn perform_cli_auth() -> glib::ExitCode {
             println!("Fetched Team: {} ({})", team.TeamName, team_id_str);
 
             if let Ok(team_id) = team_id_str.parse::<u32>() {
-                 println!("Fetching players for TeamID: {}", team_id);
-                 
-                 // Re-create context for the second request since OAuthData is not Clone
-                 let (data2, key2) = create_oauth_context(&consumer_key, &consumer_secret, &access_token, &access_secret);
-                 
-                 match rt.block_on(crate::chpp::request::players_request(data2, key2, Some(team_id))) {
-                     Ok(players_data) => {
-                         println!("Successfully retrieved players!");
-                         let team_w_players = &players_data.Team;
-                         if let Some(player_list) = &team_w_players.PlayerList {
-                             println!("Found {} players.", player_list.players.len());
-                             for p in &player_list.players {
-                                 println!("- {} {} (ID: {})", p.FirstName, p.LastName, p.PlayerID);
-                             }
-                         } else {
-                             println!("No PlayerList found in response.");
-                         }
-                     },
-                     Err(e) => eprintln!("Error fetching players: {:?}", e),
-                 }
+                println!("Fetching players for TeamID: {}", team_id);
+
+                // Re-create context for the second request since OAuthData is not Clone
+                let (data2, key2) = create_oauth_context(
+                    &consumer_key,
+                    &consumer_secret,
+                    &access_token,
+                    &access_secret,
+                );
+
+                match rt.block_on(crate::chpp::request::players_request(
+                    data2,
+                    key2,
+                    Some(team_id),
+                )) {
+                    Ok(players_data) => {
+                        println!("Successfully retrieved players!");
+                        let team_w_players = &players_data.Team;
+                        if let Some(player_list) = &team_w_players.PlayerList {
+                            println!("Found {} players.", player_list.players.len());
+                            for p in &player_list.players {
+                                println!("- {} {} (ID: {})", p.FirstName, p.LastName, p.PlayerID);
+                            }
+                        } else {
+                            println!("No PlayerList found in response.");
+                        }
+                    }
+                    Err(e) => eprintln!("Error fetching players: {:?}", e),
+                }
             }
-        },
+        }
         Err(e) => {
             eprintln!("Error fetching team details: {:?}", e);
             // If error is 401, maybe delete credentials? But for now user asked to store it.

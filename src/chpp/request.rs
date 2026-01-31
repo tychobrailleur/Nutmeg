@@ -1,12 +1,12 @@
+use http_types::{Method, Url};
+use log::{debug, info};
+use oauth_1a::*;
 use serde_xml_rs::from_str;
 use std::collections::BTreeMap;
-use http_types::{Url, Method};
-use oauth_1a::*;
-use log::{info, debug};
 
-use crate::chpp::{CHPP_URL, HOCTANE_USER_AGENT};
-use crate::chpp::model::HattrickData;
 use crate::chpp::error::Error;
+use crate::chpp::model::HattrickData;
+use crate::chpp::{CHPP_URL, HOCTANE_USER_AGENT};
 
 use serde::de::DeserializeOwned;
 
@@ -15,11 +15,9 @@ pub async fn chpp_request<T: DeserializeOwned>(
     version: &str,
     extra_params: Option<&Vec<(&str, &str)>>,
     mut data: OAuthData,
-    key: SigningKey
+    key: SigningKey,
 ) -> Result<T, Error> {
-
-    let chpp_str_url = CHPP_URL.replace(":file", file)
-        .replace(":version", version);
+    let chpp_str_url = CHPP_URL.replace(":file", file).replace(":version", version);
     let chpp_url = Url::parse(chpp_str_url.as_str()).unwrap();
 
     let mut params = BTreeMap::new();
@@ -49,18 +47,26 @@ pub async fn chpp_request<T: DeserializeOwned>(
     }
 
     let req = SignableRequest::new(Method::Get, chpp_url.clone(), params);
-    debug!("Signable request: {}", std::str::from_utf8(&req.to_bytes()).unwrap());
+    debug!(
+        "Signable request: {}",
+        std::str::from_utf8(&req.to_bytes()).unwrap()
+    );
     let authorization = data.authorization(req, AuthorizationType::Request, &key);
     debug!("---\nAuthorization: {}", authorization);
 
     let client = reqwest::Client::new();
-    let response = client.get(send_url)
+    let response = client
+        .get(send_url)
         .header("Authorization", authorization)
         .header("Content-Length", "0")
         .header("User-Agent", HOCTANE_USER_AGENT)
         .header("Accept-Language", "en")
-        .header("Accept", "image/gif, image/x-xbitmap, image/jpeg, image/pjpeg, */*")
-        .send().await;
+        .header(
+            "Accept",
+            "image/gif, image/x-xbitmap, image/jpeg, image/pjpeg, */*",
+        )
+        .send()
+        .await;
 
     match response {
         Ok(resp) => {
@@ -68,22 +74,22 @@ pub async fn chpp_request<T: DeserializeOwned>(
             info!("Output: {}", data_str);
             let hattrick_data: T = from_str(data_str.as_str()).unwrap();
             Ok(hattrick_data)
-        },
-        Err(e) => Err(Error::Network(e.to_string()))
+        }
+        Err(e) => Err(Error::Network(e.to_string())),
     }
 }
 
 pub async fn team_details_request(
     data: OAuthData,
     key: SigningKey,
-    team_id: Option<u32>
+    team_id: Option<u32>,
 ) -> Result<HattrickData, Error> {
     if let Some(tid) = team_id {
-         let tid_str = tid.to_string();
-         let p = vec![("teamID", tid_str.as_str())];
-         chpp_request::<HattrickData>("teamdetails", "3.7", Some(&p), data, key).await
+        let tid_str = tid.to_string();
+        let p = vec![("teamID", tid_str.as_str())];
+        chpp_request::<HattrickData>("teamdetails", "3.7", Some(&p), data, key).await
     } else {
-         chpp_request::<HattrickData>("teamdetails", "3.7", None, data, key).await
+        chpp_request::<HattrickData>("teamdetails", "3.7", None, data, key).await
     }
 }
 
@@ -92,7 +98,7 @@ use crate::chpp::model::PlayersData;
 pub async fn players_request(
     data: OAuthData,
     key: SigningKey,
-    team_id: Option<u32>
+    team_id: Option<u32>,
 ) -> Result<PlayersData, Error> {
     let mut params = Vec::new();
     let tid_str;
