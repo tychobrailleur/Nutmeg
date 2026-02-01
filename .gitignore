@@ -21,3 +21,5 @@ target
 #.idea/
 
 .hoctane_token
+
+.env

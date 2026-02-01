@@ -1,3 +1,23 @@
+/* request.rs
+ *
+ * Copyright 2026 sebastien
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 use http_types::{Method, Url};
 use log::{debug, info};
 use oauth_1a::*;
@@ -5,7 +25,7 @@ use serde_xml_rs::from_str;
 use std::collections::BTreeMap;
 
 use crate::chpp::error::Error;
-use crate::chpp::model::HattrickData;
+use crate::chpp::model::{HattrickData, PlayersData, WorldDetails};
 use crate::chpp::{CHPP_URL, HOCTANE_USER_AGENT};
 
 use serde::de::DeserializeOwned;
@@ -86,6 +106,13 @@ pub async fn chpp_request<T: DeserializeOwned>(
     }
 }
 
+pub async fn world_details_request(
+    data: OAuthData,
+    key: SigningKey,
+) -> Result<WorldDetails, Error> {
+    chpp_request::<WorldDetails>("worlddetails", "1.9", None, data, key).await
+}
+
 pub async fn team_details_request(
     data: OAuthData,
     key: SigningKey,
@@ -99,8 +126,6 @@ pub async fn team_details_request(
         chpp_request::<HattrickData>("teamdetails", "3.7", None, data, key).await
     }
 }
-
-use crate::chpp::model::PlayersData;
 
 pub async fn players_request(
     data: OAuthData,

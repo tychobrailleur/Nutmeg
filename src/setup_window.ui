@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <template class="SetupWindow" parent="GtkWindow">
+    <property name="title" translatable="yes">Welcome to Hoctane</property>
+    <property name="modal">True</property>
+    <property name="default-width">400</property>
+    <property name="default-height">300</property>
+    <child>
+      <object class="GtkStack" id="stack">
+        <property name="transition-type">slide-left</property>
+        
+        <!-- Page 1: Welcome -->
+        <child>
+          <object class="GtkStackPage">
+            <property name="name">page1</property>
+            <property name="child">
+              <object class="GtkBox">
+                <property name="orientation">vertical</property>
+                <property name="spacing">12</property>
+                <property name="margin-top">24</property>
+                <property name="margin-bottom">24</property>
+                <property name="margin-start">24</property>
+                <property name="margin-end">24</property>
+                <property name="valign">center</property>
+                <property name="halign">center</property>
+                
+                <child>
+                  <object class="GtkImage">
+                    <property name="icon-name">org.gnome.Hoctane</property>
+                    <property name="pixel-size">64</property>
+                  </object>
+                </child>
+                
+                <child>
+                  <object class="GtkLabel">
+                    <property name="label" translatable="yes">Manage your team! &lt;b&gt;Hoctane&lt;/b&gt; is here.</property>
+                    <property name="use-markup">True</property>
+                  </object>
+                </child>
+                
+                <child>
+                  <object class="GtkLabel">
+                    <property name="label" translatable="yes">It looks like this is your first time using Hoctane.
+We need to connect to Hattrick to get your team data.</property>
+                    <property name="wrap">True</property>
+                    <property name="justify">center</property>
+                  </object>
+                </child>
+                
+                <child>
+                  <object class="GtkButton" id="btn_start">
+                    <property name="label" translatable="yes">Get Started</property>
+                  </object>
+                </child>
+              </object>
+            </property>
+          </object>
+        </child>
+        
+        <!-- Page 2: Auth -->
+        <child>
+          <object class="GtkStackPage">
+            <property name="name">page2</property>
+            <property name="child">
+              <object class="GtkBox">
+                <property name="orientation">vertical</property>
+                <property name="spacing">12</property>
+                <property name="margin-top">24</property>
+                <property name="margin-bottom">24</property>
+                <property name="margin-start">24</property>
+                <property name="margin-end">24</property>
+                
+                <child>
+                  <object class="GtkLabel">
+                    <property name="label" translatable="yes">Click below to open your browser and authorize Hoctane accessing your Hattrick data.</property>
+                    <property name="wrap">True</property>
+                  </object>
+                </child>
+                
+                <child>
+                  <object class="GtkButton" id="btn_browser">
+                    <property name="label" translatable="yes">Open Browser</property>
+                  </object>
+                </child>
+              </object>
+            </property>
+          </object>
+        </child>
+
+        <!-- Page 3: Verify -->
+        <child>
+          <object class="GtkStackPage">
+            <property name="name">page3</property>
+            <property name="child">
+              <object class="GtkBox">
+                <property name="orientation">vertical</property>
+                <property name="spacing">12</property>
+                <property name="margin-top">24</property>
+                <property name="margin-bottom">24</property>
+                <property name="margin-start">24</property>
+                <property name="margin-end">24</property>
+                
+                <child>
+                  <object class="GtkLabel">
+                    <property name="label" translatable="yes">Enter the verification code from Hattrick:</property>
+                  </object>
+                </child>
+                
+                <child>
+                  <object class="GtkEntry" id="entry_code">
+                    <property name="placeholder-text" translatable="yes">Verification Code</property>
+                  </object>
+                </child>
+                
+                <child>
+                  <object class="GtkButton" id="btn_verify">
+                    <property name="label" translatable="yes">Verify &amp; Sync</property>
+                  </object>
+                </child>
+              </object>
+            </property>
+          </object>
+        </child>
+
+        <!-- Page 4: Sync -->
+        <child>
+          <object class="GtkStackPage">
+            <property name="name">page4</property>
+            <property name="child">
+              <object class="GtkBox">
+                <property name="orientation">vertical</property>
+                <property name="spacing">12</property>
+                <property name="margin-top">24</property>
+                <property name="margin-bottom">24</property>
+                <property name="margin-start">24</property>
+                <property name="margin-end">24</property>
+                <property name="valign">center</property>
+                
+                <child>
+                  <object class="GtkSpinner" id="spinner">
+                    <property name="spinning">True</property>
+                  </object>
+                </child>
+                
+                <child>
+                  <object class="GtkLabel">
+                    <property name="label" translatable="yes">Synchronizing World &amp; Team Data...</property>
+                  </object>
+                </child>
+              </object>
+            </property>
+          </object>
+        </child>
+
+      </object>
+    </child>
+  </template>
+</interface>

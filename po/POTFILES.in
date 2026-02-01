@@ -3,4 +3,5 @@
 data/org.gnome.Hoctane.desktop.in
 data/org.gnome.Hoctane.metainfo.xml.in
 data/org.gnome.Hoctane.gschema.xml
+src/setup_window.ui
 src/window.ui

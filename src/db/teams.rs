@@ -1,8 +1,30 @@
+/* teams.rs
+ *
+ * Copyright 2026 sebastien
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 use crate::chpp::error::Error;
 use crate::chpp::model::{
-    Country, Cup, Currency, Language, League, Region, SupporterTier, Team, User,
+    Country, Cup, Currency, Language, League, Region, SupporterTier, Team, User, WorldDetails,
 };
-use crate::db::schema::{countries, cups, currencies, languages, leagues, regions, teams, users};
+use crate::db::schema::{
+    countries, cups, currencies, languages, leagues, players, regions, teams, users,
+};
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
@@ -125,6 +147,162 @@ struct TeamEntity {
     bot_since: Option<String>,
     youth_team_id: Option<i32>,
     youth_team_name: Option<String>,
+}
+
+#[derive(Queryable, Insertable)]
+#[diesel(table_name = players)]
+struct PlayerEntity {
+    id: i32,
+    team_id: i32,
+    first_name: String,
+    last_name: String,
+    player_number: i32,
+    age: i32,
+    age_days: Option<i32>,
+    tsi: i32,
+    player_form: i32,
+    statement: Option<String>,
+    experience: i32,
+    loyalty: i32,
+    mother_club_bonus: bool,
+    leadership: i32,
+    salary: i32,
+    is_abroad: bool,
+    agreeability: i32,
+    aggressiveness: i32,
+    honesty: i32,
+    league_goals: Option<i32>,
+    cup_goals: Option<i32>,
+    friendlies_goals: Option<i32>,
+    career_goals: Option<i32>,
+    career_hattricks: Option<i32>,
+    speciality: Option<i32>,
+    transfer_listed: bool,
+    national_team_id: Option<i32>,
+    country_id: i32,
+    caps: Option<i32>,
+    caps_u20: Option<i32>,
+    cards: Option<i32>,
+    injury_level: Option<i32>,
+    sticker: Option<String>,
+}
+
+pub fn save_world_details(
+    conn: &mut SqliteConnection,
+    world_details: &WorldDetails,
+) -> Result<(), Error> {
+    for world_league in &world_details.LeagueList.Leagues {
+        // Construct a standard League object from WorldLeague data
+        let league = League {
+            LeagueID: world_league.LeagueID,
+            LeagueName: world_league.LeagueName.clone(),
+        };
+        // Save Country and Currency first
+        // WorldDetails provides a flattened Country structure (WorldCountry).
+        // If Available="False", CountryID will be None.
+        if let Some(country_id) = world_league.Country.CountryID {
+            let country_model = Country {
+                CountryID: country_id,
+                CountryName: world_league.Country.CountryName.clone().unwrap_or_default(),
+                Currency: None,
+            };
+            save_country(conn, &country_model)?;
+        }
+
+        // Save the League
+        save_league(conn, &league, world_league.Country.CountryID)?;
+
+        // Note: WorldDetails XML often contains Regions within the League/Country element.
+        // If WorldLeague struct is expanded to include regions, we would iterate and save them here.
+        // Based on current model, we just save League and Country link.
+    }
+    Ok(())
+}
+
+pub fn save_players(
+    conn: &mut SqliteConnection,
+    players_list: &[crate::chpp::model::Player],
+    team_id: u32,
+) -> Result<(), Error> {
+    for player in players_list {
+        let entity = PlayerEntity {
+            id: player.PlayerID as i32,
+            team_id: team_id as i32,
+            first_name: player.FirstName.clone(),
+            last_name: player.LastName.clone(),
+            player_number: player.PlayerNumber as i32,
+            age: player.Age as i32,
+            age_days: player.AgeDays.map(|v| v as i32),
+            tsi: player.TSI as i32,
+            player_form: player.PlayerForm as i32,
+            statement: player.Statement.clone(),
+            experience: player.Experience as i32,
+            loyalty: player.Loyalty as i32,
+            mother_club_bonus: player.MotherClubBonus,
+            leadership: player.Leadership as i32,
+            salary: player.Salary as i32,
+            is_abroad: player.IsAbroad,
+            agreeability: player.Agreeability as i32,
+            aggressiveness: player.Aggressiveness as i32,
+            honesty: player.Honesty as i32,
+            league_goals: player.LeagueGoals.map(|v| v as i32),
+            cup_goals: player.CupGoals.map(|v| v as i32),
+            friendlies_goals: player.FriendliesGoals.map(|v| v as i32),
+            career_goals: player.CareerGoals.map(|v| v as i32),
+            career_hattricks: player.CareerHattricks.map(|v| v as i32),
+            speciality: player.Speciality.map(|v| v as i32),
+            transfer_listed: player.TransferListed,
+            national_team_id: player.NationalTeamID.map(|v| v as i32),
+            country_id: player.CountryID as i32,
+            caps: player.Caps.map(|v| v as i32),
+            caps_u20: player.CapsU20.map(|v| v as i32),
+            cards: player.Cards.map(|v| v as i32),
+            injury_level: player.InjuryLevel.map(|v| v as i32),
+            sticker: player.Sticker.clone(),
+        };
+
+        diesel::insert_into(players::table)
+            .values(&entity)
+            .on_conflict(players::id)
+            .do_update()
+            .set((
+                players::team_id.eq(&entity.team_id),
+                players::first_name.eq(&entity.first_name),
+                players::last_name.eq(&entity.last_name),
+                players::player_number.eq(&entity.player_number),
+                players::age.eq(&entity.age),
+                players::age_days.eq(&entity.age_days),
+                players::tsi.eq(&entity.tsi),
+                players::player_form.eq(&entity.player_form),
+                players::statement.eq(&entity.statement),
+                players::experience.eq(&entity.experience),
+                players::loyalty.eq(&entity.loyalty),
+                players::mother_club_bonus.eq(&entity.mother_club_bonus),
+                players::leadership.eq(&entity.leadership),
+                players::salary.eq(&entity.salary),
+                players::is_abroad.eq(&entity.is_abroad),
+                players::agreeability.eq(&entity.agreeability),
+                players::aggressiveness.eq(&entity.aggressiveness),
+                players::honesty.eq(&entity.honesty),
+                players::league_goals.eq(&entity.league_goals),
+                players::cup_goals.eq(&entity.cup_goals),
+                players::friendlies_goals.eq(&entity.friendlies_goals),
+                players::career_goals.eq(&entity.career_goals),
+                players::career_hattricks.eq(&entity.career_hattricks),
+                players::speciality.eq(&entity.speciality),
+                players::transfer_listed.eq(&entity.transfer_listed),
+                players::national_team_id.eq(&entity.national_team_id),
+                players::country_id.eq(&entity.country_id),
+                players::caps.eq(&entity.caps),
+                players::caps_u20.eq(&entity.caps_u20),
+                players::cards.eq(&entity.cards),
+                players::injury_level.eq(&entity.injury_level),
+                players::sticker.eq(&entity.sticker),
+            ))
+            .execute(conn)
+            .map_err(|e| Error::Io(format!("Database error saving player: {}", e)))?;
+    }
+    Ok(())
 }
 
 // Persists a Language entity.
@@ -469,6 +647,68 @@ pub fn save_team(conn: &mut SqliteConnection, team: &Team, user: &User) -> Resul
         .map_err(|e| Error::Io(format!("Database error: {}", e)))?;
 
     Ok(())
+}
+
+// Returns a list of (TeamID, TeamName) for all teams in the DB.
+pub fn get_teams_summary(conn: &mut SqliteConnection) -> Result<Vec<(u32, String)>, Error> {
+    let results = teams::table
+        .select((teams::id, teams::name))
+        .load::<(i32, String)>(conn)
+        .map_err(|e| Error::Db(format!("Failed to load teams: {}", e)))?;
+
+    Ok(results.into_iter().map(|(id, name)| (id as u32, name)).collect())
+}
+
+pub fn get_players_for_team(
+    conn: &mut SqliteConnection,
+    team_id_in: u32,
+) -> Result<Vec<crate::chpp::model::Player>, Error> {
+    let entities = players::table
+        .filter(players::team_id.eq(team_id_in as i32))
+        .load::<PlayerEntity>(conn)
+        .map_err(|e| Error::Db(format!("Failed to load players: {}", e)))?;
+
+    let mut players = Vec::new();
+    for entity in entities {
+        players.push(crate::chpp::model::Player {
+            PlayerID: entity.id as u32,
+            FirstName: entity.first_name,
+            LastName: entity.last_name,
+            PlayerNumber: entity.player_number as u32,
+            Age: entity.age as u32,
+            AgeDays: entity.age_days.map(|v| v as u32),
+            TSI: entity.tsi as u32,
+            PlayerForm: entity.player_form as u32,
+            Statement: entity.statement,
+            Experience: entity.experience as u32,
+            Loyalty: entity.loyalty as u32,
+            MotherClubBonus: entity.mother_club_bonus,
+            Leadership: entity.leadership as u32,
+            Salary: entity.salary as u32,
+            IsAbroad: entity.is_abroad,
+            Agreeability: entity.agreeability as u32,
+            Aggressiveness: entity.aggressiveness as u32,
+            Honesty: entity.honesty as u32,
+            LeagueGoals: entity.league_goals.map(|v| v as u32),
+            CupGoals: entity.cup_goals.map(|v| v as u32),
+            FriendliesGoals: entity.friendlies_goals.map(|v| v as u32),
+            CareerGoals: entity.career_goals.map(|v| v as u32),
+            CareerHattricks: entity.career_hattricks.map(|v| v as u32),
+            Speciality: entity.speciality.map(|v| v as u32),
+            TransferListed: entity.transfer_listed,
+            NationalTeamID: entity.national_team_id.map(|v| v as u32),
+            CountryID: entity.country_id as u32,
+            Caps: entity.caps.map(|v| v as u32),
+            CapsU20: entity.caps_u20.map(|v| v as u32),
+            Cards: entity.cards.map(|v| v as u32),
+            InjuryLevel: entity.injury_level.map(|v| v as i32),
+            Sticker: entity.sticker,
+            ReferencePlayerID: None,
+            PlayerSkills: None,
+        });
+    }
+
+    Ok(players)
 }
 
 pub fn get_team(conn: &mut SqliteConnection, team_id: u32) -> Result<Option<Team>, Error> {

@@ -36,7 +36,7 @@ mod imp {
     impl ObjectSubclass for HoctaneApplication {
         const NAME: &'static str = "HoctaneApplication";
         type Type = super::HoctaneApplication;
-        type ParentType = gtk::Application;
+        type ParentType = gtk::Application; // Should we make it adw::Application?
     }
 
     impl ObjectImpl for HoctaneApplication {
@@ -55,14 +55,30 @@ mod imp {
         // to do that, we'll just present any existing window.
         fn activate(&self) {
             let application = self.obj();
-            // Get the current window or create one if necessary
-            let window = application.active_window().unwrap_or_else(|| {
-                let window = HoctaneWindow::new(&*application);
-                window.upcast()
-            });
 
-            // Ask the window manager/compositor to present the window
-            window.present();
+            // Check for first run (empty database)
+            let db_manager = crate::db::manager::DbManager::new();
+            let is_first_run = match db_manager.has_users() {
+                Ok(has) => !has,
+                Err(e) => {
+                    eprintln!("Failed to check DB state: {}. Defaulting to first run.", e);
+                    true
+                }
+            };
+
+            if is_first_run {
+                // Show Setup Wizard
+                let setup = crate::setup_window::SetupWindow::new(&*application);
+                // setup.build_ui() removed as it is now constructed via template
+                setup.present();
+            } else {
+                // Show Main Window
+                let window = application.active_window().unwrap_or_else(|| {
+                    let window = HoctaneWindow::new(&*application);
+                    window.upcast()
+                });
+                window.present();
+            }
         }
     }
 
@@ -95,18 +111,19 @@ impl HoctaneApplication {
     }
 
     fn show_about(&self) {
-        let window = self.active_window().unwrap();
-        let about = gtk::AboutDialog::builder()
-            .transient_for(&window)
-            .modal(true)
-            .program_name("hoctane")
-            .logo_icon_name("org.gnome.Hoctane")
-            .version(VERSION)
-            .authors(vec!["sebastien"])
-            .translator_credits(&gettext("translator-credits"))
-            .copyright("© 2026 sebastien")
-            .build();
+        if let Some(window) = self.active_window() {
+            let about = gtk::AboutDialog::builder()
+                .transient_for(&window)
+                .modal(true)
+                .program_name("hoctane")
+                .logo_icon_name("org.gnome.Hoctane")
+                .version(VERSION)
+                .authors(vec!["sebastien"])
+                .translator_credits(&gettext("translator-credits"))
+                .copyright("© 2026 sebastien")
+                .build();
 
-        about.present();
+            about.present();
+        }
     }
 }

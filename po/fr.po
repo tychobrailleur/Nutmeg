@@ -1,0 +1,53 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: hoctane\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-02-01 12:00+0000\n"
+"PO-Revision-Date: 2026-02-01 12:00+0000\n"
+"Last-Translator: Sebastien\n"
+"Language-Team: French\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#: src/setup_window.ui:5
+msgid "Welcome to Hoctane"
+msgstr "Bienvenue sur Hoctane"
+
+#: src/setup_window.ui:32
+msgid "Manage your team! <b>Hoctane</b> is here."
+msgstr "Gérez votre équipe ! <b>Hoctane</b> est là."
+
+#: src/setup_window.ui:39
+msgid "It looks like this is your first time using Hoctane.\nWe need to connect to Hattrick to get your team data."
+msgstr "On dirait que c'est votre première utilisation de Hoctane.\nNous devons nous connecter à Hattrick pour récupérer les données de votre équipe."
+
+#: src/setup_window.ui:47
+msgid "Get Started"
+msgstr "C'est parti"
+
+#: src/setup_window.ui:66
+msgid "Click below to open your browser and authorize Hoctane accessing your Hattrick data."
+msgstr "Cliquez ci-dessous pour ouvrir votre navigateur et autoriser Hoctane à accéder à vos données Hattrick."
+
+#: src/setup_window.ui:73
+msgid "Open Browser"
+msgstr "Ouvrir le navigateur"
+
+#: src/setup_window.ui:92
+msgid "Enter the verification code from Hattrick:"
+msgstr "Entrez le code de vérification de Hattrick :"
+
+#: src/setup_window.ui:99
+msgid "Verification Code"
+msgstr "Code de vérification"
+
+#: src/setup_window.ui:105
+msgid "Verify & Sync"
+msgstr "Vérifier & Synchroniser"
+
+#: src/setup_window.ui:126
+msgid "Synchronizing World & Team Data..."
+msgstr "Synchronisation des données Monde & Équipe..."

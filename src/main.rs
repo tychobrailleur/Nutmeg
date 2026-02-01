@@ -22,6 +22,8 @@ mod application;
 mod chpp;
 mod config;
 mod db;
+mod service;
+mod setup_window;
 mod window;
 
 use self::application::HoctaneApplication;
@@ -31,7 +33,27 @@ use gettextrs::{bind_textdomain_codeset, bindtextdomain, textdomain};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 
+use tokio::runtime::Runtime;
+
 fn main() -> glib::ExitCode {
+    // Load env vars from .env file if present
+    match dotenvy::dotenv() {
+        Ok(path) => println!("INFO: Loaded .env from {:?}", path),
+        Err(e) => println!("INFO: Could not load .env: {}", e),
+    }
+
+    match std::env::var("HT_CONSUMER_KEY") {
+        Ok(val) => println!("INFO: HT_CONSUMER_KEY found (length: {})", val.len()),
+        Err(e) => println!("ERROR: HT_CONSUMER_KEY not found in env: {}", e),
+    }
+    match std::env::var("HT_CONSUMER_SECRET") {
+        Ok(val) => println!("INFO: HT_CONSUMER_SECRET found (length: {})", val.len()),
+        Err(e) => println!("ERROR: HT_CONSUMER_SECRET not found in env: {}", e),
+    }
+
+    // Initialize logger
+    env_logger::init();
+
     // Set up gettext translations
     bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR).expect("Unable to bind the text domain");
     bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8")
@@ -39,19 +61,16 @@ fn main() -> glib::ExitCode {
     textdomain(GETTEXT_PACKAGE).expect("Unable to switch to the text domain");
 
     // Load resources
-    let res_path = PKGDATADIR.to_owned() + "/hoctane.gresource";
-    let fallback_path = "src/hoctane.gresource";
-
-    let resources = gio::Resource::load(&res_path)
-        .or_else(|_| gio::Resource::load(fallback_path))
-        .expect("Could not load resources");
-
-    gio::resources_register(&resources);
+    gio::resources_register_include!("hoctane.gresource").expect("Failed to register resources");
 
     // Create a new GtkApplication. The application manages our main loop,
     // application windows, integration with the window manager/compositor, and
     // desktop features such as file opening and single-instance applications.
     let app = HoctaneApplication::new("org.gnome.Hoctane", &gio::ApplicationFlags::NON_UNIQUE);
+
+    // Initialize Tokio Runtime to support async features in the GTK loop
+    let runtime = Runtime::new().expect("Unable to create Tokio runtime");
+    let _guard = runtime.enter();
 
     // Run the application. This function will block until the application
     // exits. Upon return, we have our exit code to return to the shell. (This
@@ -59,8 +78,8 @@ fn main() -> glib::ExitCode {
     // terminal.
     app.run()
 
-    // Load env vars
     /*
+    // Load env vars
     if let Err(_) = dotenvy::dotenv() {
         // Fallback to .zshrc if .env fails (as requested originally)
         let _ = dotenvy::from_filename(".zshrc");

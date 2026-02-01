@@ -18,11 +18,84 @@
       </object>
     </property>
     <property name="child">
-      <object class="GtkLabel" id="label">
-        <property name="label" translatable="yes">Hello, World!</property>
-        <style>
-          <class name="title-1"/>
-        </style>
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <property name="spacing">12</property>
+        <property name="margin-top">12</property>
+        <property name="margin-bottom">12</property>
+        <property name="margin-start">12</property>
+        <property name="margin-end">12</property>
+
+        <child>
+          <object class="GtkLabel">
+              <property name="label" translatable="yes">Select Team:</property>
+              <property name="xalign">0</property>
+          </object>
+        </child>
+
+        <child>
+          <object class="GtkComboBoxText" id="combo_teams">
+          </object>
+        </child>
+
+        <child>
+          <object class="GtkScrolledWindow">
+            <property name="vexpand">true</property>
+            <property name="child">
+              <object class="GtkColumnView" id="view_players">
+                <property name="show-row-separators">true</property>
+                <property name="show-column-separators">true</property>
+
+                <child>
+                  <object class="GtkColumnViewColumn">
+                    <property name="title" translatable="yes">No.</property>
+                    <property name="factory">
+                      <object class="GtkSignalListItemFactory" id="factory_number"/>
+                    </property>
+                  </object>
+                </child>
+
+                <child>
+                  <object class="GtkColumnViewColumn">
+                    <property name="title" translatable="yes">Name</property>
+                    <property name="expand">true</property>
+                    <property name="factory">
+                      <object class="GtkSignalListItemFactory" id="factory_name"/>
+                    </property>
+                  </object>
+                </child>
+
+                <child>
+                  <object class="GtkColumnViewColumn">
+                    <property name="title" translatable="yes">Age</property>
+                    <property name="factory">
+                      <object class="GtkSignalListItemFactory" id="factory_age"/>
+                    </property>
+                  </object>
+                </child>
+
+                <child>
+                  <object class="GtkColumnViewColumn">
+                    <property name="title" translatable="yes">Form</property>
+                    <property name="factory">
+                      <object class="GtkSignalListItemFactory" id="factory_form"/>
+                    </property>
+                  </object>
+                </child>
+
+                <child>
+                  <object class="GtkColumnViewColumn">
+                    <property name="title" translatable="yes">TSI</property>
+                    <property name="factory">
+                      <object class="GtkSignalListItemFactory" id="factory_tsi"/>
+                    </property>
+                  </object>
+                </child>
+
+              </object>
+            </property>
+          </object>
+        </child>
       </object>
     </property>
   </template>

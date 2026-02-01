@@ -45,6 +45,44 @@ diesel::table! {
 }
 
 diesel::table! {
+    players (id) {
+        id -> Integer,
+        team_id -> Integer,
+        first_name -> Text,
+        last_name -> Text,
+        player_number -> Integer,
+        age -> Integer,
+        age_days -> Nullable<Integer>,
+        tsi -> Integer,
+        player_form -> Integer,
+        statement -> Nullable<Text>,
+        experience -> Integer,
+        loyalty -> Integer,
+        mother_club_bonus -> Bool,
+        leadership -> Integer,
+        salary -> Integer,
+        is_abroad -> Bool,
+        agreeability -> Integer,
+        aggressiveness -> Integer,
+        honesty -> Integer,
+        league_goals -> Nullable<Integer>,
+        cup_goals -> Nullable<Integer>,
+        friendlies_goals -> Nullable<Integer>,
+        career_goals -> Nullable<Integer>,
+        career_hattricks -> Nullable<Integer>,
+        speciality -> Nullable<Integer>,
+        transfer_listed -> Bool,
+        national_team_id -> Nullable<Integer>,
+        country_id -> Integer,
+        caps -> Nullable<Integer>,
+        caps_u20 -> Nullable<Integer>,
+        cards -> Nullable<Integer>,
+        injury_level -> Nullable<Integer>,
+        sticker -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
     regions (id) {
         id -> Integer,
         name -> Text,
@@ -123,6 +161,8 @@ diesel::table! {
 
 diesel::joinable!(countries -> currencies (currency_id));
 diesel::joinable!(leagues -> countries (country_id));
+diesel::joinable!(players -> countries (country_id));
+diesel::joinable!(players -> teams (team_id));
 diesel::joinable!(regions -> countries (country_id));
 diesel::joinable!(teams -> countries (country_id));
 diesel::joinable!(teams -> cups (cup_id));
@@ -132,5 +172,5 @@ diesel::joinable!(teams -> users (user_id));
 diesel::joinable!(users -> languages (language_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    countries, currencies, cups, languages, leagues, regions, teams, users,
+    countries, currencies, cups, languages, leagues, players, regions, teams, users,
 );

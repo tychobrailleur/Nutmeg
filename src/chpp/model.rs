@@ -1,3 +1,23 @@
+/* model.rs
+ *
+ * Copyright 2026 sebastien
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 use serde::{Deserialize, Serialize};
 //use uuid::Uuid;
 
@@ -107,21 +127,21 @@ pub struct User {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Arena {
     pub ArenaID: u32,
     pub ArenaName: String,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct League {
     pub LeagueID: u32,
     pub LeagueName: String,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Country {
     pub CountryID: u32,
     pub CountryName: String,
@@ -129,7 +149,7 @@ pub struct Country {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Currency {
     pub CurrencyID: u32,
     pub CurrencyName: String,
@@ -138,20 +158,20 @@ pub struct Currency {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Region {
     pub RegionID: u32,
     pub RegionName: String,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Trainer {
     pub PlayerID: u32,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Fanclub {
     pub FanclubID: u32,
     pub FanclubName: String,
@@ -159,7 +179,7 @@ pub struct Fanclub {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Cup {
     #[serde(
         deserialize_with = "deserialize_bool",
@@ -176,7 +196,7 @@ pub struct Cup {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct LeagueLevelUnit {
     pub LeagueLevelUnitID: u32,
     pub LeagueLevelUnitName: String,
@@ -184,7 +204,7 @@ pub struct LeagueLevelUnit {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct PowerRating {
     pub GlobalRanking: u32,
     pub LeagueRanking: u32,
@@ -193,14 +213,14 @@ pub struct PowerRating {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct TeamColors {
     pub BackgroundColor: String,
     pub Color: String,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct BotStatus {
     #[serde(
         deserialize_with = "deserialize_bool",
@@ -211,7 +231,7 @@ pub struct BotStatus {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Trophy {
     pub TrophyTypeId: Option<u32>,
     pub TrophySeason: Option<u32>,
@@ -226,14 +246,14 @@ pub struct Trophy {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct TrophyListWrapper {
     #[serde(rename = "Trophy", default)]
     pub trophies: Vec<Trophy>,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct PlayerSkills {
     pub StaminaSkill: u32,
     pub KeeperSkill: u32,
@@ -246,7 +266,7 @@ pub struct PlayerSkills {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Player {
     pub PlayerID: u32,
     pub FirstName: String,
@@ -297,7 +317,7 @@ pub struct Player {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct PlayerList {
     #[serde(rename = "Player")]
     pub players: Vec<Player>,
@@ -376,6 +396,38 @@ pub struct PlayersData {
     pub Team: Team,
 }
 
+#[allow(non_snake_case)]
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug)]
+pub struct WorldCountry {
+    pub CountryID: Option<u32>,
+    pub CountryName: Option<String>,
+    pub CurrencyName: Option<String>,
+    pub CurrencyRate: Option<String>, // Stores comma-separated floats
+    pub CountryCode: Option<String>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug)]
+pub struct WorldLeague {
+    pub LeagueID: u32,
+    pub LeagueName: String,
+    pub Country: WorldCountry,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug)]
+pub struct WorldLeagueList {
+    #[serde(rename = "League")]
+    pub Leagues: Vec<WorldLeague>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug)]
+pub struct WorldDetails {
+    pub LeagueList: WorldLeagueList,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -409,6 +461,33 @@ mod tests {
         let xml = "<BooleanWrapper><val>False</val></BooleanWrapper>";
         let res: BooleanWrapper = from_str(xml).unwrap();
         assert_eq!(res.val, false);
+    }
+
+    #[test]
+    fn test_world_country_currency_rate() {
+        // WorldCountry deserialization test with comma float AND attribute (reproduce potential attribute issue)
+        let xml = r#"<WorldCountry Available="True"><CountryID>1</CountryID><CountryName>Test</CountryName><CurrencyRate>2,5</CurrencyRate></WorldCountry>"#;
+        let c: WorldCountry =
+            from_str(xml).expect("Should deserialize WorldCountry with attribute");
+        assert_eq!(c.CurrencyRate, Some("2,5".to_string()));
+
+        // Test with dot float
+        let xml2 = r#"<WorldCountry><CountryID>2</CountryID><CountryName>Test2</CountryName><CurrencyRate>2.5</CurrencyRate></WorldCountry>"#;
+        let c2: WorldCountry = from_str(xml2).expect("Should deserialize WorldCountry");
+        assert_eq!(c2.CurrencyRate, Some("2.5".to_string()));
+
+        // Test with empty (should handle logic downstream, but parsing string handles it)
+        let xml3 = r#"<WorldCountry><CountryID>3</CountryID><CountryName>Test3</CountryName><CurrencyRate></CurrencyRate></WorldCountry>"#;
+        let c3: WorldCountry = from_str(xml3).expect("Should deserialize empty rate");
+        assert_eq!(c3.CurrencyRate, Some("".to_string()));
+    }
+
+    #[test]
+    fn test_world_country_unavailable() {
+        let xml = r#"<WorldCountry Available="False" />"#;
+        let c: WorldCountry = from_str(xml).expect("Should deserialize unavailable WorldCountry");
+        assert_eq!(c.CountryID, None);
+        assert_eq!(c.CountryName, None);
     }
 
     #[test]

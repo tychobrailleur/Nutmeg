@@ -1,3 +1,23 @@
+/* oauth.rs
+ *
+ * Copyright 2026 sebastien
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 use std::{
     cell::RefCell,
     fmt::{Debug, Formatter},
@@ -6,6 +26,7 @@ use std::{
 use http_types::{Method, Url};
 use log::info;
 use oauth_1a::*;
+pub use oauth_1a::{OAuthData, SigningKey}; // Export these public types
 use std::env;
 
 use crate::chpp::error::Error;
@@ -19,6 +40,7 @@ pub struct OauthSettings {
     pub nonce: RefCell<String>,
     pub client_id: RefCell<String>,
     pub client_secret: RefCell<String>,
+    // Store access tokens if needed, but usually we just return them
 }
 
 impl Debug for OauthSettings {
@@ -28,6 +50,70 @@ impl Debug for OauthSettings {
 
         f.debug_tuple(tok).finish()
     }
+}
+
+pub fn get_request_token_url(
+    settings: &OauthSettings,
+    consumer_key: &str,
+    consumer_secret: &str,
+) -> Result<String, Error> {
+    let client_id = ClientId(consumer_key.to_string());
+    let client_secret = ClientSecret(consumer_secret.to_string());
+
+    let mut key = SigningKey::without_token(client_secret);
+    let mut data = OAuthData {
+        client_id,
+        token: None,
+        signature_method: SignatureMethod::HmacSha1,
+        nonce: Nonce::generate(),
+    };
+
+    // Request temporary credentials (Request Token)
+    let initiate = Url::parse(CHPP_OAUTH_REQUEST_TOKEN_URL)
+        .map_err(|e| Error::Parse(format!("Invalid request token URL: {}", e)))?;
+
+    settings.client_secret.replace(consumer_secret.to_string());
+    settings.client_id.replace(consumer_key.to_string());
+
+    let callback = "oob".to_owned();
+    let req = SignableRequest::new(Method::Post, initiate.clone(), Default::default());
+    let authorization = data.authorization(req, AuthorizationType::RequestToken { callback }, &key);
+    info!("authorization: {}", authorization);
+
+    let client = reqwest::blocking::Client::new();
+    let resp = client
+        .post(initiate)
+        .header("Authorization", authorization)
+        .header("Content-Length", "0")
+        .send()
+        .map_err(|e| Error::Network(format!("Failed to send request: {}", e)))?
+        .text()
+        .map_err(|e| Error::Network(format!("Failed to read text: {}", e)))?;
+
+    info!("---\n{}", resp);
+    data.regen_nonce();
+
+    let token = receive_token(&mut data, &mut key, &resp).map_err(|e| {
+        Error::Auth(format!(
+            "Failed to receive token: {}. Response: {}",
+            e, resp
+        ))
+    })?;
+
+    settings.request_token.replace(token.0.clone());
+    let token_secret = key
+        .token_secret
+        .ok_or_else(|| Error::Auth("No token secret in key".to_string()))?;
+    match token_secret {
+        TokenSecret(s) => {
+            settings.oauth_secret_token.replace(s.clone());
+        }
+    }
+
+    Ok(format!(
+        "{}?oauth_token={}&scope=set_matchorder,manage_youthplayers",
+        CHPP_OAUTH_AUTH_URL, &token.0
+    ))
 }
 
 #[allow(dead_code)]

@@ -1,4 +1,14 @@
+use std::env;
+
 pub static VERSION: &str = @VERSION@;
 pub static GETTEXT_PACKAGE: &str = @GETTEXT_PACKAGE@;
 pub static LOCALEDIR: &str = @LOCALEDIR@;
 pub static PKGDATADIR: &str = @PKGDATADIR@;
+
+pub fn consumer_key() -> String {
+    env::var("HT_CONSUMER_KEY").unwrap_or_default()
+}
+
+pub fn consumer_secret() -> String {
+    env::var("HT_CONSUMER_SECRET").unwrap_or_default()
+}

@@ -1,13 +1,13 @@
 {
-    "id" : "org.gnome.Hoctane",
-    "runtime" : "org.gnome.Platform",
-    "runtime-version" : "master",
-    "sdk" : "org.gnome.Sdk",
-    "sdk-extensions" : [
+    "id": "org.gnome.Hoctane",
+    "runtime": "org.gnome.Platform",
+    "runtime-version": "master",
+    "sdk": "org.gnome.Sdk",
+    "sdk-extensions": [
         "org.freedesktop.Sdk.Extension.rust-stable"
     ],
-    "command" : "hoctane",
-    "finish-args" : [
+    "command": "hoctane",
+    "finish-args": [
         "--share=network",
         "--share=ipc",
         "--socket=fallback-x11",
@@ -15,17 +15,17 @@
         "--socket=wayland",
         "--filesystem=xdg-cache/fontconfig:ro"
     ],
-    "build-options" : {
-        "append-path" : "/usr/lib/sdk/rust-stable/bin",
-        "build-args" : [
+    "build-options": {
+        "append-path": "/usr/lib/sdk/rust-stable/bin",
+        "build-args": [
             "--share=network"
         ],
-        "env" : {
-            "RUST_BACKTRACE" : "1",
-            "RUST_LOG" : "hoctane=debug"
+        "env": {
+            "RUST_BACKTRACE": "1",
+            "RUST_LOG": "hoctane=debug"
         }
     },
-    "cleanup" : [
+    "cleanup": [
         "/include",
         "/lib/pkgconfig",
         "/man",
@@ -36,15 +36,15 @@
         "*.la",
         "*.a"
     ],
-    "modules" : [
+    "modules": [
         {
-            "name" : "hoctane",
-            "builddir" : true,
-            "buildsystem" : "meson",
-            "sources" : [
+            "name": "hoctane",
+            "builddir": true,
+            "buildsystem": "meson",
+            "sources": [
                 {
-                    "type" : "git",
-                    "url" : "file:///home/sebastien/dev"
+                    "type": "git",
+                    "url": "file:///home/sebastien/dev"
                 }
             ]
         }
