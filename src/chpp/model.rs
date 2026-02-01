@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 //use uuid::Uuid;
 
 // Team Details:
@@ -35,8 +35,25 @@ where
     }
 }
 
+fn serialize_bool<S>(x: &bool, s: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    s.serialize_str(if *x { "true" } else { "false" })
+}
+
+fn serialize_option_bool<S>(x: &Option<bool>, s: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match x {
+        Some(b) => s.serialize_str(if *b { "true" } else { "false" }),
+        None => s.serialize_none(),
+    }
+}
+
 #[allow(non_snake_case)]
-#[derive(Debug, PartialEq)]
+#[derive(Serialize, Debug, PartialEq)]
 pub enum SupporterTier {
     None,
     Silver,
@@ -66,14 +83,14 @@ impl<'de> Deserialize<'de> for SupporterTier {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Language {
     pub LanguageID: u32,
     pub LanguageName: String,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct User {
     #[allow(dead_code)]
     pub UserID: u32,
@@ -90,41 +107,51 @@ pub struct User {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Arena {
     pub ArenaID: u32,
     pub ArenaName: String,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct League {
     pub LeagueID: u32,
     pub LeagueName: String,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Country {
     pub CountryID: u32,
     pub CountryName: String,
+    pub Currency: Option<Currency>,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
+pub struct Currency {
+    pub CurrencyID: u32,
+    pub CurrencyName: String,
+    pub Rate: Option<f64>, // Relative to SEK
+    pub Symbol: Option<String>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Region {
     pub RegionID: u32,
     pub RegionName: String,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Trainer {
     pub PlayerID: u32,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Fanclub {
     pub FanclubID: u32,
     pub FanclubName: String,
@@ -132,9 +159,12 @@ pub struct Fanclub {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Cup {
-    #[serde(deserialize_with = "deserialize_bool")]
+    #[serde(
+        deserialize_with = "deserialize_bool",
+        serialize_with = "serialize_bool"
+    )]
     pub StillInCup: bool,
     pub CupID: Option<u32>,
     pub CupName: Option<String>,
@@ -146,7 +176,7 @@ pub struct Cup {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct LeagueLevelUnit {
     pub LeagueLevelUnitID: u32,
     pub LeagueLevelUnitName: String,
@@ -154,7 +184,7 @@ pub struct LeagueLevelUnit {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct PowerRating {
     pub GlobalRanking: u32,
     pub LeagueRanking: u32,
@@ -163,22 +193,25 @@ pub struct PowerRating {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct TeamColors {
     pub BackgroundColor: String,
     pub Color: String,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct BotStatus {
-    #[serde(deserialize_with = "deserialize_bool")]
+    #[serde(
+        deserialize_with = "deserialize_bool",
+        serialize_with = "serialize_bool"
+    )]
     pub IsBot: bool,
     pub BotSince: Option<String>,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Trophy {
     pub TrophyTypeId: Option<u32>,
     pub TrophySeason: Option<u32>,
@@ -193,14 +226,14 @@ pub struct Trophy {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct TrophyListWrapper {
     #[serde(rename = "Trophy", default)]
     pub trophies: Vec<Trophy>,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct PlayerSkills {
     pub StaminaSkill: u32,
     pub KeeperSkill: u32,
@@ -213,7 +246,7 @@ pub struct PlayerSkills {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Player {
     pub PlayerID: u32,
     pub FirstName: String,
@@ -227,11 +260,17 @@ pub struct Player {
     pub Experience: u32,
     pub Loyalty: u32,
     pub ReferencePlayerID: Option<u32>,
-    #[serde(deserialize_with = "deserialize_bool")]
+    #[serde(
+        deserialize_with = "deserialize_bool",
+        serialize_with = "serialize_bool"
+    )]
     pub MotherClubBonus: bool,
     pub Leadership: u32,
     pub Salary: u32,
-    #[serde(deserialize_with = "deserialize_bool")]
+    #[serde(
+        deserialize_with = "deserialize_bool",
+        serialize_with = "serialize_bool"
+    )]
     pub IsAbroad: bool,
     pub Agreeability: u32,
     pub Aggressiveness: u32,
@@ -242,7 +281,10 @@ pub struct Player {
     pub CareerGoals: Option<u32>,
     pub CareerHattricks: Option<u32>,
     pub Speciality: Option<u32>,
-    #[serde(deserialize_with = "deserialize_bool")]
+    #[serde(
+        deserialize_with = "deserialize_bool",
+        serialize_with = "serialize_bool"
+    )]
     pub TransferListed: bool,
     pub NationalTeamID: Option<u32>,
     pub CountryID: u32,
@@ -255,22 +297,30 @@ pub struct Player {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct PlayerList {
     #[serde(rename = "Player")]
     pub players: Vec<Player>,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Team {
     pub TeamID: String,
     pub TeamName: String,
     pub ShortTeamName: Option<String>,
-    #[serde(deserialize_with = "deserialize_option_bool", default)]
+    #[serde(
+        deserialize_with = "deserialize_option_bool",
+        serialize_with = "serialize_option_bool",
+        default
+    )]
     pub IsPrimaryClub: Option<bool>,
     pub FoundedDate: Option<String>,
-    #[serde(deserialize_with = "deserialize_option_bool", default)]
+    #[serde(
+        deserialize_with = "deserialize_option_bool",
+        serialize_with = "serialize_option_bool",
+        default
+    )]
     pub IsDeactivated: Option<bool>,
     pub Arena: Option<Arena>,
     pub League: Option<League>,
@@ -305,14 +355,14 @@ pub struct Team {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Teams {
     #[serde(rename = "Team")]
     pub Teams: Vec<Team>,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct HattrickData {
     pub Teams: Teams,
     #[allow(dead_code)]
@@ -320,7 +370,7 @@ pub struct HattrickData {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 #[serde(rename = "HattrickData")]
 pub struct PlayersData {
     pub Team: Team,
@@ -333,7 +383,7 @@ mod tests {
 
     #[test]
     fn test_deserialize_bool_true() {
-        #[derive(Deserialize, Debug, PartialEq)]
+        #[derive(Deserialize, Serialize, Debug, PartialEq)]
         struct BooleanWrapper {
             #[serde(deserialize_with = "deserialize_bool")]
             val: bool,
@@ -350,7 +400,7 @@ mod tests {
 
     #[test]
     fn test_deserialize_bool_false() {
-        #[derive(Deserialize, Debug, PartialEq)]
+        #[derive(Deserialize, Serialize, Debug, PartialEq)]
         struct BooleanWrapper {
             #[serde(deserialize_with = "deserialize_bool")]
             val: bool,
@@ -363,7 +413,7 @@ mod tests {
 
     #[test]
     fn test_supporter_tier_case_insensitive() {
-        #[derive(Deserialize, Debug, PartialEq)]
+        #[derive(Deserialize, Serialize, Debug, PartialEq)]
         struct TierWrapper {
             tier: SupporterTier,
         }

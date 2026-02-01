@@ -21,6 +21,7 @@
 mod application;
 mod chpp;
 mod config;
+mod db;
 mod window;
 
 use self::application::HoctaneApplication;
