@@ -25,7 +25,9 @@ use serde_xml_rs::from_str;
 use std::collections::BTreeMap;
 
 use crate::chpp::error::Error;
-use crate::chpp::model::{HattrickData, Player, PlayerDetailsData, PlayersData, WorldDetails};
+use crate::chpp::model::{
+    ChppErrorResponse, HattrickData, Player, PlayerDetailsData, PlayersData, WorldDetails,
+};
 use crate::chpp::{CHPP_URL, HOCTANE_USER_AGENT};
 
 use serde::de::DeserializeOwned;
@@ -98,6 +100,28 @@ pub async fn chpp_request<T: DeserializeOwned>(
                 .await
                 .map_err(|e| Error::Network(format!("Failed to read response: {}", e)))?;
             info!("Output: {}", data_str);
+
+            // Check if this is an error response before attempting deserialization
+            if data_str.contains("<ErrorCode>") {
+                let error_response: ChppErrorResponse = from_str(data_str.as_str())
+                    .map_err(|e| Error::Xml(format!("Failed to parse error response: {}", e)))?;
+
+                log::error!(
+                    "CHPP API error {}: {} (Request: {}, GUID: {})",
+                    error_response.ErrorCode,
+                    error_response.Error,
+                    error_response.Request.as_deref().unwrap_or("unknown"),
+                    error_response.ErrorGUID.as_deref().unwrap_or("none")
+                );
+
+                return Err(Error::ChppApi {
+                    code: error_response.ErrorCode,
+                    message: error_response.Error,
+                    error_guid: error_response.ErrorGUID,
+                    request: error_response.Request,
+                });
+            }
+
             let hattrick_data: T = from_str(data_str.as_str())
                 .map_err(|e| Error::Xml(format!("Failed to deserialize XML: {}", e)))?;
             Ok(hattrick_data)
@@ -147,9 +171,10 @@ pub async fn player_details_request(
     key: SigningKey,
     player_id: u32,
 ) -> Result<Player, Error> {
-    let mut params = Vec::new();
     let pid_str = player_id.to_string();
-    params.push(("playerID", pid_str.as_str()));
-    let response = chpp_request::<PlayerDetailsData>("playerdetails", "3.1", Some(&params), data, key).await?;
+    let params = vec![("playerID", pid_str.as_str())];
+
+    let response =
+        chpp_request::<PlayerDetailsData>("playerdetails", "3.1", Some(&params), data, key).await?;
     Ok(response.Player)
 }

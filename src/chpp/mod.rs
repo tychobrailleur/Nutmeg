@@ -24,12 +24,18 @@ static CHPP_OAUTH_ACCESS_TOKEN_URL: &str = "https://chpp.hattrick.org/oauth/acce
 static CHPP_URL: &str = "https://chpp.hattrick.org/chppxml.ashx";
 static HOCTANE_USER_AGENT: &str = "HOv8.0";
 
-//pub mod authenticator;
+pub mod client;
 pub mod error;
 pub mod model;
-pub mod oauth;
-pub mod request;
+mod oauth;
+mod request;
+pub mod retry;
 
+pub use client::{ChppClient, HattrickClient};
+pub use error::Error;
+pub use oauth::create_oauth_context;
+pub use oauth::exchange_verification_code;
+pub use oauth::get_request_token_url;
 pub use oauth::request_token;
 pub use oauth::OauthSettings;
-pub mod client;
+pub use retry::{retry_with_backoff, retry_with_default_config, should_retry, RetryConfig};

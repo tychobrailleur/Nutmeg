@@ -288,19 +288,31 @@ pub fn save_players(
             // Skills
             stamina_skill: player.PlayerSkills.as_ref().map(|s| s.StaminaSkill as i32),
             keeper_skill: player.PlayerSkills.as_ref().map(|s| s.KeeperSkill as i32),
-            playmaker_skill: player.PlayerSkills.as_ref().map(|s| s.PlaymakerSkill as i32),
+            playmaker_skill: player
+                .PlayerSkills
+                .as_ref()
+                .map(|s| s.PlaymakerSkill as i32),
             scorer_skill: player.PlayerSkills.as_ref().map(|s| s.ScorerSkill as i32),
             passing_skill: player.PlayerSkills.as_ref().map(|s| s.PassingSkill as i32),
             winger_skill: player.PlayerSkills.as_ref().map(|s| s.WingerSkill as i32),
             defender_skill: player.PlayerSkills.as_ref().map(|s| s.DefenderSkill as i32),
-            set_pieces_skill: player.PlayerSkills.as_ref().map(|s| s.SetPiecesSkill as i32),
+            set_pieces_skill: player
+                .PlayerSkills
+                .as_ref()
+                .map(|s| s.SetPiecesSkill as i32),
             // Last Match
             last_match_date: player.LastMatch.as_ref().map(|m| m.Date.clone()),
             last_match_id: player.LastMatch.as_ref().map(|m| m.MatchId as i32),
             last_match_position_code: player.LastMatch.as_ref().map(|m| m.PositionCode as i32),
             last_match_played_minutes: player.LastMatch.as_ref().map(|m| m.PlayedMinutes as i32),
-            last_match_rating: player.LastMatch.as_ref().and_then(|m| m.Rating.map(|v| v as i32)),
-            last_match_rating_end_of_match: player.LastMatch.as_ref().and_then(|m| m.RatingEndOfMatch.map(|v| v as i32)),
+            last_match_rating: player
+                .LastMatch
+                .as_ref()
+                .and_then(|m| m.Rating.map(|v| v as i32)),
+            last_match_rating_end_of_match: player
+                .LastMatch
+                .as_ref()
+                .and_then(|m| m.RatingEndOfMatch.map(|v| v as i32)),
         };
 
         diesel::insert_into(players::table)
@@ -498,7 +510,12 @@ fn save_cup(conn: &mut SqliteConnection, cup: &Cup) -> Result<(), Error> {
 /// This acts as the main entry point for persisting team details, ensuring
 /// that dependencies (User, Country, Region, League, Cup) are saved first
 /// to satisfy Foreign Key constraints.
-pub fn save_team(conn: &mut SqliteConnection, team: &Team, user: &User, download_id: i32) -> Result<(), Error> {
+pub fn save_team(
+    conn: &mut SqliteConnection,
+    team: &Team,
+    user: &User,
+    download_id: i32,
+) -> Result<(), Error> {
     save_user(conn, user)?;
 
     if let Some(c) = &team.Country {
@@ -636,7 +653,10 @@ pub fn get_teams_summary(conn: &mut SqliteConnection) -> Result<Vec<(u32, String
         .load::<(i32, String)>(conn)
         .map_err(|e| Error::Db(format!("Failed to load teams: {}", e)))?;
 
-    Ok(results.into_iter().map(|(id, name)| (id as u32, name)).collect())
+    Ok(results
+        .into_iter()
+        .map(|(id, name)| (id as u32, name))
+        .collect())
 }
 
 pub fn get_players_for_team(
@@ -819,7 +839,20 @@ mod tests {
         "#;
         let team: Team = serde_xml_rs::from_str(team_xml).expect("Failed to parse team XML");
 
-        save_team(&mut conn, &team, &user).expect("Failed to save team");
+        // Create a download record
+        use crate::db::schema::downloads;
+        use chrono::Utc;
+        let download_entity = DownloadEntity {
+            id: 0,
+            timestamp: Utc::now().to_rfc3339(),
+            status: "completed".to_string(),
+        };
+        diesel::insert_into(downloads::table)
+            .values(&download_entity)
+            .execute(&mut conn)
+            .expect("Failed to create download");
+
+        save_team(&mut conn, &team, &user, 0).expect("Failed to save team");
 
         let saved_team = get_team(&mut conn, 99999)
             .expect("Failed to get team")
@@ -895,7 +928,7 @@ mod tests {
             Currency: Some(currency),
         });
 
-        save_team(&mut conn, &team, &user).expect("Failed to save team");
+        save_team(&mut conn, &team, &user, 0).expect("Failed to save team");
 
         use crate::db::schema::languages::dsl::*;
         let langs = languages

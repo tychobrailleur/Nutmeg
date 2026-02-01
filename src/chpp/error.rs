@@ -36,6 +36,14 @@ pub enum Error {
     #[error("Authentication error: {0}")]
     Auth(String),
 
+    #[error("CHPP API error {code}: {message}")]
+    ChppApi {
+        code: u32,
+        message: String,
+        error_guid: Option<String>,
+        request: Option<String>,
+    },
+
     #[error("IO error: {0}")]
     Io(String),
 

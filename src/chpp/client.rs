@@ -21,7 +21,9 @@
 use crate::chpp::error::Error;
 use crate::chpp::model::{HattrickData, Player, PlayersData, WorldDetails};
 use crate::chpp::oauth::{OAuthData, SigningKey};
-use crate::chpp::request::{player_details_request, players_request, team_details_request, world_details_request};
+use crate::chpp::request::{
+    player_details_request, players_request, team_details_request, world_details_request,
+};
 use async_trait::async_trait;
 
 #[async_trait]

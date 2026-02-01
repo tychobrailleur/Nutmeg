@@ -10,14 +10,14 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+use crate::chpp::model::Player;
+use crate::db::manager::DbManager;
+use crate::db::teams::{get_players_for_team, get_teams_summary};
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gio, glib, CompositeTemplate, TemplateChild};
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::chpp::model::Player;
-use crate::db::manager::DbManager;
-use crate::db::teams::{get_teams_summary, get_players_for_team};
 
 mod player_object {
     use super::*;
@@ -210,7 +210,7 @@ impl HoctaneWindow {
                 Err(e) => eprintln!("Failed to load teams: {}", e),
             }
         } else {
-             eprintln!("Failed to get DB connection");
+            eprintln!("Failed to get DB connection");
         }
     }
 
@@ -228,22 +228,22 @@ impl HoctaneWindow {
     }
 
     fn load_players(&self, team_id: u32) {
-         let imp = self.imp();
-         let db = DbManager::new();
+        let imp = self.imp();
+        let db = DbManager::new();
 
-         if let Ok(mut conn) = db.get_connection() {
-             match get_players_for_team(&mut conn, team_id) {
-                 Ok(players) => {
-                     let model = gio::ListStore::new::<PlayerObject>();
-                     for p in players {
-                         model.append(&PlayerObject::new(p));
-                     }
+        if let Ok(mut conn) = db.get_connection() {
+            match get_players_for_team(&mut conn, team_id) {
+                Ok(players) => {
+                    let model = gio::ListStore::new::<PlayerObject>();
+                    for p in players {
+                        model.append(&PlayerObject::new(p));
+                    }
 
-                     let selection = gtk::SingleSelection::new(Some(model));
-                     imp.view_players.set_model(Some(&selection));
-                 }
-                 Err(e) => eprintln!("Failed to load players: {}", e),
-             }
-         }
+                    let selection = gtk::SingleSelection::new(Some(model));
+                    imp.view_players.set_model(Some(&selection));
+                }
+                Err(e) => eprintln!("Failed to load players: {}", e),
+            }
+        }
     }
 }

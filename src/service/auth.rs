@@ -18,8 +18,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use crate::chpp::error::Error;
-use crate::chpp::oauth::{self, OauthSettings};
+use crate::chpp::{exchange_verification_code, get_request_token_url, Error, OauthSettings};
 use crate::config::{consumer_key, consumer_secret};
 
 // Trait for dependency injection and mocking
@@ -55,7 +54,7 @@ impl AuthenticationService for HattrickAuthService {
         let settings = OauthSettings::default();
         let key = consumer_key();
         let secret = consumer_secret();
-        let url = oauth::get_request_token_url(&settings, &key, &secret)?;
+        let url = get_request_token_url(&settings, &key, &secret)?;
 
         let token = settings.request_token.take();
         let secret = settings.oauth_secret_token.take();
@@ -78,7 +77,7 @@ impl AuthenticationService for HattrickAuthService {
             .oauth_secret_token
             .replace(request_token_secret.to_string());
 
-        oauth::exchange_verification_code(verification_code, &settings)
+        exchange_verification_code(verification_code, &settings)
     }
 }
 

@@ -18,11 +18,13 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use crate::chpp::error::Error;
-use crate::chpp::oauth::{OAuthData, SigningKey};
-
+use crate::chpp::client::HattrickClient;
+use crate::chpp::{self, create_oauth_context, retry_with_default_config, ChppClient, Error};
 use crate::db::manager::DbManager;
+use crate::db::schema::downloads;
 use crate::db::teams::{save_players, save_team, save_world_details};
+use chrono::Utc;
+use diesel::prelude::*;
 use log::{debug, info};
 use std::future::Future;
 use std::pin::Pin;
@@ -37,8 +39,6 @@ pub trait DataSyncService {
         access_secret: String,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>>;
 }
-
-use crate::chpp::client::{ChppClient, HattrickClient};
 
 pub struct SyncService {
     db_manager: Arc<DbManager>,
@@ -104,7 +104,7 @@ impl SyncService {
 
         // Helper to get fresh auth data
         let get_auth = || {
-            crate::chpp::oauth::create_oauth_context(
+            create_oauth_context(
                 &consumer_key,
                 &consumer_secret,
                 &access_token,
@@ -114,48 +114,75 @@ impl SyncService {
 
         // Create Download Record
         let db = db_manager.clone();
-        let download_id = tokio::task::spawn_blocking(move || {
-            let mut conn = db.get_connection()?;
-            use crate::db::schema::downloads;
-            use crate::db::teams::DownloadEntity;
-            use chrono::Utc;
-            use diesel::prelude::*;
+        let download_id = {
+            let conn = &mut db_manager
+                .get_connection()
+                .map_err(|e| Error::Db(format!("Failed to get database connection: {}", e)))?;
 
             let timestamp = Utc::now().to_rfc3339();
-            let entity = DownloadEntity {
-                id: 0, // Will be auto-incremented
-                timestamp,
-                status: "started".to_string(),
-            };
 
             diesel::insert_into(downloads::table)
-                .values(&entity)
-                .execute(&mut conn)
-                .map_err(|e| Error::Io(format!("Failed to create download: {}", e)))?;
+                .values((
+                    downloads::timestamp.eq(&timestamp),
+                    downloads::status.eq("in_progress"),
+                ))
+                .execute(conn)
+                .map_err(|e| Error::Db(format!("Failed to create download record: {}", e)))?;
 
-            // Get the last inserted ID
-            let last_id: i32 = diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>(
-                "last_insert_rowid()",
-            ))
-            .get_result(&mut conn)
-            .map_err(|e| Error::Io(format!("Failed to get download ID: {}", e)))?;
+            let id: i32 = downloads::table
+                .select(downloads::id)
+                .order(downloads::id.desc())
+                .first(conn)
+                .map_err(|e| Error::Db(format!("Failed to get download ID: {}", e)))?;
 
-            Ok::<i32, Error>(last_id)
+            id
+        };
+
+        // Get user / team details
+        let (data, key) = get_auth();
+        let hattrick_data = client.team_details(data, key, None).await?;
+
+        log::info!(
+            "User: {} ({})",
+            hattrick_data.User.Name,
+            hattrick_data.User.Loginname
+        );
+
+        // Save user and teams
+        let user = hattrick_data.User;
+        let teams = hattrick_data.Teams.Teams;
+
+        //Extract first team ID for player fetching (simplified - just using first team)
+        let team_id: u32 = teams
+            .first()
+            .and_then(|t| t.TeamID.parse().ok())
+            .unwrap_or(0);
+
+        log::info!("Processing teams, found {} team(s)", teams.len());
+
+        let db = db_manager.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = db.get_connection()?;
+            for team in &teams {
+                log::info!("Saving team: {} ({})", team.TeamName, team.TeamID);
+                save_team(&mut conn, team, &user, download_id)?;
+            }
+            Ok::<(), Error>(())
         })
         .await
         .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
 
-        info!("Created download record with ID: {}", download_id);
-
-        // 1. World Details
+        // Get World Details
         let (data, key) = get_auth();
-        debug!("auth_data: {:#?}", get_auth());
-
         let world_details = client.world_details(data, key).await?;
-        info!("world_details: {:#?}", world_details);
+        log::info!(
+            "Fetched world details with {} leagues",
+            world_details.LeagueList.Leagues.len()
+        );
 
+        // Save world details
         let db = db_manager.clone();
-        let wd = world_details; // move
+        let wd = world_details;
         tokio::task::spawn_blocking(move || {
             let mut conn = db.get_connection()?;
             save_world_details(&mut conn, &wd)
@@ -163,81 +190,70 @@ impl SyncService {
         .await
         .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
 
-        // 2. Team Details
+        // Get Players for the team
         let (data, key) = get_auth();
-        let hattrick_data = client.team_details(data, key, None).await?;
+        let players_resp = client.players(data, key, None).await?;
 
-        // We might get multiple teams. The user object is at top level.
-        let user = hattrick_data.User;
-        let teams = hattrick_data.Teams.Teams;
+        let player_list = if let Some(pl) = players_resp.Team.PlayerList {
+            pl
+        } else {
+            log::warn!("No player list found for team");
+            return Err(Error::Parse("No player list in response".to_string()));
+        };
 
-        // Save User and Teams
-        let db = db_manager.clone();
-        let u = user; // move
-        let ts = teams; // move
+        // Fetch detailed player data for each player
+        // Use retry utility from the integration layer
+        let detailed_players = {
+            info!(
+                "Fetching detailed player data for {} players",
+                player_list.players.len()
+            );
 
-        // We need team IDs for players request, so we must capture them or reload them.
-        // Let's clone what we need before moving
-        let team_ids: Vec<u32> = ts.iter().map(|t| t.TeamID.parse().unwrap_or(0)).collect();
-
-        tokio::task::spawn_blocking(move || {
-            let mut conn = db.get_connection()?;
-            for team in &ts {
-                save_team(&mut conn, team, &u, download_id)?;
-            }
-            Ok::<(), Error>(())
-        })
-        .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
-
-        // 3. Players for each team - Fetch details for each player
-        for team_id in team_ids {
-            if team_id == 0 {
-                continue;
-            }
-
-            let (data, key) = get_auth();
-            let players_data = client.players(data, key, Some(team_id)).await?;
-            let player_list = players_data
-                .Team
-                .PlayerList
-                .ok_or(Error::Xml("No player list found in response".to_string()))?;
-
-            // For each player, fetch detailed player data
             let mut detailed_players = Vec::new();
             for basic_player in &player_list.players {
                 info!("Fetching details for player ID: {}", basic_player.PlayerID);
-                let (data, key) = get_auth();
-                match client.player_details(data, key, basic_player.PlayerID).await {
+
+                let player_id = basic_player.PlayerID;
+                let operation_name = format!("player_details({})", player_id);
+
+                // Use retry utility for player details fetching
+                let result = retry_with_default_config(&operation_name, &get_auth, |data, key| {
+                    client.player_details(data, key, player_id)
+                })
+                .await;
+
+                match result {
                     Ok(detailed_player) => {
                         detailed_players.push(detailed_player);
                     }
                     Err(e) => {
-                        // Log error but continue with other players
-                        log::warn!("Failed to fetch details for player {}: {}", basic_player.PlayerID, e);
-                        // Fallback to basic player data
+                        // Retries have already been attempted by retry utility
+                        log::warn!(
+                            "Failed to fetch details for player {}: {}. Falling back to basic data.",
+                            player_id,
+                            e
+                        );
                         detailed_players.push(basic_player.clone());
                     }
                 }
             }
+            detailed_players
+        };
 
-            let db = db_manager.clone();
-            let players = detailed_players;
-
-            tokio::task::spawn_blocking(move || {
-                let mut conn = db.get_connection()?;
-                save_players(&mut conn, &players, team_id, download_id)
-            })
-            .await
-            .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
-        }
+        // Save players
+        let db = db_manager.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = db.get_connection()?;
+            save_players(&mut conn, &detailed_players, team_id, download_id)
+        })
+        .await
+        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
 
         // Mark download as completed
         let db = db_manager.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = db.get_connection()?;
             use crate::db::schema::downloads::dsl::*;
-            use diesel::prelude::*;
 
             diesel::update(downloads.filter(id.eq(download_id)))
                 .set(status.eq("completed"))
@@ -260,6 +276,7 @@ mod tests {
     use crate::chpp::model::*;
     use crate::db::manager::DbManager;
     use async_trait::async_trait;
+    use oauth_1a::{OAuthData, SigningKey};
 
     struct MockChppClient;
 
@@ -295,14 +312,14 @@ mod tests {
         ) -> Result<HattrickData, Error> {
             Ok(HattrickData {
                 User: User {
-                    UserID: 1,
-                    Loginname: "TestUser".to_string(),
+                    UserID: 12345,
                     Name: "Test User".to_string(),
-                    SupporterTier: SupporterTier::Platinum,
+                    Loginname: "testuser".to_string(),
                     SignupDate: "2000-01-01 00:00:00".to_string(),
                     ActivationDate: "2000-01-01 00:00:00".to_string(),
                     LastLoginDate: "2020-01-01 00:00:00".to_string(),
-                    HasManagerLicense: true,
+                    HasManagerLicense: false,
+                    SupporterTier: SupporterTier::None,
                     Language: Language {
                         LanguageID: 2,
                         LanguageName: "English".to_string(),
@@ -310,72 +327,37 @@ mod tests {
                 },
                 Teams: Teams {
                     Teams: vec![Team {
-                        TeamID: "123".to_string(),
-                        TeamName: "Test FC".to_string(),
-                        ShortTeamName: Some("TFC".to_string()),
+                        TeamID: "54321".to_string(),
+                        TeamName: "Test Team".to_string(),
+                        ShortTeamName: Some("TT".to_string()),
                         IsPrimaryClub: Some(true),
-                        FoundedDate: Some("2010-01-01".to_string()),
-                        Arena: Some(Arena {
-                            ArenaID: 500,
-                            ArenaName: "Test Arena".to_string(),
-                        }),
-                        League: Some(League {
-                            LeagueID: 100,
-                            LeagueName: "TestLeague".to_string(),
-                        }),
-                        Country: Some(Country {
-                            CountryID: 10,
-                            CountryName: "TestCountry".to_string(),
-                            Currency: None,
-                        }),
-                        Region: Some(Region {
-                            RegionID: 50,
-                            RegionName: "Test Region".to_string(),
-                        }),
-                        HomePage: Some("".to_string()),
-                        DressURI: Some("".to_string()),
-                        DressAlternateURI: Some("".to_string()),
-                        LogoURL: Some("".to_string()),
-                        Trainer: Some(Trainer { PlayerID: 999 }),
-                        Cup: Some(Cup {
-                            StillInCup: false,
-                            CupID: Some(55),
-                            CupName: Some("Test Cup".to_string()),
-                            CupLeagueLevel: Some(1),
-                            CupLevel: Some(1),
-                            CupLevelIndex: Some(1),
-                            MatchRound: Some(1),
-                            MatchRoundsLeft: Some(0),
-                        }),
-                        PowerRating: Some(PowerRating {
-                            GlobalRanking: 1000,
-                            LeagueRanking: 500,
-                            RegionRanking: 200,
-                            PowerRating: 100,
-                        }),
-                        FriendlyTeamID: Some(0),
-                        LeagueLevelUnit: Some(LeagueLevelUnit {
-                            LeagueLevelUnitID: 400,
-                            LeagueLevelUnitName: "IV.1".to_string(),
-                            LeagueLevel: 4,
-                        }),
-                        NumberOfVictories: Some(10),
-                        NumberOfUndefeated: Some(5),
-                        NumberOfVisits: Some(0),
-                        TeamRank: Some(1),
-                        Fanclub: Some(Fanclub {
-                            FanclubID: 600,
-                            FanclubName: "Fans".to_string(),
-                            FanclubSize: 100,
-                        }),
-                        IsDeactivated: Some(false),
+                        FoundedDate: None,
+                        IsDeactivated: None,
+                        Arena: None,
+                        League: None,
+                        Country: None,
+                        Region: None,
+                        Trainer: None,
+                        HomePage: None,
+                        Cup: None,
+                        PowerRating: None,
+                        FriendlyTeamID: None,
+                        LeagueLevelUnit: None,
+                        NumberOfVictories: None,
+                        NumberOfUndefeated: None,
+                        Fanclub: None,
+                        LogoURL: None,
                         TeamColors: None,
+                        DressURI: None,
+                        DressAlternateURI: None,
                         BotStatus: None,
+                        TeamRank: None,
+                        YouthTeamID: None,
+                        YouthTeamName: None,
+                        NumberOfVisits: None,
                         PlayerList: None,
-                        YouthTeamID: Some(0),
-                        YouthTeamName: Some("".to_string()),
-                        PossibleToChallengeMidweek: Some(false),
-                        PossibleToChallengeWeekend: Some(false),
+                        PossibleToChallengeMidweek: None,
+                        PossibleToChallengeWeekend: None,
                     }],
                 },
             })
@@ -393,80 +375,44 @@ mod tests {
                     TeamName: "Test FC".to_string(),
                     ShortTeamName: Some("TFC".to_string()),
                     IsPrimaryClub: Some(true),
-                    FoundedDate: Some("2010-01-01".to_string()),
-                    Arena: Some(Arena {
-                        ArenaID: 500,
-                        ArenaName: "Test Arena".to_string(),
-                    }),
-                    League: Some(League {
-                        LeagueID: 100,
-                        LeagueName: "TestLeague".to_string(),
-                    }),
-                    Country: Some(Country {
-                        CountryID: 10,
-                        CountryName: "TestCountry".to_string(),
-                        Currency: None,
-                    }),
-                    Region: Some(Region {
-                        RegionID: 50,
-                        RegionName: "Test Region".to_string(),
-                    }),
-                    HomePage: Some("".to_string()),
-                    DressURI: Some("".to_string()),
-                    DressAlternateURI: Some("".to_string()),
-                    LogoURL: Some("".to_string()),
-                    Trainer: Some(Trainer { PlayerID: 999 }),
-                    Cup: Some(Cup {
-                        StillInCup: false,
-                        CupID: Some(55),
-                        CupName: Some("Test Cup".to_string()),
-                        CupLeagueLevel: Some(1),
-                        CupLevel: Some(1),
-                        CupLevelIndex: Some(1),
-                        MatchRound: Some(1),
-                        MatchRoundsLeft: Some(0),
-                    }),
-                    PowerRating: Some(PowerRating {
-                        GlobalRanking: 1000,
-                        LeagueRanking: 500,
-                        RegionRanking: 200,
-                        PowerRating: 100,
-                    }),
-                    FriendlyTeamID: Some(0),
-                    LeagueLevelUnit: Some(LeagueLevelUnit {
-                        LeagueLevelUnitID: 400,
-                        LeagueLevelUnitName: "IV.1".to_string(),
-                        LeagueLevel: 4,
-                    }),
-                    NumberOfVictories: Some(10),
-                    NumberOfUndefeated: Some(5),
-                    NumberOfVisits: Some(0),
-                    TeamRank: Some(1),
-                    Fanclub: Some(Fanclub {
-                        FanclubID: 600,
-                        FanclubName: "Fans".to_string(),
-                        FanclubSize: 100,
-                    }),
-                    IsDeactivated: Some(false),
+                    FoundedDate: None,
+                    IsDeactivated: None,
+                    Arena: None,
+                    League: None,
+                    Country: None,
+                    Region: None,
+                    Trainer: None,
+                    HomePage: None,
+                    Cup: None,
+                    PowerRating: None,
+                    FriendlyTeamID: None,
+                    LeagueLevelUnit: None,
+                    NumberOfVictories: None,
+                    NumberOfUndefeated: None,
+                    Fanclub: None,
+                    LogoURL: None,
                     TeamColors: None,
+                    DressURI: None,
+                    DressAlternateURI: None,
                     BotStatus: None,
-                    YouthTeamID: Some(0),
-                    YouthTeamName: Some("".to_string()),
-                    PossibleToChallengeMidweek: Some(false),
-                    PossibleToChallengeWeekend: Some(false),
+                    TeamRank: None,
+                    YouthTeamID: None,
+                    YouthTeamName: None,
+                    NumberOfVisits: None,
                     PlayerList: Some(PlayerList {
                         players: vec![Player {
-                            PlayerID: 1001,
-                            FirstName: "John".to_string(),
-                            LastName: "Doe".to_string(),
+                            PlayerID: 1000,
+                            FirstName: "Test".to_string(),
+                            LastName: "Player".to_string(),
                             PlayerNumber: 10,
                             Age: 20,
-                            AgeDays: Some(50),
+                            AgeDays: Some(100),
                             TSI: 1000,
                             PlayerForm: 5,
-                            Statement: Some("".to_string()),
+                            Statement: None,
                             Experience: 3,
                             Loyalty: 10,
+                            ReferencePlayerID: None,
                             MotherClubBonus: false,
                             Leadership: 3,
                             Salary: 500,
@@ -481,18 +427,65 @@ mod tests {
                             CareerHattricks: Some(0),
                             Speciality: Some(0),
                             TransferListed: false,
-                            NationalTeamID: Some(0),
+                            NationalTeamID: None,
                             CountryID: 10,
                             Caps: Some(0),
                             CapsU20: Some(0),
                             Cards: Some(0),
                             InjuryLevel: Some(-1),
-                            Sticker: Some("".to_string()),
-                            ReferencePlayerID: None,
+                            Sticker: None,
                             PlayerSkills: None,
+                            LastMatch: None,
                         }],
                     }),
+                    PossibleToChallengeMidweek: None,
+                    PossibleToChallengeWeekend: None,
                 },
+            })
+        }
+
+        async fn player_details(
+            &self,
+            _data: OAuthData,
+            _key: SigningKey,
+            _player_id: u32,
+        ) -> Result<Player, Error> {
+            Ok(Player {
+                PlayerID: 1001,
+                FirstName: "John".to_string(),
+                LastName: "Doe".to_string(),
+                PlayerNumber: 10,
+                Age: 20,
+                AgeDays: Some(50),
+                TSI: 1000,
+                PlayerForm: 5,
+                Statement: Some("".to_string()),
+                Experience: 3,
+                Loyalty: 10,
+                ReferencePlayerID: None,
+                MotherClubBonus: false,
+                Leadership: 3,
+                Salary: 500,
+                IsAbroad: false,
+                Agreeability: 3,
+                Aggressiveness: 3,
+                Honesty: 3,
+                LeagueGoals: Some(0),
+                CupGoals: Some(0),
+                FriendliesGoals: Some(0),
+                CareerGoals: Some(0),
+                CareerHattricks: Some(0),
+                Speciality: Some(0),
+                TransferListed: false,
+                NationalTeamID: Some(0),
+                CountryID: 10,
+                Caps: Some(0),
+                CapsU20: Some(0),
+                Cards: Some(0),
+                InjuryLevel: Some(-1),
+                Sticker: Some("".to_string()),
+                PlayerSkills: None,
+                LastMatch: None,
             })
         }
     }
