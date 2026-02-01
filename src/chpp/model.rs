@@ -55,6 +55,17 @@ where
     }
 }
 
+fn empty_tag_is_none<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: Option<String> = Option::deserialize(deserializer)?;
+    match s.as_deref() {
+        None | Some("") => Ok(None),
+        Some(v) => v.parse().map(Some).map_err(serde::de::Error::custom),
+    }
+}
+
 fn serialize_bool<S>(x: &bool, s: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
@@ -182,10 +193,11 @@ pub struct Fanclub {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Cup {
     #[serde(
-        deserialize_with = "deserialize_bool",
-        serialize_with = "serialize_bool"
+        deserialize_with = "deserialize_option_bool",
+        serialize_with = "serialize_option_bool",
+        default
     )]
-    pub StillInCup: bool,
+    pub StillInCup: Option<bool>,
     pub CupID: Option<u32>,
     pub CupName: Option<String>,
     pub CupLeagueLevel: Option<u32>, // 0 = National (LeagueLevel 1-6), 7-9 = Divisional.
@@ -362,9 +374,14 @@ pub struct Team {
     pub HomePage: Option<String>,
     pub Cup: Option<Cup>,
     pub PowerRating: Option<PowerRating>,
+    #[serde(default, deserialize_with = "empty_tag_is_none")]
+    // Empty tag <FriendlyTeamID /> seems to fail for Option<u32>
+    // so use a custom deserializer for these fields.
     pub FriendlyTeamID: Option<u32>,
     pub LeagueLevelUnit: Option<LeagueLevelUnit>,
+    #[serde(default, deserialize_with = "empty_tag_is_none")]
     pub NumberOfVictories: Option<u32>,
+    #[serde(default, deserialize_with = "empty_tag_is_none")]
     pub NumberOfUndefeated: Option<u32>,
     pub Fanclub: Option<Fanclub>,
     pub LogoURL: Option<String>,
@@ -372,13 +389,13 @@ pub struct Team {
     pub DressURI: Option<String>,
     pub DressAlternateURI: Option<String>,
     pub BotStatus: Option<BotStatus>,
+    #[serde(default, deserialize_with = "empty_tag_is_none")]
     pub TeamRank: Option<u32>,
     pub YouthTeamID: Option<u32>,
     pub YouthTeamName: Option<String>,
     pub NumberOfVisits: Option<u32>,
-    //  pub Flags: Flags,
-    //#[serde(rename = "TrophyList")]
-    //pub TrophyList: Option<TrophyListWrapper>,
+    // #[serde(rename = "TrophyList")]
+    // pub TrophyList: Option<TrophyListWrapper>,
     pub PlayerList: Option<PlayerList>,
     #[serde(deserialize_with = "deserialize_option_bool", default)]
     pub PossibleToChallengeMidweek: Option<bool>,
@@ -807,5 +824,251 @@ mod tests {
         assert_eq!(p2.IsAbroad, true);
         assert_eq!(p2.AgeDays, None); // Missing field test
         assert_eq!(p2.TransferListed, true);
+    }
+
+    #[test]
+    fn test_teams_with_announcements_deserialization() {
+        let xml = r#"<HattrickData>
+      <FileName>teamdetails.xml</FileName>
+      <Version>3.7</Version>
+      <UserID>6992417</UserID>
+      <FetchedDate>2026-02-01 18:12:26</FetchedDate>
+      <User>
+        <UserID>6992417</UserID>
+        <Language>
+          <LanguageID>2</LanguageID>
+          <LanguageName>English (UK)</LanguageName>
+        </Language>
+        <SupporterTier>gold</SupporterTier>
+        <Loginname>tychobrailleur</Loginname>
+        <Name>HIDDEN</Name>
+        <ICQ></ICQ>
+        <SignupDate>2019-10-24 20:19:39</SignupDate>
+        <ActivationDate>2019-10-24 20:20:00</ActivationDate>
+        <LastLoginDate>2026-02-01 18:04:54</LastLoginDate>
+        <HasManagerLicense>True</HasManagerLicense>
+        <NationalTeams />
+      </User>
+      <Teams>
+        <Team>
+          <TeamID>1000</TeamID>
+          <TeamName>Test Team A</TeamName>
+          <ShortTeamName>A</ShortTeamName>
+          <IsPrimaryClub>True</IsPrimaryClub>
+          <FoundedDate>2019-10-24 20:20:00</FoundedDate>
+          <IsDeactivated>False</IsDeactivated>
+          <Arena>
+            <ArenaID>1001</ArenaID>
+            <ArenaName>Armadillo Arena</ArenaName>
+          </Arena>
+          <League>
+            <LeagueID>21</LeagueID>
+            <LeagueName>Ireland</LeagueName>
+          </League>
+          <Country>
+            <CountryID>16</CountryID>
+            <CountryName>Ireland</CountryName>
+          </Country>
+          <Region>
+            <RegionID>627</RegionID>
+            <RegionName>Wicklow</RegionName>
+          </Region>
+          <Trainer>
+            <PlayerID>456835710</PlayerID>
+          </Trainer>
+          <HomePage></HomePage>
+          <DressURI>//res.hattrick.org/kits/29/283/2827/2826328/matchKitSmall.png</DressURI>
+          <DressAlternateURI>//res.hattrick.org/kits/29/283/2827/2826330/matchKitSmall.png</DressAlternateURI>
+          <LeagueLevelUnit>
+            <LeagueLevelUnitID>8806</LeagueLevelUnitID>
+            <LeagueLevelUnitName>IV.32</LeagueLevelUnitName>
+            <LeagueLevel>4</LeagueLevel>
+          </LeagueLevelUnit>
+          <BotStatus>
+            <IsBot>False</IsBot>
+          </BotStatus>
+          <Cup />
+
+          <PowerRating>
+            <GlobalRanking>45701</GlobalRanking>
+            <LeagueRanking>148</LeagueRanking>
+            <RegionRanking>7</RegionRanking>
+            <PowerRating>936</PowerRating>
+          </PowerRating>
+          <FriendlyTeamID />
+          <NumberOfVictories />
+          <NumberOfUndefeated />
+          <TeamRank />
+          <Fanclub>
+            <FanclubID>673567</FanclubID>
+            <FanclubName>Anteaters Ultras</FanclubName>
+            <FanclubSize>2765</FanclubSize>
+          </Fanclub>
+          <LogoURL>//res.hattrick.org/teamlogo/3/29/281/280747/280747.png</LogoURL>
+          <Guestbook>
+            <NumberOfGuestbookItems>0</NumberOfGuestbookItems>
+          </Guestbook>
+          <PressAnnouncement>
+            <Subject>The Bogdan Controversy</Subject>
+            <Body>There was a certain amount of stupor within the Pangolins ranks when it was discovered in training camp today that there actually was a player whose first name was “Bogdan” on the team.
+    
+    “Come on lads” the player involved, [playerid=434668244]Tărtăreanu[/playerid], said “I have been here for 6 bloody seasons, how does it come as a surprise now??”
+    
+    The management team, still in shock, and busy sifting through piles of papers, refused to comment.</Body>
+            <SendDate>2023-10-10 18:13:00</SendDate>
+          </PressAnnouncement>
+          <TeamColors>
+            <BackgroundColor>288032</BackgroundColor>
+            <Color>ffffff</Color>
+          </TeamColors>
+          <YouthTeamID>0</YouthTeamID>
+          <YouthTeamName></YouthTeamName>
+          <NumberOfVisits>0</NumberOfVisits>
+          <TrophyList>
+            <Trophy>
+              <TrophyTypeId>17</TrophyTypeId>
+              <TrophySeason>76</TrophySeason>
+              <LeagueLevel>4</LeagueLevel>
+              <LeagueLevelUnitId>8806</LeagueLevelUnitId>
+              <LeagueLevelUnitName>IV.32</LeagueLevelUnitName>
+              <GainedDate>2024-09-07 01:51:00</GainedDate>
+              <ImageUrl>/App_Themes/Standard/Images/Trophies/iv.png</ImageUrl>
+              <CupLeagueLevel></CupLeagueLevel>
+              <CupLevel></CupLevel>
+              <CupLevelIndex></CupLevelIndex>
+            </Trophy>
+            <Trophy>
+              <TrophyTypeId>17</TrophyTypeId>
+              <TrophySeason>75</TrophySeason>
+              <LeagueLevel>4</LeagueLevel>
+              <LeagueLevelUnitId>8806</LeagueLevelUnitId>
+              <LeagueLevelUnitName>IV.32</LeagueLevelUnitName>
+              <GainedDate>2024-05-18 01:52:00</GainedDate>
+              <ImageUrl>/App_Themes/Standard/Images/Trophies/iv.png</ImageUrl>
+              <CupLeagueLevel></CupLeagueLevel>
+              <CupLevel></CupLevel>
+              <CupLevelIndex></CupLevelIndex>
+            </Trophy>
+            <Trophy>
+              <TrophyTypeId>17</TrophyTypeId>
+              <TrophySeason>74</TrophySeason>
+              <LeagueLevel>4</LeagueLevel>
+              <LeagueLevelUnitId>8806</LeagueLevelUnitId>
+              <LeagueLevelUnitName>IV.32</LeagueLevelUnitName>
+              <GainedDate>2024-01-27 01:51:00</GainedDate>
+              <ImageUrl>/App_Themes/Standard/Images/Trophies/iv.png</ImageUrl>
+              <CupLeagueLevel></CupLeagueLevel>
+              <CupLevel></CupLevel>
+              <CupLevelIndex></CupLevelIndex>
+            </Trophy>
+            <Trophy>
+              <TrophyTypeId>17</TrophyTypeId>
+              <TrophySeason>73</TrophySeason>
+              <LeagueLevel>4</LeagueLevel>
+              <LeagueLevelUnitId>8806</LeagueLevelUnitId>
+              <LeagueLevelUnitName>IV.32</LeagueLevelUnitName>
+              <GainedDate>2023-10-07 01:51:00</GainedDate>
+              <ImageUrl>/App_Themes/Standard/Images/Trophies/iv.png</ImageUrl>
+              <CupLeagueLevel></CupLeagueLevel>
+              <CupLevel></CupLevel>
+              <CupLevelIndex></CupLevelIndex>
+            </Trophy>
+            <Trophy>
+              <TrophyTypeId>17</TrophyTypeId>
+              <TrophySeason>70</TrophySeason>
+              <LeagueLevel>4</LeagueLevel>
+              <LeagueLevelUnitId>8826</LeagueLevelUnitId>
+              <LeagueLevelUnitName>IV.52</LeagueLevelUnitName>
+              <GainedDate>2022-11-05 01:52:00</GainedDate>
+              <ImageUrl>/App_Themes/Standard/Images/Trophies/iv.png</ImageUrl>
+              <CupLeagueLevel></CupLeagueLevel>
+              <CupLevel></CupLevel>
+              <CupLevelIndex></CupLevelIndex>
+            </Trophy>
+            <Trophy>
+              <TrophyTypeId>17</TrophyTypeId>
+              <TrophySeason>68</TrophySeason>
+              <LeagueLevel>4</LeagueLevel>
+              <LeagueLevelUnitId>8810</LeagueLevelUnitId>
+              <LeagueLevelUnitName>IV.36</LeagueLevelUnitName>
+              <GainedDate>2022-03-26 01:51:00</GainedDate>
+              <ImageUrl>/App_Themes/Standard/Images/Trophies/iv.png</ImageUrl>
+              <CupLeagueLevel></CupLeagueLevel>
+              <CupLevel></CupLevel>
+              <CupLevelIndex></CupLevelIndex>
+            </Trophy>
+            <Trophy>
+              <TrophyTypeId>17</TrophyTypeId>
+              <TrophySeason>67</TrophySeason>
+              <LeagueLevel>4</LeagueLevel>
+              <LeagueLevelUnitId>8810</LeagueLevelUnitId>
+              <LeagueLevelUnitName>IV.36</LeagueLevelUnitName>
+              <GainedDate>2021-12-04 01:51:00</GainedDate>
+              <ImageUrl>/App_Themes/Standard/Images/Trophies/iv.png</ImageUrl>
+              <CupLeagueLevel></CupLeagueLevel>
+              <CupLevel></CupLevel>
+              <CupLevelIndex></CupLevelIndex>
+            </Trophy>
+            <Trophy>
+              <TrophyTypeId>17</TrophyTypeId>
+              <TrophySeason>65</TrophySeason>
+              <LeagueLevel>4</LeagueLevel>
+              <LeagueLevelUnitId>8789</LeagueLevelUnitId>
+              <LeagueLevelUnitName>IV.15</LeagueLevelUnitName>
+              <GainedDate>2021-04-24 02:18:00</GainedDate>
+              <ImageUrl>/App_Themes/Standard/Images/Trophies/iv.png</ImageUrl>
+              <CupLeagueLevel></CupLeagueLevel>
+              <CupLevel></CupLevel>
+              <CupLevelIndex></CupLevelIndex>
+            </Trophy>
+            <Trophy>
+              <TrophyTypeId>17</TrophyTypeId>
+              <TrophySeason>61</TrophySeason>
+              <LeagueLevel>5</LeagueLevel>
+              <LeagueLevelUnitId>34587</LeagueLevelUnitId>
+              <LeagueLevelUnitName>V.5</LeagueLevelUnitName>
+              <GainedDate>2020-02-01 02:44:00</GainedDate>
+              <ImageUrl>/App_Themes/Standard/Images/Trophies/v.png</ImageUrl>
+              <CupLeagueLevel></CupLeagueLevel>
+              <CupLevel></CupLevel>
+              <CupLevelIndex></CupLevelIndex>
+            </Trophy>
+          </TrophyList>
+          <PossibleToChallengeMidweek>False</PossibleToChallengeMidweek>
+          <PossibleToChallengeWeekend>False</PossibleToChallengeWeekend>
+        </Team>
+      </Teams>
+    </HattrickData>"#;
+
+        let res: HattrickData = from_str(xml).expect("Failed to deserialize HattrickData data");
+        let team_data = &res.Teams.Teams[0];
+
+        assert_eq!(team_data.TeamID, "1000");
+        assert_eq!(team_data.TeamName, "Test Team A");
+        assert_eq!(team_data.IsPrimaryClub, Some(true));
+        assert_eq!(team_data.IsDeactivated, Some(false));
+    }
+
+    // Leaving this as sanity check, this what I used to debug the empty tag issue...
+    #[derive(Debug, Deserialize)]
+    struct Example {
+        #[serde(default, deserialize_with = "empty_tag_is_none")]
+        pub EmptyTag: Option<u32>,
+    }
+
+    #[test]
+    fn test_deserialize_team_with_empty_tags() {
+        let xml = r#"<Example>
+        <EmptyTag />
+        </Example>"#;
+
+        let res: Example = from_str(xml).expect("Failed to deserialize Example data");
+        assert_eq!(res.EmptyTag, None);
+
+        let xml2 = r#"<Example>
+        </Example>"#;
+
+        let res2: Example = from_str(xml2).expect("Failed to deserialize Example data");
+        assert_eq!(res2.EmptyTag, None);
     }
 }

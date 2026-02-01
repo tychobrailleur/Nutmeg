@@ -566,7 +566,7 @@ pub fn save_team(
         dress_alternate_uri: team.DressAlternateURI.clone(),
         logo_url: team.LogoURL.clone(),
         trainer_id: team.Trainer.as_ref().map(|t| t.PlayerID as i32),
-        cup_still_in: team.Cup.as_ref().map(|c| c.StillInCup),
+        cup_still_in: team.Cup.as_ref().and_then(|c| c.StillInCup),
         cup_id: team.Cup.as_ref().and_then(|c| c.CupID.map(|v| v as i32)),
         cup_name: team.Cup.as_ref().and_then(|c| c.CupName.clone()),
         cup_league_level: team

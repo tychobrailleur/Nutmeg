@@ -355,6 +355,7 @@ mod tests {
                         YouthTeamID: None,
                         YouthTeamName: None,
                         NumberOfVisits: None,
+                        //                      TrophyList: None,
                         PlayerList: None,
                         PossibleToChallengeMidweek: None,
                         PossibleToChallengeWeekend: None,
@@ -399,6 +400,7 @@ mod tests {
                     YouthTeamID: None,
                     YouthTeamName: None,
                     NumberOfVisits: None,
+                    //               TrophyList: None,
                     PlayerList: Some(PlayerList {
                         players: vec![Player {
                             PlayerID: 1000,
