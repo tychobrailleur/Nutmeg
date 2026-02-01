@@ -190,7 +190,7 @@ pub struct Cup {
     pub CupName: Option<String>,
     pub CupLeagueLevel: Option<u32>, // 0 = National (LeagueLevel 1-6), 7-9 = Divisional.
     pub CupLevel: Option<u32>,       // 1 = National/Divisional, 2 = Challenger, 3 = Consolation.
-    pub CupLevelIndex: Option<u32>, // Always 1 for National and Consolation cups, for Challenger cup: 1 = Emerald, 2 = Ruby, 3 = Sapphire
+    pub CupLevelIndex: Option<u32>,  // Always 1 for National and Consolation cups, for Challenger cup: 1 = Emerald, 2 = Ruby, 3 = Sapphire
     pub MatchRound: Option<u32>,
     pub MatchRoundsLeft: Option<u32>,
 }
@@ -259,10 +259,21 @@ pub struct PlayerSkills {
     pub KeeperSkill: u32,
     pub PlaymakerSkill: u32,
     pub ScorerSkill: u32,
-    pub PasserSkill: u32,
+    pub PassingSkill: u32,
     pub WingerSkill: u32,
     pub DefenderSkill: u32,
     pub SetPiecesSkill: u32,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct LastMatch {
+    pub Date: String,
+    pub MatchId: u32,
+    pub PositionCode: u32,
+    pub PlayedMinutes: u32,
+    pub Rating: Option<u32>,
+    pub RatingEndOfMatch: Option<u32>,
 }
 
 #[allow(non_snake_case)]
@@ -314,6 +325,7 @@ pub struct Player {
     pub InjuryLevel: Option<i32>, // -1 = No injury, 0 = Bruised, >0 = Weeks
     pub Sticker: Option<String>,
     pub PlayerSkills: Option<PlayerSkills>, // Only visible for own team or if authorized
+    pub LastMatch: Option<LastMatch>,
 }
 
 #[allow(non_snake_case)]
@@ -394,6 +406,12 @@ pub struct HattrickData {
 #[serde(rename = "HattrickData")]
 pub struct PlayersData {
     pub Team: Team,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug)]
+pub struct PlayerDetailsData {
+    pub Player: Player,
 }
 
 #[allow(non_snake_case)]

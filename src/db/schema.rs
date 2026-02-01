@@ -30,6 +30,14 @@ diesel::table! {
 }
 
 diesel::table! {
+    downloads (id) {
+        id -> Integer,
+        timestamp -> Text,
+        status -> Text,
+    }
+}
+
+diesel::table! {
     languages (id) {
         id -> Integer,
         name -> Text,
@@ -45,8 +53,9 @@ diesel::table! {
 }
 
 diesel::table! {
-    players (id) {
+    players (id, download_id) {
         id -> Integer,
+        download_id -> Integer,
         team_id -> Integer,
         first_name -> Text,
         last_name -> Text,
@@ -79,6 +88,20 @@ diesel::table! {
         cards -> Nullable<Integer>,
         injury_level -> Nullable<Integer>,
         sticker -> Nullable<Text>,
+        stamina_skill -> Nullable<Integer>,
+        keeper_skill -> Nullable<Integer>,
+        playmaker_skill -> Nullable<Integer>,
+        scorer_skill -> Nullable<Integer>,
+        passing_skill -> Nullable<Integer>,
+        winger_skill -> Nullable<Integer>,
+        defender_skill -> Nullable<Integer>,
+        set_pieces_skill -> Nullable<Integer>,
+        last_match_date -> Nullable<Text>,
+        last_match_id -> Nullable<Integer>,
+        last_match_position_code -> Nullable<Integer>,
+        last_match_played_minutes -> Nullable<Integer>,
+        last_match_rating -> Nullable<Integer>,
+        last_match_rating_end_of_match -> Nullable<Integer>,
     }
 }
 
@@ -91,8 +114,9 @@ diesel::table! {
 }
 
 diesel::table! {
-    teams (id) {
+    teams (id, download_id) {
         id -> Integer,
+        download_id -> Integer,
         user_id -> Nullable<Integer>,
         name -> Text,
         raw_data -> Text,
@@ -162,8 +186,9 @@ diesel::table! {
 diesel::joinable!(countries -> currencies (currency_id));
 diesel::joinable!(leagues -> countries (country_id));
 diesel::joinable!(players -> countries (country_id));
-diesel::joinable!(players -> teams (team_id));
+diesel::joinable!(players -> downloads (download_id));
 diesel::joinable!(regions -> countries (country_id));
+diesel::joinable!(teams -> downloads (download_id));
 diesel::joinable!(teams -> countries (country_id));
 diesel::joinable!(teams -> cups (cup_id));
 diesel::joinable!(teams -> leagues (league_id));
@@ -172,5 +197,5 @@ diesel::joinable!(teams -> users (user_id));
 diesel::joinable!(users -> languages (language_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    countries, currencies, cups, languages, leagues, players, regions, teams, users,
+    countries, currencies, cups, downloads, languages, leagues, players, regions, teams, users,
 );

@@ -19,9 +19,9 @@
  */
 
 use crate::chpp::error::Error;
-use crate::chpp::model::{HattrickData, PlayersData, WorldDetails};
+use crate::chpp::model::{HattrickData, Player, PlayersData, WorldDetails};
 use crate::chpp::oauth::{OAuthData, SigningKey};
-use crate::chpp::request::{players_request, team_details_request, world_details_request};
+use crate::chpp::request::{player_details_request, players_request, team_details_request, world_details_request};
 use async_trait::async_trait;
 
 #[async_trait]
@@ -41,6 +41,13 @@ pub trait ChppClient: Send + Sync {
         key: SigningKey,
         team_id: Option<u32>,
     ) -> Result<PlayersData, Error>;
+
+    async fn player_details(
+        &self,
+        data: OAuthData,
+        key: SigningKey,
+        player_id: u32,
+    ) -> Result<Player, Error>;
 }
 
 pub struct HattrickClient;
@@ -73,5 +80,14 @@ impl ChppClient for HattrickClient {
         team_id: Option<u32>,
     ) -> Result<PlayersData, Error> {
         players_request(data, key, team_id).await
+    }
+
+    async fn player_details(
+        &self,
+        data: OAuthData,
+        key: SigningKey,
+        player_id: u32,
+    ) -> Result<Player, Error> {
+        player_details_request(data, key, player_id).await
     }
 }

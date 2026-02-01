@@ -23,7 +23,7 @@ use crate::chpp::model::{
     Country, Cup, Currency, Language, League, Region, SupporterTier, Team, User, WorldDetails,
 };
 use crate::db::schema::{
-    countries, cups, currencies, languages, leagues, players, regions, teams, users,
+    countries, cups, currencies, downloads, languages, leagues, players, regions, teams, users,
 };
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
@@ -96,8 +96,17 @@ struct CupEntity {
 }
 
 #[derive(Queryable, Insertable)]
+#[diesel(table_name = downloads)]
+pub struct DownloadEntity {
+    pub id: i32,
+    pub timestamp: String,
+    pub status: String,
+}
+
+#[derive(Queryable, Insertable)]
 #[diesel(table_name = teams)]
 struct TeamEntity {
+    download_id: i32,
     id: i32,
     user_id: Option<i32>,
     name: String,
@@ -153,6 +162,7 @@ struct TeamEntity {
 #[diesel(table_name = players)]
 struct PlayerEntity {
     id: i32,
+    download_id: i32,
     team_id: i32,
     first_name: String,
     last_name: String,
@@ -185,6 +195,20 @@ struct PlayerEntity {
     cards: Option<i32>,
     injury_level: Option<i32>,
     sticker: Option<String>,
+    stamina_skill: Option<i32>,
+    keeper_skill: Option<i32>,
+    playmaker_skill: Option<i32>,
+    scorer_skill: Option<i32>,
+    passing_skill: Option<i32>,
+    winger_skill: Option<i32>,
+    defender_skill: Option<i32>,
+    set_pieces_skill: Option<i32>,
+    last_match_date: Option<String>,
+    last_match_id: Option<i32>,
+    last_match_position_code: Option<i32>,
+    last_match_played_minutes: Option<i32>,
+    last_match_rating: Option<i32>,
+    last_match_rating_end_of_match: Option<i32>,
 }
 
 pub fn save_world_details(
@@ -223,10 +247,12 @@ pub fn save_players(
     conn: &mut SqliteConnection,
     players_list: &[crate::chpp::model::Player],
     team_id: u32,
+    download_id: i32,
 ) -> Result<(), Error> {
     for player in players_list {
         let entity = PlayerEntity {
             id: player.PlayerID as i32,
+            download_id,
             team_id: team_id as i32,
             first_name: player.FirstName.clone(),
             last_name: player.LastName.clone(),
@@ -259,46 +285,28 @@ pub fn save_players(
             cards: player.Cards.map(|v| v as i32),
             injury_level: player.InjuryLevel.map(|v| v as i32),
             sticker: player.Sticker.clone(),
+            // Skills
+            stamina_skill: player.PlayerSkills.as_ref().map(|s| s.StaminaSkill as i32),
+            keeper_skill: player.PlayerSkills.as_ref().map(|s| s.KeeperSkill as i32),
+            playmaker_skill: player.PlayerSkills.as_ref().map(|s| s.PlaymakerSkill as i32),
+            scorer_skill: player.PlayerSkills.as_ref().map(|s| s.ScorerSkill as i32),
+            passing_skill: player.PlayerSkills.as_ref().map(|s| s.PassingSkill as i32),
+            winger_skill: player.PlayerSkills.as_ref().map(|s| s.WingerSkill as i32),
+            defender_skill: player.PlayerSkills.as_ref().map(|s| s.DefenderSkill as i32),
+            set_pieces_skill: player.PlayerSkills.as_ref().map(|s| s.SetPiecesSkill as i32),
+            // Last Match
+            last_match_date: player.LastMatch.as_ref().map(|m| m.Date.clone()),
+            last_match_id: player.LastMatch.as_ref().map(|m| m.MatchId as i32),
+            last_match_position_code: player.LastMatch.as_ref().map(|m| m.PositionCode as i32),
+            last_match_played_minutes: player.LastMatch.as_ref().map(|m| m.PlayedMinutes as i32),
+            last_match_rating: player.LastMatch.as_ref().and_then(|m| m.Rating.map(|v| v as i32)),
+            last_match_rating_end_of_match: player.LastMatch.as_ref().and_then(|m| m.RatingEndOfMatch.map(|v| v as i32)),
         };
 
         diesel::insert_into(players::table)
             .values(&entity)
-            .on_conflict(players::id)
-            .do_update()
-            .set((
-                players::team_id.eq(&entity.team_id),
-                players::first_name.eq(&entity.first_name),
-                players::last_name.eq(&entity.last_name),
-                players::player_number.eq(&entity.player_number),
-                players::age.eq(&entity.age),
-                players::age_days.eq(&entity.age_days),
-                players::tsi.eq(&entity.tsi),
-                players::player_form.eq(&entity.player_form),
-                players::statement.eq(&entity.statement),
-                players::experience.eq(&entity.experience),
-                players::loyalty.eq(&entity.loyalty),
-                players::mother_club_bonus.eq(&entity.mother_club_bonus),
-                players::leadership.eq(&entity.leadership),
-                players::salary.eq(&entity.salary),
-                players::is_abroad.eq(&entity.is_abroad),
-                players::agreeability.eq(&entity.agreeability),
-                players::aggressiveness.eq(&entity.aggressiveness),
-                players::honesty.eq(&entity.honesty),
-                players::league_goals.eq(&entity.league_goals),
-                players::cup_goals.eq(&entity.cup_goals),
-                players::friendlies_goals.eq(&entity.friendlies_goals),
-                players::career_goals.eq(&entity.career_goals),
-                players::career_hattricks.eq(&entity.career_hattricks),
-                players::speciality.eq(&entity.speciality),
-                players::transfer_listed.eq(&entity.transfer_listed),
-                players::national_team_id.eq(&entity.national_team_id),
-                players::country_id.eq(&entity.country_id),
-                players::caps.eq(&entity.caps),
-                players::caps_u20.eq(&entity.caps_u20),
-                players::cards.eq(&entity.cards),
-                players::injury_level.eq(&entity.injury_level),
-                players::sticker.eq(&entity.sticker),
-            ))
+            .on_conflict((players::id, players::download_id))
+            .do_nothing()
             .execute(conn)
             .map_err(|e| Error::Io(format!("Database error saving player: {}", e)))?;
     }
@@ -490,7 +498,7 @@ fn save_cup(conn: &mut SqliteConnection, cup: &Cup) -> Result<(), Error> {
 /// This acts as the main entry point for persisting team details, ensuring
 /// that dependencies (User, Country, Region, League, Cup) are saved first
 /// to satisfy Foreign Key constraints.
-pub fn save_team(conn: &mut SqliteConnection, team: &Team, user: &User) -> Result<(), Error> {
+pub fn save_team(conn: &mut SqliteConnection, team: &Team, user: &User, download_id: i32) -> Result<(), Error> {
     save_user(conn, user)?;
 
     if let Some(c) = &team.Country {
@@ -520,6 +528,7 @@ pub fn save_team(conn: &mut SqliteConnection, team: &Team, user: &User) -> Resul
         .map_err(|e| Error::Parse(format!("Failed to serialize team: {}", e)))?;
 
     let entity = TeamEntity {
+        download_id,
         id: team_id_num,
         user_id: Some(user.UserID as i32),
         name: team.TeamName.clone(),
@@ -591,67 +600,38 @@ pub fn save_team(conn: &mut SqliteConnection, team: &Team, user: &User) -> Resul
 
     diesel::insert_into(teams::table)
         .values(&entity)
-        .on_conflict(teams::id)
-        .do_update()
-        .set((
-            teams::user_id.eq(&entity.user_id),
-            teams::name.eq(&entity.name),
-            teams::raw_data.eq(&entity.raw_data),
-            teams::short_name.eq(&entity.short_name),
-            teams::is_primary_club.eq(&entity.is_primary_club),
-            teams::founded_date.eq(&entity.founded_date),
-            teams::arena_id.eq(&entity.arena_id),
-            teams::arena_name.eq(&entity.arena_name),
-            teams::league_id.eq(&entity.league_id),
-            teams::league_name.eq(&entity.league_name),
-            teams::country_id.eq(&entity.country_id),
-            teams::country_name.eq(&entity.country_name),
-            teams::region_id.eq(&entity.region_id),
-            teams::region_name.eq(&entity.region_name),
-            teams::homepage.eq(&entity.homepage),
-            teams::dress_uri.eq(&entity.dress_uri),
-            teams::dress_alternate_uri.eq(&entity.dress_alternate_uri),
-            teams::logo_url.eq(&entity.logo_url),
-            teams::trainer_id.eq(&entity.trainer_id),
-            teams::cup_still_in.eq(&entity.cup_still_in),
-            teams::cup_id.eq(&entity.cup_id),
-            teams::cup_name.eq(&entity.cup_name),
-            teams::cup_league_level.eq(&entity.cup_league_level),
-            teams::cup_level.eq(&entity.cup_level),
-            teams::cup_level_index.eq(&entity.cup_level_index),
-            teams::cup_match_round.eq(&entity.cup_match_round),
-            teams::cup_match_rounds_left.eq(&entity.cup_match_rounds_left),
-            teams::power_rating_global.eq(&entity.power_rating_global),
-            teams::power_rating_league.eq(&entity.power_rating_league),
-            teams::power_rating_region.eq(&entity.power_rating_region),
-            teams::power_rating_indiv.eq(&entity.power_rating_indiv),
-            teams::friendly_team_id.eq(&entity.friendly_team_id),
-            teams::league_level_unit_id.eq(&entity.league_level_unit_id),
-            teams::league_level_unit_name.eq(&entity.league_level_unit_name),
-            teams::league_level.eq(&entity.league_level),
-            teams::number_of_victories.eq(&entity.number_of_victories),
-            teams::number_of_undefeated.eq(&entity.number_of_undefeated),
-            teams::number_of_visits.eq(&entity.number_of_visits),
-            teams::team_rank.eq(&entity.team_rank),
-            teams::fanclub_id.eq(&entity.fanclub_id),
-            teams::fanclub_name.eq(&entity.fanclub_name),
-            teams::fanclub_size.eq(&entity.fanclub_size),
-            teams::color_background.eq(&entity.color_background),
-            teams::color_primary.eq(&entity.color_primary),
-            teams::is_bot.eq(&entity.is_bot),
-            teams::bot_since.eq(&entity.bot_since),
-            teams::youth_team_id.eq(&entity.youth_team_id),
-            teams::youth_team_name.eq(&entity.youth_team_name),
-        ))
+        .on_conflict((teams::id, teams::download_id))
+        .do_nothing()
         .execute(conn)
         .map_err(|e| Error::Io(format!("Database error: {}", e)))?;
 
     Ok(())
 }
 
+// Returns the ID of the most recent completed download, or None if no downloads exist
+pub fn get_latest_download_id(conn: &mut SqliteConnection) -> Result<Option<i32>, Error> {
+    use crate::db::schema::downloads::dsl::*;
+    use diesel::prelude::*;
+
+    downloads
+        .filter(status.eq("completed"))
+        .select(id)
+        .order(id.desc())
+        .first::<i32>(conn)
+        .optional()
+        .map_err(|e| Error::Db(format!("Failed to get latest download: {}", e)))
+}
+
 // Returns a list of (TeamID, TeamName) for all teams in the DB.
 pub fn get_teams_summary(conn: &mut SqliteConnection) -> Result<Vec<(u32, String)>, Error> {
+    let latest_download = get_latest_download_id(conn)?;
+    if latest_download.is_none() {
+        return Ok(Vec::new());
+    }
+    let download_id_filter = latest_download.unwrap();
+
     let results = teams::table
+        .filter(teams::download_id.eq(download_id_filter))
         .select((teams::id, teams::name))
         .load::<(i32, String)>(conn)
         .map_err(|e| Error::Db(format!("Failed to load teams: {}", e)))?;
@@ -663,8 +643,15 @@ pub fn get_players_for_team(
     conn: &mut SqliteConnection,
     team_id_in: u32,
 ) -> Result<Vec<crate::chpp::model::Player>, Error> {
+    let latest_download = get_latest_download_id(conn)?;
+    if latest_download.is_none() {
+        return Ok(Vec::new());
+    }
+    let download_id_filter = latest_download.unwrap();
+
     let entities = players::table
         .filter(players::team_id.eq(team_id_in as i32))
+        .filter(players::download_id.eq(download_id_filter))
         .load::<PlayerEntity>(conn)
         .map_err(|e| Error::Db(format!("Failed to load players: {}", e)))?;
 
@@ -704,7 +691,32 @@ pub fn get_players_for_team(
             InjuryLevel: entity.injury_level.map(|v| v as i32),
             Sticker: entity.sticker,
             ReferencePlayerID: None,
-            PlayerSkills: None,
+            PlayerSkills: if entity.stamina_skill.is_some() {
+                Some(crate::chpp::model::PlayerSkills {
+                    StaminaSkill: entity.stamina_skill.unwrap_or(0) as u32,
+                    KeeperSkill: entity.keeper_skill.unwrap_or(0) as u32,
+                    PlaymakerSkill: entity.playmaker_skill.unwrap_or(0) as u32,
+                    ScorerSkill: entity.scorer_skill.unwrap_or(0) as u32,
+                    PassingSkill: entity.passing_skill.unwrap_or(0) as u32,
+                    WingerSkill: entity.winger_skill.unwrap_or(0) as u32,
+                    DefenderSkill: entity.defender_skill.unwrap_or(0) as u32,
+                    SetPiecesSkill: entity.set_pieces_skill.unwrap_or(0) as u32,
+                })
+            } else {
+                None
+            },
+            LastMatch: if entity.last_match_date.is_some() {
+                Some(crate::chpp::model::LastMatch {
+                    Date: entity.last_match_date.unwrap_or_default(),
+                    MatchId: entity.last_match_id.unwrap_or(0) as u32,
+                    PositionCode: entity.last_match_position_code.unwrap_or(0) as u32,
+                    PlayedMinutes: entity.last_match_played_minutes.unwrap_or(0) as u32,
+                    Rating: entity.last_match_rating.map(|v| v as u32),
+                    RatingEndOfMatch: entity.last_match_rating_end_of_match.map(|v| v as u32),
+                })
+            } else {
+                None
+            },
         });
     }
 
@@ -714,8 +726,15 @@ pub fn get_players_for_team(
 pub fn get_team(conn: &mut SqliteConnection, team_id: u32) -> Result<Option<Team>, Error> {
     use crate::db::schema::teams::dsl::*;
 
+    let latest_download = get_latest_download_id(conn)?;
+    if latest_download.is_none() {
+        return Ok(None);
+    }
+    let download_id_filter = latest_download.unwrap();
+
     let result = teams
-        .find(team_id as i32)
+        .filter(id.eq(team_id as i32))
+        .filter(download_id.eq(download_id_filter))
         .first::<TeamEntity>(conn)
         .optional()
         .map_err(|e| Error::Io(format!("Database error: {}", e)))?;

@@ -112,6 +112,41 @@ impl SyncService {
             )
         };
 
+        // Create Download Record
+        let db = db_manager.clone();
+        let download_id = tokio::task::spawn_blocking(move || {
+            let mut conn = db.get_connection()?;
+            use crate::db::schema::downloads;
+            use crate::db::teams::DownloadEntity;
+            use chrono::Utc;
+            use diesel::prelude::*;
+
+            let timestamp = Utc::now().to_rfc3339();
+            let entity = DownloadEntity {
+                id: 0, // Will be auto-incremented
+                timestamp,
+                status: "started".to_string(),
+            };
+
+            diesel::insert_into(downloads::table)
+                .values(&entity)
+                .execute(&mut conn)
+                .map_err(|e| Error::Io(format!("Failed to create download: {}", e)))?;
+
+            // Get the last inserted ID
+            let last_id: i32 = diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>(
+                "last_insert_rowid()",
+            ))
+            .get_result(&mut conn)
+            .map_err(|e| Error::Io(format!("Failed to get download ID: {}", e)))?;
+
+            Ok::<i32, Error>(last_id)
+        })
+        .await
+        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+
+        info!("Created download record with ID: {}", download_id);
+
         // 1. World Details
         let (data, key) = get_auth();
         debug!("auth_data: {:#?}", get_auth());
@@ -148,14 +183,14 @@ impl SyncService {
         tokio::task::spawn_blocking(move || {
             let mut conn = db.get_connection()?;
             for team in &ts {
-                save_team(&mut conn, team, &u)?;
+                save_team(&mut conn, team, &u, download_id)?;
             }
             Ok::<(), Error>(())
         })
         .await
         .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
 
-        // 3. Players for each team
+        // 3. Players for each team - Fetch details for each player
         for team_id in team_ids {
             if team_id == 0 {
                 continue;
@@ -168,20 +203,57 @@ impl SyncService {
                 .PlayerList
                 .ok_or(Error::Xml("No player list found in response".to_string()))?;
 
+            // For each player, fetch detailed player data
+            let mut detailed_players = Vec::new();
+            for basic_player in &player_list.players {
+                info!("Fetching details for player ID: {}", basic_player.PlayerID);
+                let (data, key) = get_auth();
+                match client.player_details(data, key, basic_player.PlayerID).await {
+                    Ok(detailed_player) => {
+                        detailed_players.push(detailed_player);
+                    }
+                    Err(e) => {
+                        // Log error but continue with other players
+                        log::warn!("Failed to fetch details for player {}: {}", basic_player.PlayerID, e);
+                        // Fallback to basic player data
+                        detailed_players.push(basic_player.clone());
+                    }
+                }
+            }
+
             let db = db_manager.clone();
-            let pl = player_list.players;
+            let players = detailed_players;
 
             tokio::task::spawn_blocking(move || {
                 let mut conn = db.get_connection()?;
-                save_players(&mut conn, &pl, team_id)
+                save_players(&mut conn, &players, team_id, download_id)
             })
             .await
             .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
         }
 
+        // Mark download as completed
+        let db = db_manager.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = db.get_connection()?;
+            use crate::db::schema::downloads::dsl::*;
+            use diesel::prelude::*;
+
+            diesel::update(downloads.filter(id.eq(download_id)))
+                .set(status.eq("completed"))
+                .execute(&mut conn)
+                .map_err(|e| Error::Io(format!("Failed to update download status: {}", e)))?;
+
+            Ok::<(), Error>(())
+        })
+        .await
+        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+
+        info!("Download {} completed successfully", download_id);
         Ok(())
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

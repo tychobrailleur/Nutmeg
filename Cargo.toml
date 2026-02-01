@@ -21,6 +21,7 @@ serde_json = "1.0.149"
 diesel = { version = "2.2.0", features = ["sqlite", "r2d2", "chrono", "64-column-tables"] }
 diesel_migrations = { version = "2.2.0", features = ["sqlite"] }
 async-trait = "0.1"
+chrono = "0.4"
 
 [dependencies.adw]
 package = "libadwaita"

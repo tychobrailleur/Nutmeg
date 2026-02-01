@@ -25,7 +25,7 @@ use serde_xml_rs::from_str;
 use std::collections::BTreeMap;
 
 use crate::chpp::error::Error;
-use crate::chpp::model::{HattrickData, PlayersData, WorldDetails};
+use crate::chpp::model::{HattrickData, Player, PlayerDetailsData, PlayersData, WorldDetails};
 use crate::chpp::{CHPP_URL, HOCTANE_USER_AGENT};
 
 use serde::de::DeserializeOwned;
@@ -139,6 +139,17 @@ pub async fn players_request(
         params.push(("teamID", tid_str.as_str()));
     }
     params.push(("actionType", "view"));
-
     chpp_request::<PlayersData>("players", "2.4", Some(&params), data, key).await
+}
+
+pub async fn player_details_request(
+    data: OAuthData,
+    key: SigningKey,
+    player_id: u32,
+) -> Result<Player, Error> {
+    let mut params = Vec::new();
+    let pid_str = player_id.to_string();
+    params.push(("playerID", pid_str.as_str()));
+    let response = chpp_request::<PlayerDetailsData>("playerdetails", "3.1", Some(&params), data, key).await?;
+    Ok(response.Player)
 }
