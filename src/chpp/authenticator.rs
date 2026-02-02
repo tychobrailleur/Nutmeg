@@ -18,13 +18,11 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+use crate::service::secret::{GnomeSecretService, SecretStorageService};
 use gtk::glib;
 use oauth_1a::{ClientId, ClientSecret, OAuthData, SigningKey, Token};
-use serde::{Deserialize, Serialize};
 use std::env;
-use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
 
 use crate::chpp::oauth::{
     create_oauth_context, exchange_verification_code, request_token, OauthSettings,
@@ -33,48 +31,12 @@ use crate::chpp::request::team_details_request;
 
 // This file is useful to do a full end to end test of the CHPP OAuth flow.
 
-const CREDENTIALS_FILE: &str = ".hoctane_token";
-
-#[derive(Serialize, Deserialize, Debug)]
-struct StoredCredentials {
-    access_token: String,
-    access_secret: String,
-}
-
 fn prompt_browser(url: &str) -> i32 {
     println!("Opening browser...");
     println!("If it doesn't open, please visit this URL manually:");
     println!("{}", url);
     let _ = open::that(url);
     0
-}
-
-fn save_credentials(access_token: &str, access_secret: &str) -> io::Result<()> {
-    let creds = StoredCredentials {
-        access_token: access_token.to_string(),
-        access_secret: access_secret.to_string(),
-    };
-    let json = serde_json::to_string_pretty(&creds)?;
-    let mut file = fs::File::create(CREDENTIALS_FILE)?;
-    file.write_all(json.as_bytes())?;
-    println!("Credentials saved to {}", CREDENTIALS_FILE);
-    Ok(())
-}
-
-fn load_credentials() -> Option<(String, String)> {
-    if Path::new(CREDENTIALS_FILE).exists() {
-        match fs::read_to_string(CREDENTIALS_FILE) {
-            Ok(content) => match serde_json::from_str::<StoredCredentials>(&content) {
-                Ok(creds) => {
-                    println!("Loaded credentials from {}", CREDENTIALS_FILE);
-                    return Some((creds.access_token, creds.access_secret));
-                }
-                Err(_) => eprintln!("Failed to parse credentials file."),
-            },
-            Err(_) => eprintln!("Failed to read credentials file."),
-        }
-    }
-    None
 }
 
 pub fn perform_cli_auth() -> glib::ExitCode {
@@ -85,13 +47,38 @@ pub fn perform_cli_auth() -> glib::ExitCode {
 
     println!("Starting CHPP Authentication Flow...");
 
-    let (access_token, access_secret) = if let Some((token, secret)) = load_credentials() {
-        (token, secret)
-    } else {
-        println!("No inputs credentials found. Starting browser authentication.");
-        let oauth_settings = request_token(
-            OauthSettings::default(),
-            &consumer_key,
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let secret_service = GnomeSecretService::new();
+
+    let maybe_creds = rt.block_on(async {
+        let token = secret_service
+            .get_secret("access_token")
+            .await
+            .ok()
+            .flatten();
+        let secret = secret_service
+            .get_secret("access_secret")
+            .await
+            .ok()
+            .flatten();
+
+        match (token, secret) {
+            (Some(t), Some(s)) => {
+                println!("Credentials found in Keyring.");
+                Some((t, s))
+            }
+            _ => None,
+        }
+    });
+
+    let (access_token, access_secret) = match maybe_creds {
+        Some(creds) => creds,
+        None => {
+            println!("No credentials found in keyring. Starting browser authentication.");
             // Get Request Token and authorize
             let settings = match request_token(
                 OauthSettings::default(),
@@ -112,7 +99,7 @@ pub fn perform_cli_auth() -> glib::ExitCode {
                 eprintln!("Failed to flush stdout: {}", e);
             }
             match io::stdin().read_line(&mut verification_code) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
                     eprintln!("Failed to read line: {}", e);
                     return glib::ExitCode::FAILURE;
@@ -126,9 +113,20 @@ pub fn perform_cli_auth() -> glib::ExitCode {
                 Ok((t, s)) => {
                     println!("Access Token: {}", t);
                     println!("Access Secret: {}", s);
-                    if let Err(e) = save_credentials(&t, &s) {
-                        eprintln!("Warning: Failed to save credentials: {}", e);
-                    }
+
+                    // Store credentials
+                    rt.block_on(async {
+                        let ss = GnomeSecretService::new();
+                        if let Err(e) = ss.store_secret("access_token", &t).await {
+                            eprintln!("Warning: Failed to save access token: {}", e);
+                        }
+                        if let Err(e) = ss.store_secret("access_secret", &s).await {
+                            eprintln!("Warning: Failed to save access secret: {}", e);
+                        } else {
+                            println!("Credentials saved to Keyring.");
+                        }
+                    });
+
                     (t, s)
                 }
                 Err(e) => {
@@ -136,69 +134,66 @@ pub fn perform_cli_auth() -> glib::ExitCode {
                     return glib::ExitCode::FAILURE;
                 }
             }
-        };
+        }
+    };
 
-        // Prepare for team details request
-        let (data, key) = create_oauth_context(
-            &consumer_key,
-            &consumer_secret,
-            &access_token,
-            &access_secret,
-        );
+    // Prepare for team details request
+    let (data, key) = create_oauth_context(
+        &consumer_key,
+        &consumer_secret,
+        &access_token,
+        &access_secret,
+    );
 
-        // Execute async request
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
+    // Execute async request (reuse runtime)
 
-        match rt.block_on(team_details_request(data, key, Some(281726))) {
-            Ok(data) => {
-                println!("Successfully retrieved team details!");
-                // println!("{:#?}", data);
+    match rt.block_on(team_details_request(data, key, Some(281726))) {
+        Ok(data) => {
+            println!("Successfully retrieved team details!");
+            // println!("{:#?}", data);
 
-                let team = &data.Teams.Teams[0];
-                let team_id_str = &team.TeamID;
-                println!("Fetched Team: {} ({})", team.TeamName, team_id_str);
+            let team = &data.Teams.Teams[0];
+            let team_id_str = &team.TeamID;
+            println!("Fetched Team: {} ({})", team.TeamName, team_id_str);
 
-                if let Ok(team_id) = team_id_str.parse::<u32>() {
-                    println!("Fetching players for TeamID: {}", team_id);
+            if let Ok(team_id) = team_id_str.parse::<u32>() {
+                println!("Fetching players for TeamID: {}", team_id);
 
-                    // Re-create context for the second request since OAuthData is not Clone
-                    let (data2, key2) = create_oauth_context(
-                        &consumer_key,
-                        &consumer_secret,
-                        &access_token,
-                        &access_secret,
-                    );
+                // Re-create context for the second request since OAuthData is not Clone
+                let (data2, key2) = create_oauth_context(
+                    &consumer_key,
+                    &consumer_secret,
+                    &access_token,
+                    &access_secret,
+                );
 
-                    match rt.block_on(crate::chpp::request::players_request(
-                        data2,
-                        key2,
-                        Some(team_id),
-                    )) {
-                        Ok(players_data) => {
-                            println!("Successfully retrieved players!");
-                            let team_w_players = &players_data.Team;
-                            if let Some(player_list) = &team_w_players.PlayerList {
-                                println!("Found {} players.", player_list.players.len());
-                                for p in &player_list.players {
-                                    println!("- {} {} (ID: {})", p.FirstName, p.LastName, p.PlayerID);
-                                }
-                            } else {
-                                println!("No PlayerList found in response.");
+                match rt.block_on(crate::chpp::request::players_request(
+                    data2,
+                    key2,
+                    Some(team_id),
+                )) {
+                    Ok(players_data) => {
+                        println!("Successfully retrieved players!");
+                        let team_w_players = &players_data.Team;
+                        if let Some(player_list) = &team_w_players.PlayerList {
+                            println!("Found {} players.", player_list.players.len());
+                            for p in &player_list.players {
+                                println!("- {} {} (ID: {})", p.FirstName, p.LastName, p.PlayerID);
                             }
+                        } else {
+                            println!("No PlayerList found in response.");
                         }
-                        Err(e) => eprintln!("Error fetching players: {:?}", e),
                     }
+                    Err(e) => eprintln!("Error fetching players: {:?}", e),
                 }
             }
-            Err(e) => {
-                eprintln!("Error fetching team details: {:?}", e);
-                // If error is 401, maybe delete credentials? But for now user asked to store it.
-                return glib::ExitCode::FAILURE;
-            }
         }
-
-        glib::ExitCode::SUCCESS
+        Err(e) => {
+            eprintln!("Error fetching team details: {:?}", e);
+            // If error is 401, maybe delete credentials? But for now user asked to store it.
+            return glib::ExitCode::FAILURE;
+        }
     }
+
+    glib::ExitCode::SUCCESS
+}

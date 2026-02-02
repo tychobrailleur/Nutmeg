@@ -24,9 +24,9 @@ use gtk::subclass::prelude::*;
 use gtk::{gio, glib};
 
 use crate::config::VERSION;
-use log::{debug, error, info};
 use crate::service::sync::DataSyncService;
 use crate::window::HoctaneWindow;
+use log::{debug, error, info};
 
 mod imp {
     use super::*;

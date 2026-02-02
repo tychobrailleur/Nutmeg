@@ -24,6 +24,7 @@ static CHPP_OAUTH_ACCESS_TOKEN_URL: &str = "https://chpp.hattrick.org/oauth/acce
 static CHPP_URL: &str = "https://chpp.hattrick.org/chppxml.ashx";
 static HOCTANE_USER_AGENT: &str = "HOv8.0";
 
+//pub mod authenticator;
 pub mod client;
 pub mod error;
 pub mod model;

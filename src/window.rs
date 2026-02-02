@@ -16,9 +16,9 @@ use crate::db::teams::{get_players_for_team, get_teams_summary};
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gio, glib, CompositeTemplate, TemplateChild};
+use log::{debug, error, info};
 use std::cell::RefCell;
 use std::rc::Rc;
-use log::{debug, error, info};
 
 mod player_object {
     use super::*;
@@ -229,8 +229,8 @@ impl HoctaneWindow {
         imp.combo_teams.connect_changed(move |combo| {
             if let Some(id_str) = combo.active_id() {
                 if let Ok(team_id) = id_str.parse::<u32>() {
-                     debug!("Team selection changed to {}", team_id);
-                     window.load_players(team_id);
+                    debug!("Team selection changed to {}", team_id);
+                    window.load_players(team_id);
                 }
             }
         });

@@ -21,11 +21,11 @@
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{glib, Button, Entry, Stack, Window};
+use log::{debug, error, info};
 use open;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
-use log::{debug, error, info};
 
 use crate::config::{consumer_key, consumer_secret};
 use crate::db::manager::DbManager;
@@ -124,8 +124,8 @@ impl SetupWindow {
 
                 match res {
                     Ok(Ok((url, rt, rs))) => {
-                         info!("Got auth URL: {}", url);
-                         let mut data = state.borrow_mut();
+                        info!("Got auth URL: {}", url);
+                        let mut data = state.borrow_mut();
                         data.0 = Some(rt);
                         data.1 = Some(rs);
 
@@ -199,12 +199,7 @@ impl SetupWindow {
                         let sync_service = SyncService::new(db_manager);
 
                         match sync_service
-                            .perform_initial_sync(
-                                consumer_key(),
-                                consumer_secret(),
-                                access_token,
-                                access_secret,
-                            )
+                            .perform_initial_sync(consumer_key(), consumer_secret())
                             .await
                         {
                             Ok(_) => {

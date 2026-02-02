@@ -23,6 +23,7 @@ use crate::chpp::{self, create_oauth_context, retry_with_default_config, ChppCli
 use crate::db::manager::DbManager;
 use crate::db::schema::downloads;
 use crate::db::teams::{save_players, save_team, save_world_details};
+use crate::service::secret::{GnomeSecretService, SecretStorageService};
 use chrono::Utc;
 use diesel::prelude::*;
 use log::{debug, info};
@@ -35,8 +36,6 @@ pub trait DataSyncService {
         &self,
         consumer_key: String,
         consumer_secret: String,
-        access_token: String,
-        access_secret: String,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>>;
 
     fn perform_sync_with_stored_secrets(
@@ -49,6 +48,7 @@ pub trait DataSyncService {
 pub struct SyncService {
     db_manager: Arc<DbManager>,
     client: Arc<dyn ChppClient>,
+    secret_service: Arc<dyn SecretStorageService>,
 }
 
 impl SyncService {
@@ -56,12 +56,21 @@ impl SyncService {
         Self {
             db_manager,
             client: Arc::new(HattrickClient::new()),
+            secret_service: Arc::new(GnomeSecretService::new()),
         }
     }
 
     // For testing
-    pub fn new_with_client(db_manager: Arc<DbManager>, client: Arc<dyn ChppClient>) -> Self {
-        Self { db_manager, client }
+    pub fn new_with_client(
+        db_manager: Arc<DbManager>,
+        client: Arc<dyn ChppClient>,
+        secret_service: Arc<dyn SecretStorageService>,
+    ) -> Self {
+        Self {
+            db_manager,
+            client,
+            secret_service,
+        }
     }
 }
 
@@ -70,24 +79,20 @@ impl DataSyncService for SyncService {
         &self,
         consumer_key: String,
         consumer_secret: String,
-        access_token: String,
-        access_secret: String,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>> {
         let consumer_key = consumer_key.clone();
         let consumer_secret = consumer_secret.clone();
-        let access_token = access_token.clone();
-        let access_secret = access_secret.clone();
         let db_manager = self.db_manager.clone();
         let client = self.client.clone();
+        let secret_service = self.secret_service.clone();
 
         Box::pin(async move {
             Self::do_sync(
                 db_manager,
                 client,
+                secret_service,
                 consumer_key,
                 consumer_secret,
-                access_token,
-                access_secret,
             )
             .await
         })
@@ -102,23 +107,27 @@ impl DataSyncService for SyncService {
         let consumer_secret = consumer_secret.clone();
         let db_manager = self.db_manager.clone();
         let client = self.client.clone();
+        let secret_service = self.secret_service.clone();
 
         Box::pin(async move {
-            use crate::service::secret::{GnomeSecretService, SecretStorageService};
-            let secret_service = GnomeSecretService::new();
+            // Check if secrets exist first to return boolean
+            let token_exists = secret_service.get_secret("access_token").await.is_ok();
+            let secret_exists = secret_service.get_secret("access_secret").await.is_ok();
 
-            let token = secret_service
-                .get_secret("access_token")
+            if token_exists && secret_exists {
+                match Self::do_sync(
+                    db_manager,
+                    client,
+                    secret_service,
+                    consumer_key,
+                    consumer_secret,
+                )
                 .await
-                .map_err(|e| Error::Io(e.to_string()))?;
-            let secret = secret_service
-                .get_secret("access_secret")
-                .await
-                .map_err(|e| Error::Io(e.to_string()))?;
-
-            if let (Some(t), Some(s)) = (token, secret) {
-                Self::do_sync(db_manager, client, consumer_key, consumer_secret, t, s).await?;
-                Ok(true)
+                {
+                    Ok(_) => Ok(true),
+                    Err(Error::Io(s)) if s.contains("Missing credentials") => Ok(false),
+                    Err(e) => Err(e),
+                }
             } else {
                 Ok(false)
             }
@@ -130,15 +139,27 @@ impl SyncService {
     async fn do_sync(
         db_manager: Arc<DbManager>,
         client: Arc<dyn ChppClient>,
+        secret_service: Arc<dyn SecretStorageService>,
         consumer_key: String,
         consumer_secret: String,
-        access_token: String,
-        access_secret: String,
     ) -> Result<(), Error> {
+        let access_token = secret_service
+            .get_secret("access_token")
+            .await
+            .map_err(|e| Error::Io(e.to_string()))?
+            .ok_or(Error::Io("Missing credentials (token)".to_string()))?;
+
+        let access_secret = secret_service
+            .get_secret("access_secret")
+            .await
+            .map_err(|e| Error::Io(e.to_string()))?
+            .ok_or(Error::Io("Missing credentials (secret)".to_string()))?;
+
         debug!("consumer_key: {}", consumer_key);
         debug!("consumer_secret: {}", consumer_secret);
-        debug!("access_token: {}", access_token);
-        debug!("access_secret: {}", access_secret);
+        // Tokens are sensitive, maybe don't log them directly in production
+        // debug!("access_token: {}", access_token);
+        // debug!("access_secret: {}", access_secret);
 
         // Helper to get fresh auth data
         let get_auth = || {
@@ -315,6 +336,8 @@ mod tests {
     use crate::db::manager::DbManager;
     use async_trait::async_trait;
     use oauth_1a::{OAuthData, SigningKey};
+
+    use crate::service::secret::MockSecretService;
 
     struct MockChppClient;
 
@@ -536,15 +559,22 @@ mod tests {
         db_manager.run_migrations().expect("Migrations failed");
 
         let client = Arc::new(MockChppClient);
-        let service = SyncService::new_with_client(db_manager.clone(), client);
+        let secret_service = Arc::new(MockSecretService::new());
+
+        // Seed some fake secrets
+        secret_service
+            .store_secret("access_token", "dummy_token")
+            .await
+            .expect("Failed to store token");
+        secret_service
+            .store_secret("access_secret", "dummy_secret")
+            .await
+            .expect("Failed to store secret");
+
+        let service = SyncService::new_with_client(db_manager.clone(), client, secret_service);
 
         let res = service
-            .perform_initial_sync(
-                "dummy_key".into(),
-                "dummy_secret".into(),
-                "dummy_token".into(),
-                "dummy_secret".into(),
-            )
+            .perform_initial_sync("dummy_key".into(), "dummy_secret".into())
             .await;
 
         assert!(res.is_ok(), "Sync failed: {:?}", res.err());
