@@ -97,6 +97,7 @@ impl SetupWindow {
 
     pub fn setup_signals(&self) {
         use crate::service::auth::{AuthenticationService, HattrickAuthService};
+        use crate::service::secret::{GnomeSecretService, SecretStorageService};
         use crate::service::sync::DataSyncService;
 
         let imp = self.imp();
@@ -183,6 +184,14 @@ impl SetupWindow {
 
                 match verify_res {
                     Ok(Ok((access_token, access_secret))) => {
+                        let secret_service = GnomeSecretService::new();
+                        if let Err(e) = secret_service.store_secret("access_token", &access_token).await {
+                             eprintln!("Failed to store access token: {}", e);
+                        }
+                        if let Err(e) = secret_service.store_secret("access_secret", &access_secret).await {
+                             eprintln!("Failed to store access secret: {}", e);
+                        }
+
                         let db_manager = Arc::new(DbManager::new());
                         let sync_service = SyncService::new(db_manager);
 
