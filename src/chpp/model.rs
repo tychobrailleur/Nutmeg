@@ -77,8 +77,6 @@ where
     }
 }
 
-
-
 fn serialize_bool<S>(x: &bool, s: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,

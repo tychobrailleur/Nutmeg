@@ -25,6 +25,7 @@ use open;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
+use log::{debug, error, info};
 
 use crate::config::{consumer_key, consumer_secret};
 use crate::db::manager::DbManager;
@@ -87,14 +88,6 @@ impl SetupWindow {
         glib::Object::builder().property("application", app).build()
     }
 
-    // Note: build_ui is no longer needed as the template builds it.
-    // However, existing calls in application.rs might call it.
-    // I should generate an empty build_ui or update application.rs.
-    // Better to update application.rs to remove build_ui call.
-    pub fn build_ui(&self) {
-        // No-op for compatibility until I update application.rs
-    }
-
     pub fn setup_signals(&self) {
         use crate::service::auth::{AuthenticationService, HattrickAuthService};
         use crate::service::secret::{GnomeSecretService, SecretStorageService};
@@ -105,6 +98,7 @@ impl SetupWindow {
         // Btn Start -> Page 2
         let stack = imp.stack.clone();
         imp.btn_start.connect_clicked(move |_| {
+            debug!("Start button clicked");
             stack.set_visible_child_name("page2");
         });
 
@@ -116,6 +110,7 @@ impl SetupWindow {
         let stack = imp.stack.clone();
 
         imp.btn_browser.connect_clicked(move |_| {
+            debug!("Browser button clicked");
             let state = auth_state_clone.clone();
             let stack = stack.clone();
 
@@ -129,7 +124,8 @@ impl SetupWindow {
 
                 match res {
                     Ok(Ok((url, rt, rs))) => {
-                        let mut data = state.borrow_mut();
+                         info!("Got auth URL: {}", url);
+                         let mut data = state.borrow_mut();
                         data.0 = Some(rt);
                         data.1 = Some(rs);
 
@@ -138,8 +134,8 @@ impl SetupWindow {
                         }
                         stack.set_visible_child_name("page3");
                     }
-                    Ok(Err(e)) => eprintln!("Auth error: {}", e),
-                    Err(e) => eprintln!("Task join error: {}", e),
+                    Ok(Err(e)) => error!("Auth error: {}", e),
+                    Err(e) => error!("Task join error: {}", e),
                 }
             });
         });
@@ -151,6 +147,7 @@ impl SetupWindow {
         let window = self.clone();
 
         imp.btn_verify.connect_clicked(move |_| {
+            debug!("Verify button clicked");
             let code = entry.text().to_string();
             let state = auth_state_clone2.clone();
             let stack = stack.clone();
@@ -167,7 +164,7 @@ impl SetupWindow {
                 let (rt, rs) = match (rt, rs) {
                     (Some(rt), Some(rs)) => (rt, rs),
                     _ => {
-                        eprintln!("Missing request token state");
+                        error!("Missing request token state");
                         stack.set_visible_child_name("page2");
                         return;
                     }
@@ -185,11 +182,17 @@ impl SetupWindow {
                 match verify_res {
                     Ok(Ok((access_token, access_secret))) => {
                         let secret_service = GnomeSecretService::new();
-                        if let Err(e) = secret_service.store_secret("access_token", &access_token).await {
-                             eprintln!("Failed to store access token: {}", e);
+                        if let Err(e) = secret_service
+                            .store_secret("access_token", &access_token)
+                            .await
+                        {
+                            error!("Failed to store access token: {}", e);
                         }
-                        if let Err(e) = secret_service.store_secret("access_secret", &access_secret).await {
-                             eprintln!("Failed to store access secret: {}", e);
+                        if let Err(e) = secret_service
+                            .store_secret("access_secret", &access_secret)
+                            .await
+                        {
+                            error!("Failed to store access secret: {}", e);
                         }
 
                         let db_manager = Arc::new(DbManager::new());
@@ -205,6 +208,7 @@ impl SetupWindow {
                             .await
                         {
                             Ok(_) => {
+                                info!("Initial sync successful");
                                 if let Some(app) = win.application() {
                                     let main_win = HoctaneWindow::new(&app);
                                     main_win.present();
@@ -212,17 +216,17 @@ impl SetupWindow {
                                 win.close();
                             }
                             Err(e) => {
-                                eprintln!("Sync Error: {}", e);
+                                error!("Sync Error: {}", e);
                                 stack.set_visible_child_name("page3");
                             }
                         }
                     }
                     Ok(Err(e)) => {
-                        eprintln!("Verification Error: {}", e);
+                        error!("Verification Error: {}", e);
                         stack.set_visible_child_name("page3");
                     }
                     Err(e) => {
-                        eprintln!("Join Error: {}", e);
+                        error!("Join Error: {}", e);
                         stack.set_visible_child_name("page3");
                     }
                 }

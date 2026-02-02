@@ -256,7 +256,7 @@ pub fn save_players(
             team_id: team_id as i32,
             first_name: player.FirstName.clone(),
             last_name: player.LastName.clone(),
-            player_number: player.PlayerNumber as i32,
+            player_number: player.PlayerNumber.unwrap_or(100) as i32,
             age: player.Age as i32,
             age_days: player.AgeDays.map(|v| v as i32),
             tsi: player.TSI as i32,
@@ -681,7 +681,11 @@ pub fn get_players_for_team(
             PlayerID: entity.id as u32,
             FirstName: entity.first_name,
             LastName: entity.last_name,
-            PlayerNumber: entity.player_number.map(|v| v as u32),
+            PlayerNumber: if entity.player_number == 100 {
+                None
+            } else {
+                Some(entity.player_number as u32)
+            },
             Age: entity.age as u32,
             AgeDays: entity.age_days.map(|v| v as u32),
             TSI: entity.tsi as u32,

@@ -38,6 +38,12 @@ pub trait DataSyncService {
         access_token: String,
         access_secret: String,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>>;
+
+    fn perform_sync_with_stored_secrets(
+        &self,
+        consumer_key: String,
+        consumer_secret: String,
+    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + '_>>;
 }
 
 pub struct SyncService {
@@ -84,6 +90,38 @@ impl DataSyncService for SyncService {
                 access_secret,
             )
             .await
+        })
+    }
+
+    fn perform_sync_with_stored_secrets(
+        &self,
+        consumer_key: String,
+        consumer_secret: String,
+    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + '_>> {
+        let consumer_key = consumer_key.clone();
+        let consumer_secret = consumer_secret.clone();
+        let db_manager = self.db_manager.clone();
+        let client = self.client.clone();
+
+        Box::pin(async move {
+            use crate::service::secret::{GnomeSecretService, SecretStorageService};
+            let secret_service = GnomeSecretService::new();
+
+            let token = secret_service
+                .get_secret("access_token")
+                .await
+                .map_err(|e| Error::Io(e.to_string()))?;
+            let secret = secret_service
+                .get_secret("access_secret")
+                .await
+                .map_err(|e| Error::Io(e.to_string()))?;
+
+            if let (Some(t), Some(s)) = (token, secret) {
+                Self::do_sync(db_manager, client, consumer_key, consumer_secret, t, s).await?;
+                Ok(true)
+            } else {
+                Ok(false)
+            }
         })
     }
 }
@@ -406,7 +444,7 @@ mod tests {
                             PlayerID: 1000,
                             FirstName: "Test".to_string(),
                             LastName: "Player".to_string(),
-                            PlayerNumber: 10,
+                            PlayerNumber: Some(10),
                             Age: 20,
                             AgeDays: Some(100),
                             TSI: 1000,
@@ -456,7 +494,7 @@ mod tests {
                 PlayerID: 1001,
                 FirstName: "John".to_string(),
                 LastName: "Doe".to_string(),
-                PlayerNumber: 10,
+                PlayerNumber: Some(10),
                 Age: 20,
                 AgeDays: Some(50),
                 TSI: 1000,

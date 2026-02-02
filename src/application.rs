@@ -24,6 +24,8 @@ use gtk::subclass::prelude::*;
 use gtk::{gio, glib};
 
 use crate::config::VERSION;
+use log::{debug, error, info};
+use crate::service::sync::DataSyncService;
 use crate::window::HoctaneWindow;
 
 mod imp {
@@ -56,22 +58,54 @@ mod imp {
         fn activate(&self) {
             let application = self.obj();
 
+            info!("Application activated");
+
             // Check for first run (empty database)
             let db_manager = crate::db::manager::DbManager::new();
             let is_first_run = match db_manager.has_users() {
                 Ok(has) => !has,
                 Err(e) => {
-                    eprintln!("Failed to check DB state: {}. Defaulting to first run.", e);
+                    error!("Failed to check DB state: {}. Defaulting to first run.", e);
                     true
                 }
             };
 
             if is_first_run {
-                // Show Setup Wizard
+                info!("First run detected (no users in DB)");
+                // Show Setup Window immediately to keep app alive
                 let setup = crate::setup_window::SetupWindow::new(&*application);
-                // setup.build_ui() removed as it is now constructed via template
                 setup.present();
+
+                // Try to sync with stored credentials
+                let app_clone = application.clone();
+                let setup_clone = setup.clone();
+
+                glib::MainContext::default().spawn_local(async move {
+                    let db = std::sync::Arc::new(crate::db::manager::DbManager::new());
+                    let sync = crate::service::sync::SyncService::new(db);
+                    let key = crate::config::consumer_key();
+                    let secret = crate::config::consumer_secret();
+
+                    match sync.perform_sync_with_stored_secrets(key, secret).await {
+                        Ok(true) => {
+                            info!("Successfully synced with stored credentials");
+                            // Synced successfully, open main window and close setup
+                            let window = crate::window::HoctaneWindow::new(&app_clone);
+                            window.present();
+                            setup_clone.close();
+                        }
+                        Ok(false) => {
+                            info!("No stored credentials found, staying on setup screen");
+                            // No secrets, setup is already shown
+                        }
+                        Err(e) => {
+                            error!("Failed to sync with stored secrets: {}", e);
+                            // Setup is already shown
+                        }
+                    }
+                });
             } else {
+                info!("Existing user found, opening main window");
                 // Show Main Window
                 let window = application.active_window().unwrap_or_else(|| {
                     let window = HoctaneWindow::new(&*application);

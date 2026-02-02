@@ -18,6 +18,7 @@ use gtk::subclass::prelude::*;
 use gtk::{gio, glib, CompositeTemplate, TemplateChild};
 use std::cell::RefCell;
 use std::rc::Rc;
+use log::{debug, error, info};
 
 mod player_object {
     use super::*;
@@ -101,6 +102,7 @@ mod imp {
 
     impl ObjectImpl for HoctaneWindow {
         fn constructed(&self) {
+            info!("HoctaneWindow constructed");
             self.parent_constructed();
             let obj = self.obj();
 
@@ -152,7 +154,12 @@ impl HoctaneWindow {
             let item = item.downcast_ref::<gtk::ListItem>().unwrap();
             let player_obj = item.item().and_downcast::<PlayerObject>().unwrap();
             let label = item.child().and_downcast::<gtk::Label>().unwrap();
-            label.set_label(&player_obj.player().PlayerNumber.to_string());
+            let num_str = player_obj
+                .player()
+                .PlayerNumber
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            label.set_label(&num_str);
         });
 
         // Name
@@ -200,6 +207,7 @@ impl HoctaneWindow {
         if let Ok(mut conn) = db.get_connection() {
             match get_teams_summary(&mut conn) {
                 Ok(teams) => {
+                    info!("Loaded {} teams", teams.len());
                     for (id, name) in teams {
                         imp.combo_teams.append(Some(&id.to_string()), &name);
                     }
@@ -207,10 +215,10 @@ impl HoctaneWindow {
                         imp.combo_teams.set_active(Some(0)); // Select first
                     }
                 }
-                Err(e) => eprintln!("Failed to load teams: {}", e),
+                Err(e) => error!("Failed to load teams: {}", e),
             }
         } else {
-            eprintln!("Failed to get DB connection");
+            error!("Failed to get DB connection");
         }
     }
 
@@ -221,7 +229,8 @@ impl HoctaneWindow {
         imp.combo_teams.connect_changed(move |combo| {
             if let Some(id_str) = combo.active_id() {
                 if let Ok(team_id) = id_str.parse::<u32>() {
-                    window.load_players(team_id);
+                     debug!("Team selection changed to {}", team_id);
+                     window.load_players(team_id);
                 }
             }
         });
@@ -234,6 +243,7 @@ impl HoctaneWindow {
         if let Ok(mut conn) = db.get_connection() {
             match get_players_for_team(&mut conn, team_id) {
                 Ok(players) => {
+                    info!("Loaded {} players for team {}", players.len(), team_id);
                     let model = gio::ListStore::new::<PlayerObject>();
                     for p in players {
                         model.append(&PlayerObject::new(p));
@@ -242,7 +252,7 @@ impl HoctaneWindow {
                     let selection = gtk::SingleSelection::new(Some(model));
                     imp.view_players.set_model(Some(&selection));
                 }
-                Err(e) => eprintln!("Failed to load players: {}", e),
+                Err(e) => error!("Failed to load players: {}", e),
             }
         }
     }
