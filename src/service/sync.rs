@@ -140,6 +140,92 @@ impl DataSyncService for SyncService {
     }
 }
 
+/// Merges player data from two sources: basic (from teamdetails) and detailed (from playerdetails).
+///
+/// Strategy:
+/// - If detailed data is available, use it as the primary source
+/// - Fill in any None fields in detailed data with values from basic data
+/// - This ensures we capture all available information from both endpoints
+///
+/// Note: PlayerSkills are only available in playerdetails for own team,
+/// so basic data will never have skills to contribute.
+fn merge_player_data(
+    basic: &crate::chpp::model::Player,
+    detailed: Option<crate::chpp::model::Player>,
+) -> crate::chpp::model::Player {
+    match detailed {
+        Some(mut d) => {
+            // Use detailed as base, fill in missing fields from basic
+            // Most fields should be present in detailed, but we check anyway
+
+            // Basic identification (should always be in detailed)
+            // PlayerID, FirstName, LastName are always present
+
+            // Optional fields that might be missing in detailed but present in basic
+            if d.PlayerNumber.is_none() && basic.PlayerNumber.is_some() {
+                d.PlayerNumber = basic.PlayerNumber;
+            }
+            if d.AgeDays.is_none() && basic.AgeDays.is_some() {
+                d.AgeDays = basic.AgeDays;
+            }
+            if d.Statement.is_none() && basic.Statement.is_some() {
+                d.Statement = basic.Statement.clone();
+            }
+            if d.ReferencePlayerID.is_none() && basic.ReferencePlayerID.is_some() {
+                d.ReferencePlayerID = basic.ReferencePlayerID;
+            }
+            if d.LeagueGoals.is_none() && basic.LeagueGoals.is_some() {
+                d.LeagueGoals = basic.LeagueGoals;
+            }
+            if d.CupGoals.is_none() && basic.CupGoals.is_some() {
+                d.CupGoals = basic.CupGoals;
+            }
+            if d.FriendliesGoals.is_none() && basic.FriendliesGoals.is_some() {
+                d.FriendliesGoals = basic.FriendliesGoals;
+            }
+            if d.CareerGoals.is_none() && basic.CareerGoals.is_some() {
+                d.CareerGoals = basic.CareerGoals;
+            }
+            if d.CareerHattricks.is_none() && basic.CareerHattricks.is_some() {
+                d.CareerHattricks = basic.CareerHattricks;
+            }
+            if d.Speciality.is_none() && basic.Speciality.is_some() {
+                d.Speciality = basic.Speciality;
+            }
+            if d.NationalTeamID.is_none() && basic.NationalTeamID.is_some() {
+                d.NationalTeamID = basic.NationalTeamID;
+            }
+            if d.CountryID.is_none() && basic.CountryID.is_some() {
+                d.CountryID = basic.CountryID;
+            }
+            if d.Caps.is_none() && basic.Caps.is_some() {
+                d.Caps = basic.Caps;
+            }
+            if d.CapsU20.is_none() && basic.CapsU20.is_some() {
+                d.CapsU20 = basic.CapsU20;
+            }
+            if d.Cards.is_none() && basic.Cards.is_some() {
+                d.Cards = basic.Cards;
+            }
+            if d.InjuryLevel.is_none() && basic.InjuryLevel.is_some() {
+                d.InjuryLevel = basic.InjuryLevel;
+            }
+            if d.Sticker.is_none() && basic.Sticker.is_some() {
+                d.Sticker = basic.Sticker.clone();
+            }
+            if d.LastMatch.is_none() && basic.LastMatch.is_some() {
+                d.LastMatch = basic.LastMatch.clone();
+            }
+
+            d
+        }
+        None => {
+            // No detailed data available, use basic data
+            basic.clone()
+        }
+    }
+}
+
 impl SyncService {
     async fn create_download_record(db_manager: Arc<DbManager>) -> Result<i32, Error> {
         let db = db_manager.clone();
@@ -273,6 +359,7 @@ impl SyncService {
         download_id: i32,
     ) -> Result<(), Error>
     where
+        // Send is for concurrency, F safe to be sent to another thread, Sync means muliple threads can safely access
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
         // Get Players for the team
@@ -286,14 +373,14 @@ impl SyncService {
             return Err(Error::Parse("No player list in response".to_string()));
         };
 
-        // Fetch detailed player data for each player
-        let detailed_players = {
+        // Fetch detailed player data for each player and merge with basic data
+        let merged_players = {
             info!(
                 "Fetching detailed player data for {} players",
                 player_list.players.len()
             );
 
-            let mut detailed_players = Vec::new();
+            let mut merged_players = Vec::new();
             for basic_player in &player_list.players {
                 info!("Fetching details for player ID: {}", basic_player.PlayerID);
 
@@ -306,28 +393,35 @@ impl SyncService {
                 })
                 .await;
 
-                match result {
+                // Merge detailed data with basic data
+                let merged = match result {
                     Ok(detailed_player) => {
-                        detailed_players.push(detailed_player);
+                        debug!(
+                            "Successfully fetched detailed data for player {}",
+                            player_id
+                        );
+                        merge_player_data(basic_player, Some(detailed_player))
                     }
                     Err(e) => {
                         log::warn!(
-                            "Failed to fetch details for player {}: {}. Falling back to basic data.",
+                            "Failed to fetch details for player {}: {}. Using basic data only.",
                             player_id,
                             e
                         );
-                        detailed_players.push(basic_player.clone());
+                        merge_player_data(basic_player, None)
                     }
-                }
+                };
+
+                merged_players.push(merged);
             }
-            detailed_players
+            merged_players
         };
 
         // Save players
         let db = db_manager.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = db.get_connection()?;
-            save_players(&mut conn, &detailed_players, team_id, download_id)
+            save_players(&mut conn, &merged_players, team_id, download_id)
         })
         .await
         .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
@@ -682,5 +776,169 @@ mod tests {
         assert!(has_users, "User should satisfy DB check");
 
         // Could verify more details here if needed, like specific data presence
+    }
+
+    #[test]
+    fn test_merge_player_data_with_detailed() {
+        use crate::chpp::model::Player;
+
+        // Create basic player with some fields
+        let basic = Player {
+            PlayerID: 1,
+            FirstName: "John".to_string(),
+            LastName: "Doe".to_string(),
+            PlayerNumber: Some(10),
+            Age: 25,
+            AgeDays: Some(100),
+            TSI: 1000,
+            PlayerForm: 5,
+            Statement: Some("Basic statement".to_string()),
+            Experience: 3,
+            Loyalty: 10,
+            ReferencePlayerID: Some(999),
+            MotherClubBonus: false,
+            Leadership: 3,
+            Salary: 500,
+            IsAbroad: false,
+            Agreeability: 3,
+            Aggressiveness: 3,
+            Honesty: 3,
+            LeagueGoals: Some(5),
+            CupGoals: Some(2),
+            FriendliesGoals: Some(1),
+            CareerGoals: Some(50),
+            CareerHattricks: Some(2),
+            Speciality: Some(1),
+            TransferListed: false,
+            NationalTeamID: Some(100),
+            CountryID: Some(10),
+            Caps: Some(5),
+            CapsU20: Some(10),
+            Cards: Some(1),
+            InjuryLevel: Some(-1),
+            Sticker: Some("Basic sticker".to_string()),
+            Flag: None,
+            PlayerSkills: None,
+            LastMatch: None,
+        };
+
+        // Create detailed player with most fields but some missing
+        let detailed = Player {
+            PlayerID: 1,
+            FirstName: "John".to_string(),
+            LastName: "Doe".to_string(),
+            PlayerNumber: None, // Missing in detailed
+            Age: 25,
+            AgeDays: None, // Missing in detailed
+            TSI: 1500,     // Different value
+            PlayerForm: 6, // Different value
+            Statement: Some("Detailed statement".to_string()),
+            Experience: 4,
+            Loyalty: 11,
+            ReferencePlayerID: None, // Missing in detailed
+            MotherClubBonus: false,
+            Leadership: 4,
+            Salary: 600,
+            IsAbroad: false,
+            Agreeability: 4,
+            Aggressiveness: 4,
+            Honesty: 4,
+            LeagueGoals: Some(6),
+            CupGoals: None, // Missing in detailed
+            FriendliesGoals: Some(2),
+            CareerGoals: Some(55),
+            CareerHattricks: None, // Missing in detailed
+            Speciality: Some(1),
+            TransferListed: false,
+            NationalTeamID: Some(100),
+            CountryID: Some(10),
+            Caps: Some(6),
+            CapsU20: None, // Missing in detailed
+            Cards: Some(1),
+            InjuryLevel: Some(0),
+            Sticker: None, // Missing in detailed
+            Flag: None,
+            PlayerSkills: Some(crate::chpp::model::PlayerSkills {
+                StaminaSkill: 7,
+                KeeperSkill: 1,
+                PlaymakerSkill: 5,
+                ScorerSkill: 6,
+                PassingSkill: 5,
+                WingerSkill: 4,
+                DefenderSkill: 3,
+                SetPiecesSkill: 4,
+            }),
+            LastMatch: None,
+        };
+
+        let merged = super::merge_player_data(&basic, Some(detailed));
+
+        // Verify detailed data is primary
+        assert_eq!(merged.TSI, 1500);
+        assert_eq!(merged.PlayerForm, 6);
+        assert_eq!(merged.Statement, Some("Detailed statement".to_string()));
+        assert!(merged.PlayerSkills.is_some());
+
+        // Verify missing fields filled from basic
+        assert_eq!(merged.PlayerNumber, Some(10)); // From basic
+        assert_eq!(merged.AgeDays, Some(100)); // From basic
+        assert_eq!(merged.ReferencePlayerID, Some(999)); // From basic
+        assert_eq!(merged.CupGoals, Some(2)); // From basic
+        assert_eq!(merged.CareerHattricks, Some(2)); // From basic
+        assert_eq!(merged.CapsU20, Some(10)); // From basic
+        assert_eq!(merged.Sticker, Some("Basic sticker".to_string())); // From basic
+    }
+
+    #[test]
+    fn test_merge_player_data_without_detailed() {
+        use crate::chpp::model::Player;
+
+        let basic = Player {
+            PlayerID: 1,
+            FirstName: "John".to_string(),
+            LastName: "Doe".to_string(),
+            PlayerNumber: Some(10),
+            Age: 25,
+            AgeDays: Some(100),
+            TSI: 1000,
+            PlayerForm: 5,
+            Statement: Some("Basic statement".to_string()),
+            Experience: 3,
+            Loyalty: 10,
+            ReferencePlayerID: Some(999),
+            MotherClubBonus: false,
+            Leadership: 3,
+            Salary: 500,
+            IsAbroad: false,
+            Agreeability: 3,
+            Aggressiveness: 3,
+            Honesty: 3,
+            LeagueGoals: Some(5),
+            CupGoals: Some(2),
+            FriendliesGoals: Some(1),
+            CareerGoals: Some(50),
+            CareerHattricks: Some(2),
+            Speciality: Some(1),
+            TransferListed: false,
+            NationalTeamID: Some(100),
+            CountryID: Some(10),
+            Caps: Some(5),
+            CapsU20: Some(10),
+            Cards: Some(1),
+            InjuryLevel: Some(-1),
+            Sticker: Some("Basic sticker".to_string()),
+            Flag: None,
+            PlayerSkills: None,
+            LastMatch: None,
+        };
+
+        let merged = super::merge_player_data(&basic, None);
+
+        // Should be identical to basic
+        assert_eq!(merged.PlayerID, basic.PlayerID);
+        assert_eq!(merged.TSI, basic.TSI);
+        assert_eq!(merged.PlayerNumber, basic.PlayerNumber);
+        assert_eq!(merged.Statement, basic.Statement);
+        assert!(merged.PlayerSkills.is_none());
     }
 }
