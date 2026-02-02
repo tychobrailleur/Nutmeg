@@ -143,8 +143,14 @@ We need to connect to Hattrick to get your team data.</property>
                 </child>
                 
                 <child>
-                  <object class="GtkLabel">
+                  <object class="GtkLabel" id="lbl_status">
                     <property name="label" translatable="yes">Synchronizing World &amp; Team Data...</property>
+                  </object>
+                </child>
+
+                <child>
+                  <object class="GtkProgressBar" id="progress_bar">
+                    <property name="show-text">True</property>
                   </object>
                 </child>
               </object>

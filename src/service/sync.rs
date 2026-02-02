@@ -27,6 +27,7 @@ use crate::service::secret::{GnomeSecretService, SecretStorageService};
 use chrono::Utc;
 use diesel::prelude::*;
 use log::{debug, info};
+use oauth_1a::{OAuthData, SigningKey};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -36,6 +37,7 @@ pub trait DataSyncService {
         &self,
         consumer_key: String,
         consumer_secret: String,
+        on_progress: Box<dyn Fn(f64, &str) + Send + Sync>,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>>;
 
     fn perform_sync_with_stored_secrets(
@@ -79,6 +81,7 @@ impl DataSyncService for SyncService {
         &self,
         consumer_key: String,
         consumer_secret: String,
+        on_progress: Box<dyn Fn(f64, &str) + Send + Sync>,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>> {
         let consumer_key = consumer_key.clone();
         let consumer_secret = consumer_secret.clone();
@@ -93,6 +96,7 @@ impl DataSyncService for SyncService {
                 secret_service,
                 consumer_key,
                 consumer_secret,
+                on_progress,
             )
             .await
         })
@@ -121,6 +125,7 @@ impl DataSyncService for SyncService {
                     secret_service,
                     consumer_key,
                     consumer_secret,
+                    Box::new(|p, m| debug!("Background sync: {:.0}% - {}", p * 100.0, m)),
                 )
                 .await
                 {
@@ -136,45 +141,10 @@ impl DataSyncService for SyncService {
 }
 
 impl SyncService {
-    async fn do_sync(
-        db_manager: Arc<DbManager>,
-        client: Arc<dyn ChppClient>,
-        secret_service: Arc<dyn SecretStorageService>,
-        consumer_key: String,
-        consumer_secret: String,
-    ) -> Result<(), Error> {
-        let access_token = secret_service
-            .get_secret("access_token")
-            .await
-            .map_err(|e| Error::Io(e.to_string()))?
-            .ok_or(Error::Io("Missing credentials (token)".to_string()))?;
-
-        let access_secret = secret_service
-            .get_secret("access_secret")
-            .await
-            .map_err(|e| Error::Io(e.to_string()))?
-            .ok_or(Error::Io("Missing credentials (secret)".to_string()))?;
-
-        debug!("consumer_key: {}", consumer_key);
-        debug!("consumer_secret: {}", consumer_secret);
-        // Tokens are sensitive, maybe don't log them directly in production
-        // debug!("access_token: {}", access_token);
-        // debug!("access_secret: {}", access_secret);
-
-        // Helper to get fresh auth data
-        let get_auth = || {
-            create_oauth_context(
-                &consumer_key,
-                &consumer_secret,
-                &access_token,
-                &access_secret,
-            )
-        };
-
-        // Create Download Record
+    async fn create_download_record(db_manager: Arc<DbManager>) -> Result<i32, Error> {
         let db = db_manager.clone();
-        let download_id = {
-            let conn = &mut db_manager
+        tokio::task::spawn_blocking(move || {
+            let mut conn = db
                 .get_connection()
                 .map_err(|e| Error::Db(format!("Failed to get database connection: {}", e)))?;
 
@@ -185,18 +155,51 @@ impl SyncService {
                     downloads::timestamp.eq(&timestamp),
                     downloads::status.eq("in_progress"),
                 ))
-                .execute(conn)
+                .execute(&mut conn)
                 .map_err(|e| Error::Db(format!("Failed to create download record: {}", e)))?;
 
             let id: i32 = downloads::table
                 .select(downloads::id)
                 .order(downloads::id.desc())
-                .first(conn)
+                .first(&mut conn)
                 .map_err(|e| Error::Db(format!("Failed to get download ID: {}", e)))?;
 
-            id
-        };
+            Ok(id)
+        })
+        .await
+        .map_err(|e| Error::Io(format!("Join error: {}", e)))?
+    }
 
+    async fn complete_download_record(
+        db_manager: Arc<DbManager>,
+        download_id: i32,
+    ) -> Result<(), Error> {
+        let db = db_manager.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = db.get_connection()?;
+            use crate::db::schema::downloads::dsl::*;
+
+            diesel::update(downloads.filter(id.eq(download_id)))
+                .set(status.eq("completed"))
+                .execute(&mut conn)
+                .map_err(|e| Error::Io(format!("Failed to update download status: {}", e)))?;
+
+            Ok::<(), Error>(())
+        })
+        .await
+        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+        Ok(())
+    }
+
+    async fn fetch_and_save_user_data<F>(
+        db_manager: Arc<DbManager>,
+        client: Arc<dyn ChppClient>,
+        get_auth: &F,
+        download_id: i32,
+    ) -> Result<u32, Error>
+    where
+        F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
+    {
         // Get user / team details
         let (data, key) = get_auth();
         let hattrick_data = client.team_details(data, key, None).await?;
@@ -231,7 +234,17 @@ impl SyncService {
         .await
         .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
 
-        // Get World Details
+        Ok(team_id)
+    }
+
+    async fn fetch_and_save_world_details<F>(
+        db_manager: Arc<DbManager>,
+        client: Arc<dyn ChppClient>,
+        get_auth: &F,
+    ) -> Result<(), Error>
+    where
+        F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
+    {
         let (data, key) = get_auth();
         let world_details = client.world_details(data, key).await?;
         log::info!(
@@ -249,6 +262,19 @@ impl SyncService {
         .await
         .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
 
+        Ok(())
+    }
+
+    async fn fetch_and_save_players<F>(
+        db_manager: Arc<DbManager>,
+        client: Arc<dyn ChppClient>,
+        get_auth: &F,
+        team_id: u32,
+        download_id: i32,
+    ) -> Result<(), Error>
+    where
+        F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
+    {
         // Get Players for the team
         let (data, key) = get_auth();
         let players_resp = client.players(data, key, None).await?;
@@ -261,7 +287,6 @@ impl SyncService {
         };
 
         // Fetch detailed player data for each player
-        // Use retry utility from the integration layer
         let detailed_players = {
             info!(
                 "Fetching detailed player data for {} players",
@@ -276,7 +301,7 @@ impl SyncService {
                 let operation_name = format!("player_details({})", player_id);
 
                 // Use retry utility for player details fetching
-                let result = retry_with_default_config(&operation_name, &get_auth, |data, key| {
+                let result = retry_with_default_config(&operation_name, get_auth, |data, key| {
                     client.player_details(data, key, player_id)
                 })
                 .await;
@@ -286,7 +311,6 @@ impl SyncService {
                         detailed_players.push(detailed_player);
                     }
                     Err(e) => {
-                        // Retries have already been attempted by retry utility
                         log::warn!(
                             "Failed to fetch details for player {}: {}. Falling back to basic data.",
                             player_id,
@@ -308,22 +332,74 @@ impl SyncService {
         .await
         .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
 
-        // Mark download as completed
-        let db = db_manager.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = db.get_connection()?;
-            use crate::db::schema::downloads::dsl::*;
+        Ok(())
+    }
 
-            diesel::update(downloads.filter(id.eq(download_id)))
-                .set(status.eq("completed"))
-                .execute(&mut conn)
-                .map_err(|e| Error::Io(format!("Failed to update download status: {}", e)))?;
+    async fn do_sync(
+        db_manager: Arc<DbManager>,
+        client: Arc<dyn ChppClient>,
+        secret_service: Arc<dyn SecretStorageService>,
+        consumer_key: String,
+        consumer_secret: String,
+        on_progress: Box<dyn Fn(f64, &str) + Send + Sync>,
+    ) -> Result<(), Error> {
+        on_progress(0.0, "Checking credentials...");
+        let access_token = secret_service
+            .get_secret("access_token")
+            .await
+            .map_err(|e| Error::Io(e.to_string()))?
+            .ok_or(Error::Io("Missing credentials (token)".to_string()))?;
 
-            Ok::<(), Error>(())
-        })
-        .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+        let access_secret = secret_service
+            .get_secret("access_secret")
+            .await
+            .map_err(|e| Error::Io(e.to_string()))?
+            .ok_or(Error::Io("Missing credentials (secret)".to_string()))?;
 
+        debug!("consumer_key: {}", consumer_key);
+        debug!("consumer_secret: {}", consumer_secret);
+        debug!("access_token: {}", access_token);
+        debug!("access_secret: {}", access_secret);
+
+        // Helper to get fresh auth data
+        let get_auth = || {
+            create_oauth_context(
+                &consumer_key,
+                &consumer_secret,
+                &access_token,
+                &access_secret,
+            )
+        };
+
+        on_progress(0.05, "Creating download record...");
+        let download_id = Self::create_download_record(db_manager.clone()).await?;
+
+        on_progress(0.1, "Fetching user data...");
+        let team_id = Self::fetch_and_save_user_data(
+            db_manager.clone(),
+            client.clone(),
+            &get_auth,
+            download_id,
+        )
+        .await?;
+
+        on_progress(0.3, "Fetching world details (leagues, currency)...");
+        Self::fetch_and_save_world_details(db_manager.clone(), client.clone(), &get_auth).await?;
+
+        on_progress(0.6, "Fetching players...");
+        Self::fetch_and_save_players(
+            db_manager.clone(),
+            client.clone(),
+            &get_auth,
+            team_id,
+            download_id,
+        )
+        .await?;
+
+        on_progress(0.9, "Finalizing download...");
+        Self::complete_download_record(db_manager.clone(), download_id).await?;
+
+        on_progress(1.0, "Done.");
         info!("Download {} completed successfully", download_id);
         Ok(())
     }
@@ -353,12 +429,28 @@ mod tests {
                     Leagues: vec![WorldLeague {
                         LeagueID: 100,
                         LeagueName: "TestLeague".to_string(),
+                        ShortName: None,
+                        Continent: None,
+                        Season: None,
+                        SeasonOffset: None,
+                        MatchRound: None,
+                        ZoneName: None,
+                        EnglishName: None,
+                        LanguageID: None,
+                        LanguageName: None,
+                        NationalTeamId: None,
+                        U20TeamId: None,
+                        ActiveTeams: None,
+                        ActiveUsers: None,
+                        NumberOfLevels: None,
                         Country: WorldCountry {
                             CountryID: Some(10),
                             CountryName: Some("TestCountry".to_string()),
                             CurrencyName: Some("TestCurrency".to_string()),
                             CurrencyRate: Some("1,0".to_string()),
                             CountryCode: Some("TC".to_string()),
+                            DateFormat: None,
+                            TimeFormat: None,
                         },
                     }],
                 },
@@ -497,6 +589,7 @@ mod tests {
                             Cards: Some(0),
                             InjuryLevel: Some(-1),
                             Sticker: None,
+                            Flag: None,
                             PlayerSkills: None,
                             LastMatch: None,
                         }],
@@ -547,6 +640,7 @@ mod tests {
                 Cards: Some(0),
                 InjuryLevel: Some(-1),
                 Sticker: Some("".to_string()),
+                Flag: None,
                 PlayerSkills: None,
                 LastMatch: None,
             })
@@ -574,7 +668,11 @@ mod tests {
         let service = SyncService::new_with_client(db_manager.clone(), client, secret_service);
 
         let res = service
-            .perform_initial_sync("dummy_key".into(), "dummy_secret".into())
+            .perform_initial_sync(
+                "dummy_key".into(),
+                "dummy_secret".into(),
+                Box::new(|_, _| {}),
+            )
             .await;
 
         assert!(res.is_ok(), "Sync failed: {:?}", res.err());

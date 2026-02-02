@@ -20,7 +20,7 @@
 
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::{glib, Button, Entry, Stack, Window};
+use gtk::{glib, Button, Entry, Label, ProgressBar, Stack, Window};
 use log::{debug, error, info};
 use open;
 use std::cell::RefCell;
@@ -50,6 +50,10 @@ mod imp {
         pub entry_code: TemplateChild<Entry>,
         #[template_child]
         pub btn_verify: TemplateChild<Button>,
+        #[template_child]
+        pub lbl_status: TemplateChild<Label>,
+        #[template_child]
+        pub progress_bar: TemplateChild<ProgressBar>,
     }
 
     #[glib::object_subclass]
@@ -145,6 +149,8 @@ impl SetupWindow {
         let stack = imp.stack.clone();
         let entry = imp.entry_code.clone();
         let window = self.clone();
+        let progress_bar = imp.progress_bar.clone();
+        let lbl_status = imp.lbl_status.clone();
 
         imp.btn_verify.connect_clicked(move |_| {
             debug!("Verify button clicked");
@@ -152,6 +158,8 @@ impl SetupWindow {
             let state = auth_state_clone2.clone();
             let stack = stack.clone();
             let win = window.clone();
+            let progress_bar = progress_bar.clone();
+            let lbl_status = lbl_status.clone();
 
             stack.set_visible_child_name("page4");
 
@@ -198,8 +206,26 @@ impl SetupWindow {
                         let db_manager = Arc::new(DbManager::new());
                         let sync_service = SyncService::new(db_manager);
 
+                        let (sender, mut receiver) =
+                            tokio::sync::mpsc::unbounded_channel::<(f64, String)>();
+
+                        glib::MainContext::default().spawn_local(async move {
+                            while let Some((fraction, message)) = receiver.recv().await {
+                                progress_bar.set_fraction(fraction);
+                                lbl_status.set_text(&message);
+                            }
+                        });
+
+                        let progress_callback = Box::new(move |fraction: f64, message: &str| {
+                            let _ = sender.send((fraction, message.to_string()));
+                        });
+
                         match sync_service
-                            .perform_initial_sync(consumer_key(), consumer_secret())
+                            .perform_initial_sync(
+                                consumer_key(),
+                                consumer_secret(),
+                                progress_callback,
+                            )
                             .await
                         {
                             Ok(_) => {

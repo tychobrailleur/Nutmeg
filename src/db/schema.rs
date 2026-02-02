@@ -5,6 +5,10 @@ diesel::table! {
         id -> Integer,
         name -> Text,
         currency_id -> Nullable<Integer>,
+        country_code -> Nullable<Text>,
+        date_format -> Nullable<Text>,
+        time_format -> Nullable<Text>,
+        flag -> Nullable<Text>,
     }
 }
 
@@ -49,6 +53,19 @@ diesel::table! {
         id -> Integer,
         name -> Text,
         country_id -> Nullable<Integer>,
+        short_name -> Nullable<Text>,
+        continent -> Nullable<Text>,
+        season -> Nullable<Integer>,
+        season_offset -> Nullable<Integer>,
+        match_round -> Nullable<Integer>,
+        zone_name -> Nullable<Text>,
+        english_name -> Nullable<Text>,
+        language_id -> Nullable<Integer>,
+        national_team_id -> Nullable<Integer>,
+        u20_team_id -> Nullable<Integer>,
+        active_teams -> Nullable<Integer>,
+        active_users -> Nullable<Integer>,
+        number_of_levels -> Nullable<Integer>,
     }
 }
 

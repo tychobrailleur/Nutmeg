@@ -48,6 +48,15 @@
 
                 <child>
                   <object class="GtkColumnViewColumn">
+                    <property name="title" translatable="yes">Flag</property>
+                    <property name="factory">
+                      <object class="GtkSignalListItemFactory" id="factory_flag"/>
+                    </property>
+                  </object>
+                </child>
+
+                <child>
+                  <object class="GtkColumnViewColumn">
                     <property name="title" translatable="yes">No.</property>
                     <property name="factory">
                       <object class="GtkSignalListItemFactory" id="factory_number"/>

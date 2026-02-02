@@ -72,6 +72,8 @@ mod imp {
         pub view_players: TemplateChild<gtk::ColumnView>,
 
         #[template_child]
+        pub factory_flag: TemplateChild<gtk::SignalListItemFactory>,
+        #[template_child]
         pub factory_number: TemplateChild<gtk::SignalListItemFactory>,
         #[template_child]
         pub factory_name: TemplateChild<gtk::SignalListItemFactory>,
@@ -147,6 +149,16 @@ impl HoctaneWindow {
                 item.set_child(Some(&label));
             });
         };
+
+        // Flag
+        setup_label(&imp.factory_flag);
+        imp.factory_flag.connect_bind(move |_, item| {
+            let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+            let player_obj = item.item().and_downcast::<PlayerObject>().unwrap();
+            let label = item.child().and_downcast::<gtk::Label>().unwrap();
+            let flag_str = player_obj.player().Flag.unwrap_or_else(|| "🏳️".to_string());
+            label.set_label(&flag_str);
+        });
 
         // Number
         setup_label(&imp.factory_number);

@@ -160,6 +160,19 @@ pub struct Arena {
 pub struct League {
     pub LeagueID: u32,
     pub LeagueName: String,
+    pub ShortName: Option<String>,
+    pub Continent: Option<String>,
+    pub Season: Option<u32>,
+    pub SeasonOffset: Option<i32>,
+    pub MatchRound: Option<u32>,
+    pub ZoneName: Option<String>,
+    pub EnglishName: Option<String>,
+    pub LanguageID: Option<u32>,
+    pub NationalTeamId: Option<u32>,
+    pub U20TeamId: Option<u32>,
+    pub ActiveTeams: Option<u32>,
+    pub ActiveUsers: Option<u32>,
+    pub NumberOfLevels: Option<u32>,
 }
 
 #[allow(non_snake_case)]
@@ -168,6 +181,9 @@ pub struct Country {
     pub CountryID: u32,
     pub CountryName: String,
     pub Currency: Option<Currency>,
+    pub CountryCode: Option<String>,
+    pub DateFormat: Option<String>,
+    pub TimeFormat: Option<String>,
 }
 
 #[allow(non_snake_case)]
@@ -348,6 +364,8 @@ pub struct Player {
     pub Cards: Option<u32>,
     pub InjuryLevel: Option<i32>, // -1 = No injury, 0 = Bruised, >0 = Weeks
     pub Sticker: Option<String>,
+    #[serde(skip)]
+    pub Flag: Option<String>,
     pub PlayerSkills: Option<PlayerSkills>, // Only visible for own team or if authorized
     pub LastMatch: Option<LastMatch>,
 }
@@ -452,6 +470,8 @@ pub struct WorldCountry {
     pub CurrencyName: Option<String>,
     pub CurrencyRate: Option<String>, // Stores comma-separated floats
     pub CountryCode: Option<String>,
+    pub DateFormat: Option<String>,
+    pub TimeFormat: Option<String>,
 }
 
 #[allow(non_snake_case)]
@@ -460,6 +480,20 @@ pub struct WorldLeague {
     pub LeagueID: u32,
     pub LeagueName: String,
     pub Country: WorldCountry,
+    pub Season: Option<u32>,
+    pub SeasonOffset: Option<i32>,
+    pub MatchRound: Option<u32>,
+    pub ShortName: Option<String>,
+    pub Continent: Option<String>,
+    pub ZoneName: Option<String>,
+    pub EnglishName: Option<String>,
+    pub LanguageID: Option<u32>,
+    pub LanguageName: Option<String>,
+    pub NationalTeamId: Option<u32>,
+    pub U20TeamId: Option<u32>,
+    pub ActiveTeams: Option<u32>,
+    pub ActiveUsers: Option<u32>,
+    pub NumberOfLevels: Option<u32>,
 }
 
 #[allow(non_snake_case)]

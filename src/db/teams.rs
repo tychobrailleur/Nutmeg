@@ -65,6 +65,38 @@ struct CountryEntity {
     id: i32,
     name: String,
     currency_id: Option<i32>,
+    country_code: Option<String>,
+    date_format: Option<String>,
+    time_format: Option<String>,
+    flag: Option<String>,
+}
+
+fn get_flag_emoji(country_code: Option<&str>) -> Option<String> {
+    let code = country_code?;
+    if code.len() != 2 {
+        return None;
+    }
+    let mut s = String::new();
+
+    // https://en.wikipedia.org/wiki/Regional_indicator_symbol
+    // A country flag is a pair of regional indicator symbols,
+    // which together become the emoji flag sequence.
+    // Regional indicator A is U+1F1E6 (https://www.compart.com/en/unicode/U+1F1E6),
+    // which corresponds to codepoint 127462 (uppercase A is 65)
+    // So to get regional indicator corresponding to the uppercase letter,
+    // we shift the codepoint by 127462-65 = 127397.
+    for c in code.to_uppercase().chars() {
+        if c < 'A' || c > 'Z' {
+            return None;
+        }
+        let u = c as u32 + 127_397;
+        if let Some(ch) = std::char::from_u32(u) {
+            s.push(ch);
+        } else {
+            return None;
+        }
+    }
+    Some(s)
 }
 
 #[derive(Queryable, Insertable)]
@@ -81,6 +113,19 @@ struct LeagueEntity {
     id: i32,
     name: String,
     country_id: Option<i32>,
+    short_name: Option<String>,
+    continent: Option<String>,
+    season: Option<i32>,
+    season_offset: Option<i32>,
+    match_round: Option<i32>,
+    zone_name: Option<String>,
+    english_name: Option<String>,
+    language_id: Option<i32>,
+    national_team_id: Option<i32>,
+    u20_team_id: Option<i32>,
+    active_teams: Option<i32>,
+    active_users: Option<i32>,
+    number_of_levels: Option<i32>,
 }
 
 #[derive(Queryable, Insertable)]
@@ -216,29 +261,71 @@ pub fn save_world_details(
     world_details: &WorldDetails,
 ) -> Result<(), Error> {
     for world_league in &world_details.LeagueList.Leagues {
+        // Save Language if present
+        if let (Some(lang_id), Some(lang_name)) =
+            (world_league.LanguageID, &world_league.LanguageName)
+        {
+            let language = Language {
+                LanguageID: lang_id,
+                LanguageName: lang_name.clone(),
+            };
+            save_language(conn, &language)?;
+        }
+
+        // Save Currency if present in WorldCountry
+        // WorldCountry has CurrencyName and CurrencyRate but no CurrencyID
+        // We'll use CountryID as a proxy for CurrencyID since each country has one currency
+        if let (Some(country_id), Some(currency_name), Some(currency_rate_str)) = (
+            world_league.Country.CountryID,
+            &world_league.Country.CurrencyName,
+            &world_league.Country.CurrencyRate,
+        ) {
+            // Parse rate (handle comma as decimal separator)
+            let rate = currency_rate_str.replace(',', ".").parse::<f64>().ok();
+
+            let currency = Currency {
+                CurrencyID: country_id, // Using country ID as currency ID
+                CurrencyName: currency_name.clone(),
+                Rate: rate,
+                Symbol: Some(currency_name.clone()), // Using name as symbol for now
+            };
+            save_currency(conn, &currency)?;
+        }
+
         // Construct a standard League object from WorldLeague data
         let league = League {
             LeagueID: world_league.LeagueID,
             LeagueName: world_league.LeagueName.clone(),
+            ShortName: world_league.ShortName.clone(),
+            Continent: world_league.Continent.clone(),
+            Season: world_league.Season,
+            SeasonOffset: world_league.SeasonOffset,
+            MatchRound: world_league.MatchRound,
+            ZoneName: world_league.ZoneName.clone(),
+            EnglishName: world_league.EnglishName.clone(),
+            LanguageID: world_league.LanguageID,
+            NationalTeamId: world_league.NationalTeamId,
+            U20TeamId: world_league.U20TeamId,
+            ActiveTeams: world_league.ActiveTeams,
+            ActiveUsers: world_league.ActiveUsers,
+            NumberOfLevels: world_league.NumberOfLevels,
         };
-        // Save Country and Currency first
-        // WorldDetails provides a flattened Country structure (WorldCountry).
-        // If Available="False", CountryID will be None.
+
+        // Save Country
         if let Some(country_id) = world_league.Country.CountryID {
             let country_model = Country {
                 CountryID: country_id,
                 CountryName: world_league.Country.CountryName.clone().unwrap_or_default(),
-                Currency: None,
+                Currency: None, // Currency is saved separately above
+                CountryCode: world_league.Country.CountryCode.clone(),
+                DateFormat: world_league.Country.DateFormat.clone(),
+                TimeFormat: world_league.Country.TimeFormat.clone(),
             };
             save_country(conn, &country_model)?;
         }
 
         // Save the League
         save_league(conn, &league, world_league.Country.CountryID)?;
-
-        // Note: WorldDetails XML often contains Regions within the League/Country element.
-        // If WorldLeague struct is expanded to include regions, we would iterate and save them here.
-        // Based on current model, we just save League and Country link.
     }
     Ok(())
 }
@@ -411,10 +498,16 @@ fn save_country(conn: &mut SqliteConnection, country: &Country) -> Result<(), Er
         save_currency(conn, c)?;
     }
 
+    let flag = get_flag_emoji(country.CountryCode.as_deref());
+
     let entity = CountryEntity {
         id: country.CountryID as i32,
         name: country.CountryName.clone(),
         currency_id: country.Currency.as_ref().map(|c| c.CurrencyID as i32),
+        country_code: country.CountryCode.clone(),
+        date_format: country.DateFormat.clone(),
+        time_format: country.TimeFormat.clone(),
+        flag,
     };
     diesel::insert_into(countries::table)
         .values(&entity)
@@ -423,6 +516,9 @@ fn save_country(conn: &mut SqliteConnection, country: &Country) -> Result<(), Er
         .set((
             countries::name.eq(&entity.name),
             countries::currency_id.eq(&entity.currency_id),
+            countries::country_code.eq(&entity.country_code),
+            countries::date_format.eq(&entity.date_format),
+            countries::time_format.eq(&entity.time_format),
         ))
         .execute(conn)
         .map_err(|e| Error::Io(format!("Database error saving country: {}", e)))?;
@@ -466,6 +562,19 @@ fn save_league(
         id: league.LeagueID as i32,
         name: league.LeagueName.clone(),
         country_id: country_id_opt.map(|id| id as i32),
+        short_name: league.ShortName.clone(),
+        continent: league.Continent.clone(),
+        season: league.Season.map(|v| v as i32),
+        season_offset: league.SeasonOffset.map(|v| v as i32),
+        match_round: league.MatchRound.map(|v| v as i32),
+        zone_name: league.ZoneName.clone(),
+        english_name: league.EnglishName.clone(),
+        language_id: league.LanguageID.map(|v| v as i32),
+        national_team_id: league.NationalTeamId.map(|v| v as i32),
+        u20_team_id: league.U20TeamId.map(|v| v as i32),
+        active_teams: league.ActiveTeams.map(|v| v as i32),
+        active_users: league.ActiveUsers.map(|v| v as i32),
+        number_of_levels: league.NumberOfLevels.map(|v| v as i32),
     };
     diesel::insert_into(leagues::table)
         .values(&entity)
@@ -474,6 +583,19 @@ fn save_league(
         .set((
             leagues::name.eq(&entity.name),
             leagues::country_id.eq(&entity.country_id),
+            leagues::short_name.eq(&entity.short_name),
+            leagues::continent.eq(&entity.continent),
+            leagues::season.eq(&entity.season),
+            leagues::season_offset.eq(&entity.season_offset),
+            leagues::match_round.eq(&entity.match_round),
+            leagues::zone_name.eq(&entity.zone_name),
+            leagues::english_name.eq(&entity.english_name),
+            leagues::language_id.eq(&entity.language_id),
+            leagues::national_team_id.eq(&entity.national_team_id),
+            leagues::u20_team_id.eq(&entity.u20_team_id),
+            leagues::active_teams.eq(&entity.active_teams),
+            leagues::active_users.eq(&entity.active_users),
+            leagues::number_of_levels.eq(&entity.number_of_levels),
         ))
         .execute(conn)
         .map_err(|e| Error::Io(format!("Database error saving league: {}", e)))?;
@@ -669,14 +791,16 @@ pub fn get_players_for_team(
     }
     let download_id_filter = latest_download.unwrap();
 
-    let entities = players::table
+    let results: Vec<(PlayerEntity, Option<String>)> = players::table
+        .left_join(countries::table.on(players::country_id.eq(countries::id)))
         .filter(players::team_id.eq(team_id_in as i32))
         .filter(players::download_id.eq(download_id_filter))
-        .load::<PlayerEntity>(conn)
+        .select((players::all_columns, countries::flag.nullable()))
+        .load::<(PlayerEntity, Option<String>)>(conn)
         .map_err(|e| Error::Db(format!("Failed to load players: {}", e)))?;
 
     let mut players = Vec::new();
-    for entity in entities {
+    for (entity, flag) in results {
         players.push(crate::chpp::model::Player {
             PlayerID: entity.id as u32,
             FirstName: entity.first_name,
@@ -714,6 +838,7 @@ pub fn get_players_for_team(
             Cards: entity.cards.map(|v| v as u32),
             InjuryLevel: entity.injury_level.map(|v| v as i32),
             Sticker: entity.sticker,
+            Flag: flag,
             ReferencePlayerID: None,
             PlayerSkills: if entity.stamina_skill.is_some() {
                 Some(crate::chpp::model::PlayerSkills {
@@ -930,6 +1055,9 @@ mod tests {
             CountryID: 100,
             CountryName: "Sweden".to_string(),
             Currency: Some(currency),
+            CountryCode: None,
+            DateFormat: None,
+            TimeFormat: None,
         });
 
         save_team(&mut conn, &team, &user, 0).expect("Failed to save team");
@@ -979,5 +1107,15 @@ mod tests {
         assert_eq!(tms[0].country_id, Some(100));
         assert_eq!(tms[0].region_id, Some(1001));
         assert_eq!(tms[0].league_id, Some(1000));
+    }
+
+    #[test]
+    fn test_flag_emoji() {
+        assert_eq!(Some("🇸🇪".to_string()), get_flag_emoji(Some("SE")));
+        assert_eq!(Some("🇮🇪".to_string()), get_flag_emoji(Some("IE")));
+        assert_eq!(Some("🇫🇷".to_string()), get_flag_emoji(Some("FR")));
+        assert_eq!(Some("🇬🇱".to_string()), get_flag_emoji(Some("GL")));
+        // The way the flag displays below (for invalid pair) depends on the system (and probably the font?)
+        assert_eq!(Some("🇧🇨".to_string()), get_flag_emoji(Some("BC")));
     }
 }
