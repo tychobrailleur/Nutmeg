@@ -55,7 +55,7 @@ where
     }
 }
 
-fn empty_tag_is_none<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
+fn deserialize_empty_tag_is_none<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -65,6 +65,19 @@ where
         Some(v) => v.parse().map(Some).map_err(serde::de::Error::custom),
     }
 }
+
+fn deserialize_player_number<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: Option<String> = Option::deserialize(deserializer)?;
+    match s.as_deref() {
+        None | Some("100") => Ok(None), // If player number is 100, the player has no number.
+        Some(v) => v.parse().map(Some).map_err(serde::de::Error::custom),
+    }
+}
+
+
 
 fn serialize_bool<S>(x: &bool, s: S) -> Result<S::Ok, S::Error>
 where
@@ -294,7 +307,8 @@ pub struct Player {
     pub PlayerID: u32,
     pub FirstName: String,
     pub LastName: String,
-    pub PlayerNumber: u32,
+    #[serde(deserialize_with = "deserialize_player_number")]
+    pub PlayerNumber: Option<u32>,
     pub Age: u32,
     pub AgeDays: Option<u32>,
     pub TSI: u32,
@@ -330,7 +344,7 @@ pub struct Player {
     )]
     pub TransferListed: bool,
     pub NationalTeamID: Option<u32>,
-    pub CountryID: u32,
+    pub CountryID: Option<u32>,
     pub Caps: Option<u32>,
     pub CapsU20: Option<u32>,
     pub Cards: Option<u32>,
@@ -374,14 +388,14 @@ pub struct Team {
     pub HomePage: Option<String>,
     pub Cup: Option<Cup>,
     pub PowerRating: Option<PowerRating>,
-    #[serde(default, deserialize_with = "empty_tag_is_none")]
+    #[serde(default, deserialize_with = "deserialize_empty_tag_is_none")]
     // Empty tag <FriendlyTeamID /> seems to fail for Option<u32>
     // so use a custom deserializer for these fields.
     pub FriendlyTeamID: Option<u32>,
     pub LeagueLevelUnit: Option<LeagueLevelUnit>,
-    #[serde(default, deserialize_with = "empty_tag_is_none")]
+    #[serde(default, deserialize_with = "deserialize_empty_tag_is_none")]
     pub NumberOfVictories: Option<u32>,
-    #[serde(default, deserialize_with = "empty_tag_is_none")]
+    #[serde(default, deserialize_with = "deserialize_empty_tag_is_none")]
     pub NumberOfUndefeated: Option<u32>,
     pub Fanclub: Option<Fanclub>,
     pub LogoURL: Option<String>,
@@ -389,7 +403,7 @@ pub struct Team {
     pub DressURI: Option<String>,
     pub DressAlternateURI: Option<String>,
     pub BotStatus: Option<BotStatus>,
-    #[serde(default, deserialize_with = "empty_tag_is_none")]
+    #[serde(default, deserialize_with = "deserialize_empty_tag_is_none")]
     pub TeamRank: Option<u32>,
     pub YouthTeamID: Option<u32>,
     pub YouthTeamName: Option<String>,
@@ -550,6 +564,9 @@ mod tests {
         let res: TierWrapper = from_str(xml).unwrap();
         assert_eq!(res.tier, SupporterTier::Silver);
     }
+
+    // TODO in the following tests, anonymise the following XML outputs,
+    // if not done already, and extract to test resources.
     #[test]
     fn test_deserialize_team() {
         let xml = r#"
@@ -911,9 +928,9 @@ mod tests {
           <PressAnnouncement>
             <Subject>The Bogdan Controversy</Subject>
             <Body>There was a certain amount of stupor within the Pangolins ranks when it was discovered in training camp today that there actually was a player whose first name was “Bogdan” on the team.
-    
+
     “Come on lads” the player involved, [playerid=434668244]Tărtăreanu[/playerid], said “I have been here for 6 bloody seasons, how does it come as a surprise now??”
-    
+
     The management team, still in shock, and busy sifting through piles of papers, refused to comment.</Body>
             <SendDate>2023-10-10 18:13:00</SendDate>
           </PressAnnouncement>
@@ -1052,7 +1069,7 @@ mod tests {
     // Leaving this as sanity check, this what I used to debug the empty tag issue...
     #[derive(Debug, Deserialize)]
     struct Example {
-        #[serde(default, deserialize_with = "empty_tag_is_none")]
+        #[serde(default, deserialize_with = "deserialize_empty_tag_is_none")]
         pub EmptyTag: Option<u32>,
     }
 
