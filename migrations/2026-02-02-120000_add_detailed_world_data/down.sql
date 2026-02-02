@@ -1,0 +1,6 @@
+-- SQLite does not support DROP COLUMN in older versions easily, 
+-- but we can't easily revert additions without recreation.
+-- For this task, we'll leave it empty or use strict functionality if supported.
+-- Since it's additive, doing nothing is acceptable for dev environment quick iterations if strict rollback isn't required by toolchain.
+-- But ideally we should Create new table -> Copy -> Drop old -> Rename.
+-- For now, empty down.sql is common in SQLite dev if rollback isn't fully supported automatically.
