@@ -23,6 +23,7 @@ diesel_migrations = { version = "2.2.0", features = ["sqlite"] }
 async-trait = "0.1"
 chrono = "0.4"
 oo7 = "0.3"
+gdk-pixbuf = "0.21"
 
 [dependencies.adw]
 package = "libadwaita"

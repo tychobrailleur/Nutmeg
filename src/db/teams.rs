@@ -762,7 +762,9 @@ pub fn get_latest_download_id(conn: &mut SqliteConnection) -> Result<Option<i32>
 }
 
 // Returns a list of (TeamID, TeamName) for all teams in the DB.
-pub fn get_teams_summary(conn: &mut SqliteConnection) -> Result<Vec<(u32, String)>, Error> {
+pub fn get_teams_summary(
+    conn: &mut SqliteConnection,
+) -> Result<Vec<(u32, String, Option<String>)>, Error> {
     let latest_download = get_latest_download_id(conn)?;
     if latest_download.is_none() {
         return Ok(Vec::new());
@@ -771,13 +773,13 @@ pub fn get_teams_summary(conn: &mut SqliteConnection) -> Result<Vec<(u32, String
 
     let results = teams::table
         .filter(teams::download_id.eq(download_id_filter))
-        .select((teams::id, teams::name))
-        .load::<(i32, String)>(conn)
+        .select((teams::id, teams::name, teams::logo_url))
+        .load::<(i32, String, Option<String>)>(conn)
         .map_err(|e| Error::Db(format!("Failed to load teams: {}", e)))?;
 
     Ok(results
         .into_iter()
-        .map(|(id, name)| (id as u32, name))
+        .map(|(id, name, logo_url)| (id as u32, name, logo_url))
         .collect())
 }
 

@@ -198,6 +198,11 @@ fn merge_player_data(
             if d.CountryID.is_none() && basic.CountryID.is_some() {
                 d.CountryID = basic.CountryID;
             }
+            // Set country ID to native country ID if country ID is not present.
+            if d.CountryID.is_none() && d.NativeCountryID.is_some() {
+                d.CountryID = d.NativeCountryID;
+            }
+            // National team stats
             if d.Caps.is_none() && basic.Caps.is_some() {
                 d.Caps = basic.Caps;
             }

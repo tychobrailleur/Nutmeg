@@ -34,7 +34,8 @@
         </child>
 
         <child>
-          <object class="GtkComboBoxText" id="combo_teams">
+          <object class="GtkDropDown" id="combo_teams">
+            <property name="hexpand">true</property>
           </object>
         </child>
 
@@ -45,6 +46,16 @@
               <object class="GtkColumnView" id="view_players">
                 <property name="show-row-separators">true</property>
                 <property name="show-column-separators">true</property>
+
+                <child>
+                  <object class="GtkColumnViewColumn">
+                    <property name="title" translatable="yes">Name</property>
+                    <property name="expand">true</property>
+                    <property name="factory">
+                      <object class="GtkSignalListItemFactory" id="factory_name"/>
+                    </property>
+                  </object>
+                </child>
 
                 <child>
                   <object class="GtkColumnViewColumn">
@@ -60,16 +71,6 @@
                     <property name="title" translatable="yes">No.</property>
                     <property name="factory">
                       <object class="GtkSignalListItemFactory" id="factory_number"/>
-                    </property>
-                  </object>
-                </child>
-
-                <child>
-                  <object class="GtkColumnViewColumn">
-                    <property name="title" translatable="yes">Name</property>
-                    <property name="expand">true</property>
-                    <property name="factory">
-                      <object class="GtkSignalListItemFactory" id="factory_name"/>
                     </property>
                   </object>
                 </child>

@@ -1792,6 +1792,7 @@ dependencies = [
  "diesel_migrations",
  "dotenvy",
  "env_logger",
+ "gdk-pixbuf",
  "gettext-rs",
  "glib-build-tools",
  "gtk4",
