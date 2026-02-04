@@ -108,6 +108,7 @@ mod tests {
     use super::*;
     use crate::db::manager::DbManager;
     use crate::db::schema::downloads;
+    use serial_test::serial;
 
     #[derive(Insertable)]
     #[diesel(table_name = downloads)]
@@ -117,19 +118,26 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_create_and_retrieve_entry() {
-        let db = DbManager::new_in_memory().expect("Failed to create in-memory DB");
+        let db = DbManager::new();
         let mut conn = db.get_connection().expect("Failed to get connection");
 
         // Create a download first
-        let download: i32 = diesel::insert_into(downloads::table)
+        let download_id: i32 = diesel::insert_into(downloads::table)
             .values(NewDownload {
                 timestamp: "2026-02-04T18:45:00Z".to_string(),
                 status: "in_progress".to_string(),
             })
-            .returning(downloads::id)
-            .get_result(&mut conn)
-            .expect("Failed to create download");
+            .execute(&mut conn)
+            .expect("Failed to create download") as i32;
+
+        // Get the last inserted ID
+        let download: i32 = diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>(
+            "last_insert_rowid()",
+        ))
+        .get_result(&mut conn)
+        .expect("Failed to get download ID");
 
         // Create an entry
         let entry = NewDownloadEntry {
@@ -155,19 +163,26 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_update_entry_status() {
-        let db = DbManager::new_in_memory().expect("Failed to create in-memory DB");
+        let db = DbManager::new();
         let mut conn = db.get_connection().expect("Failed to get connection");
 
         // Create download and entry
-        let download: i32 = diesel::insert_into(downloads::table)
+        diesel::insert_into(downloads::table)
             .values(NewDownload {
                 timestamp: "2026-02-04T18:45:00Z".to_string(),
                 status: "in_progress".to_string(),
             })
-            .returning(downloads::id)
-            .get_result(&mut conn)
+            .execute(&mut conn)
             .expect("Failed to create download");
+
+        // Get the last inserted ID
+        let download: i32 = diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>(
+            "last_insert_rowid()",
+        ))
+        .get_result(&mut conn)
+        .expect("Failed to get download ID");
 
         let entry = NewDownloadEntry {
             download_id: download,

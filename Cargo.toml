@@ -38,5 +38,8 @@ features = [
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
 ]
 
+[dev-dependencies]
+serial_test = "3.2"
+
 [build-dependencies]
 glib-build-tools = "0.19"
