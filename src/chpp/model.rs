@@ -95,7 +95,7 @@ where
 }
 
 #[allow(non_snake_case)]
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug, PartialEq, Clone, Copy)]
 pub enum SupporterTier {
     None,
     Silver,
@@ -125,14 +125,14 @@ impl<'de> Deserialize<'de> for SupporterTier {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Language {
     pub LanguageID: u32,
     pub LanguageName: String,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct User {
     #[allow(dead_code)]
     pub UserID: u32,
@@ -156,7 +156,7 @@ pub struct Arena {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct League {
     pub LeagueID: u32,
     pub LeagueName: String,
@@ -176,7 +176,7 @@ pub struct League {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Country {
     pub CountryID: u32,
     pub CountryName: String,
@@ -312,8 +312,8 @@ pub struct LastMatch {
     pub MatchId: u32,
     pub PositionCode: u32,
     pub PlayedMinutes: u32,
-    pub Rating: Option<u32>,
-    pub RatingEndOfMatch: Option<u32>,
+    pub Rating: Option<f64>,
+    pub RatingEndOfMatch: Option<f64>,
 }
 
 #[allow(non_snake_case)]
@@ -400,7 +400,7 @@ pub struct PlayerList {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Team {
     pub TeamID: String,
     pub TeamName: String,

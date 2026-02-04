@@ -19,5 +19,6 @@
  */
 
 pub mod auth;
+pub mod context;
 pub mod secret;
 pub mod sync;

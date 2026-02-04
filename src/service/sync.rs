@@ -363,6 +363,7 @@ impl SyncService {
         db_manager: Arc<DbManager>,
         client: Arc<dyn ChppClient>,
         get_auth: &F,
+        download_id: i32,
     ) -> Result<(), Error>
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
@@ -379,7 +380,7 @@ impl SyncService {
         let wd = world_details;
         tokio::task::spawn_blocking(move || {
             let mut conn = db.get_connection()?;
-            save_world_details(&mut conn, &wd)
+            save_world_details(&mut conn, &wd, download_id)
         })
         .await
         .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
@@ -514,7 +515,13 @@ impl SyncService {
         .await?;
 
         on_progress(0.3, "Fetching world details (leagues, currency)...");
-        Self::fetch_and_save_world_details(db_manager.clone(), client.clone(), &get_auth).await?;
+        Self::fetch_and_save_world_details(
+            db_manager.clone(),
+            client.clone(),
+            &get_auth,
+            download_id,
+        )
+        .await?;
 
         on_progress(0.6, "Fetching players...");
         Self::fetch_and_save_players(
@@ -722,6 +729,16 @@ mod tests {
                             Flag: None,
                             PlayerSkills: None,
                             LastMatch: None,
+                            ArrivalDate: None,
+                            PlayerCategoryId: None,
+                            MotherClub: None,
+                            NativeCountryID: None,
+                            NativeLeagueID: None,
+                            NativeLeagueName: None,
+                            MatchesCurrentTeam: None,
+                            GoalsCurrentTeam: None,
+                            AssistsCurrentTeam: None,
+                            CareerAssists: None,
                         }],
                     }),
                     PossibleToChallengeMidweek: None,
@@ -773,6 +790,16 @@ mod tests {
                 Flag: None,
                 PlayerSkills: None,
                 LastMatch: None,
+                ArrivalDate: None,
+                PlayerCategoryId: None,
+                MotherClub: None,
+                NativeCountryID: None,
+                NativeLeagueID: None,
+                NativeLeagueName: None,
+                MatchesCurrentTeam: None,
+                GoalsCurrentTeam: None,
+                AssistsCurrentTeam: None,
+                CareerAssists: None,
             })
         }
     }
@@ -856,6 +883,16 @@ mod tests {
             Flag: None,
             PlayerSkills: None,
             LastMatch: None,
+            ArrivalDate: None,
+            PlayerCategoryId: None,
+            MotherClub: None,
+            NativeCountryID: None,
+            NativeLeagueID: None,
+            NativeLeagueName: None,
+            MatchesCurrentTeam: None,
+            GoalsCurrentTeam: None,
+            AssistsCurrentTeam: None,
+            CareerAssists: None,
         };
 
         // Create detailed player with most fields but some missing
@@ -905,6 +942,16 @@ mod tests {
                 SetPiecesSkill: 4,
             }),
             LastMatch: None,
+            ArrivalDate: None,
+            PlayerCategoryId: None,
+            MotherClub: None,
+            NativeCountryID: None,
+            NativeLeagueID: None,
+            NativeLeagueName: None,
+            MatchesCurrentTeam: None,
+            GoalsCurrentTeam: None,
+            AssistsCurrentTeam: None,
+            CareerAssists: None,
         };
 
         let merged = super::merge_player_data(&basic, Some(detailed));
@@ -966,6 +1013,16 @@ mod tests {
             Flag: None,
             PlayerSkills: None,
             LastMatch: None,
+            ArrivalDate: None,
+            PlayerCategoryId: None,
+            MotherClub: None,
+            NativeCountryID: None,
+            NativeLeagueID: None,
+            NativeLeagueName: None,
+            MatchesCurrentTeam: None,
+            GoalsCurrentTeam: None,
+            AssistsCurrentTeam: None,
+            CareerAssists: None,
         };
 
         let merged = super::merge_player_data(&basic, None);

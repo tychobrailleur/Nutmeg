@@ -10,7 +10,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use crate::chpp::model::Player;
+use crate::chpp::model::{Country, Currency, Language, Player, Region, Team, User};
 use crate::db::manager::DbManager;
 use crate::db::teams::{get_players_for_team, get_teams_summary};
 use gettextrs::gettext;
@@ -20,6 +20,9 @@ use gtk::{gdk, gio, glib, CompositeTemplate, TemplateChild};
 use log::{debug, error, info};
 use std::cell::RefCell;
 use std::rc::Rc;
+
+use crate::service::context::{AppContext, ContextService};
+use std::sync::Arc;
 
 // TODO see if the template cannot be dfined as a .ui file
 mod team_object {
@@ -134,6 +137,8 @@ mod imp {
         pub factory_form: TemplateChild<gtk::SignalListItemFactory>,
         #[template_child]
         pub factory_tsi: TemplateChild<gtk::SignalListItemFactory>,
+
+        pub context: RefCell<AppContext>,
 
         #[template_child]
         pub details_panel: TemplateChild<gtk::Box>,
@@ -502,9 +507,16 @@ impl NutmegWindow {
 
     fn load_players(&self, team_id: u32) {
         let _imp = self.imp();
-        let db = DbManager::new();
+        let db_manager = Arc::new(DbManager::new());
+        let context_service = ContextService::new(db_manager.clone());
+        let new_ctx = context_service.load_team_context(team_id);
 
-        if let Ok(mut conn) = db.get_connection() {
+        {
+            let mut ctx = self.imp().context.borrow_mut();
+            *ctx = new_ctx;
+        }
+
+        if let Ok(mut conn) = db_manager.get_connection() {
             match get_players_for_team(&mut conn, team_id) {
                 Ok(players) => {
                     info!("Loaded {} players for team {}", players.len(), team_id);
@@ -517,16 +529,19 @@ impl NutmegWindow {
 
                     let imp = self.imp();
                     let window = self.clone();
+                    let context_service = context_service.clone();
                     selection.connect_selected_item_notify(move |selection| {
                         if let Some(item) = selection.selected_item() {
                             if let Ok(player_obj) = item.downcast::<PlayerObject>() {
                                 let p = player_obj.player();
                                 let imp = window.imp();
 
-                                // Show panel
-                                imp.details_panel.set_visible(true);
+                                context_service.update_current_player(
+                                    &mut imp.context.borrow_mut(),
+                                    p.clone(),
+                                );
 
-                                // Header
+                                imp.details_panel.set_visible(true);
                                 imp.details_name
                                     .set_label(&format!("{} {}", p.FirstName, p.LastName));
                                 imp.details_id.set_label(&p.PlayerID.to_string());
@@ -646,6 +661,10 @@ impl NutmegWindow {
                         } else {
                             // Hide panel if nothing selected
                             window.imp().details_panel.set_visible(false);
+
+                            // Clear player from context
+                            context_service
+                                .clear_current_player(&mut window.imp().context.borrow_mut());
                         }
                     });
 

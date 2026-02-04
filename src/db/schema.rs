@@ -1,8 +1,9 @@
 // @generated automatically by Diesel CLI. (Cleaned up manually)
 
 diesel::table! {
-    countries (id) {
+    countries (id, download_id) {
         id -> Integer,
+        download_id -> Integer,
         name -> Text,
         currency_id -> Nullable<Integer>,
         country_code -> Nullable<Text>,
@@ -13,8 +14,9 @@ diesel::table! {
 }
 
 diesel::table! {
-    currencies (id) {
+    currencies (id, download_id) {
         id -> Integer,
+        download_id -> Integer,
         name -> Text,
         rate -> Nullable<Double>,
         symbol -> Nullable<Text>,
@@ -49,8 +51,9 @@ diesel::table! {
 }
 
 diesel::table! {
-    leagues (id) {
+    leagues (id, download_id) {
         id -> Integer,
+        download_id -> Integer,
         name -> Text,
         country_id -> Nullable<Integer>,
         short_name -> Nullable<Text>,
@@ -134,8 +137,9 @@ diesel::table! {
 }
 
 diesel::table! {
-    regions (id) {
+    regions (id, download_id) {
         id -> Integer,
+        download_id -> Integer,
         name -> Text,
         country_id -> Integer,
     }
@@ -197,8 +201,9 @@ diesel::table! {
 }
 
 diesel::table! {
-    users (id) {
+    users (id, download_id) {
         id -> Integer,
+        download_id -> Integer,
         name -> Text,
         login_name -> Text,
         supporter_tier -> Text,
@@ -211,18 +216,17 @@ diesel::table! {
     }
 }
 
-diesel::joinable!(countries -> currencies (currency_id));
-diesel::joinable!(leagues -> countries (country_id));
-diesel::joinable!(players -> countries (country_id));
+diesel::joinable!(countries -> downloads (download_id));
+diesel::joinable!(currencies -> downloads (download_id));
+diesel::joinable!(leagues -> downloads (download_id));
 diesel::joinable!(players -> downloads (download_id));
-diesel::joinable!(regions -> countries (country_id));
+diesel::joinable!(regions -> downloads (download_id));
 diesel::joinable!(teams -> downloads (download_id));
-diesel::joinable!(teams -> countries (country_id));
-diesel::joinable!(teams -> cups (cup_id));
-diesel::joinable!(teams -> leagues (league_id));
-diesel::joinable!(teams -> regions (region_id));
-diesel::joinable!(teams -> users (user_id));
+diesel::joinable!(users -> downloads (download_id));
+
+// Retain simple FKs where constraints still essentially exist or for join logic if IDs match
 diesel::joinable!(users -> languages (language_id));
+diesel::joinable!(teams -> cups (cup_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     countries, currencies, cups, downloads, languages, leagues, players, regions, teams, users,

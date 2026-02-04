@@ -39,6 +39,7 @@ struct LanguageEntity {
 #[diesel(table_name = currencies)]
 struct CurrencyEntity {
     id: i32,
+    download_id: i32,
     name: String,
     rate: Option<f64>,
     symbol: Option<String>,
@@ -48,6 +49,7 @@ struct CurrencyEntity {
 #[diesel(table_name = users)]
 struct UserEntity {
     id: i32,
+    download_id: i32,
     name: String,
     login_name: String,
     supporter_tier: String,
@@ -63,6 +65,7 @@ struct UserEntity {
 #[diesel(table_name = countries)]
 struct CountryEntity {
     id: i32,
+    download_id: i32,
     name: String,
     currency_id: Option<i32>,
     country_code: Option<String>,
@@ -103,6 +106,7 @@ fn get_flag_emoji(country_code: Option<&str>) -> Option<String> {
 #[diesel(table_name = regions)]
 struct RegionEntity {
     id: i32,
+    download_id: i32,
     name: String,
     country_id: i32,
 }
@@ -111,6 +115,7 @@ struct RegionEntity {
 #[diesel(table_name = leagues)]
 struct LeagueEntity {
     id: i32,
+    download_id: i32,
     name: String,
     country_id: Option<i32>,
     short_name: Option<String>,
@@ -270,6 +275,7 @@ struct PlayerEntity {
 pub fn save_world_details(
     conn: &mut SqliteConnection,
     world_details: &WorldDetails,
+    download_id: i32,
 ) -> Result<(), Error> {
     for world_league in &world_details.LeagueList.Leagues {
         // Save Language if present
@@ -300,7 +306,7 @@ pub fn save_world_details(
                 Rate: rate,
                 Symbol: Some(currency_name.clone()), // Using name as symbol for now
             };
-            save_currency(conn, &currency)?;
+            save_currency(conn, &currency, download_id)?;
         }
 
         // Construct a standard League object from WorldLeague data
@@ -326,17 +332,17 @@ pub fn save_world_details(
         if let Some(country_id) = world_league.Country.CountryID {
             let country_model = Country {
                 CountryID: country_id,
-                CountryName: world_league.Country.CountryName.clone().unwrap_or_default(),
+                CountryName: world_league.Country.CountryName.clone().unwrap(),
                 Currency: None, // Currency is saved separately above
                 CountryCode: world_league.Country.CountryCode.clone(),
                 DateFormat: world_league.Country.DateFormat.clone(),
                 TimeFormat: world_league.Country.TimeFormat.clone(),
             };
-            save_country(conn, &country_model)?;
+            save_country(conn, &country_model, download_id)?;
         }
 
         // Save the League
-        save_league(conn, &league, world_league.Country.CountryID)?;
+        save_league(conn, &league, world_league.Country.CountryID, download_id)?;
     }
     Ok(())
 }
@@ -454,22 +460,22 @@ fn save_language(conn: &mut SqliteConnection, language: &Language) -> Result<(),
 
 // Persists a Currency entity.
 // Rate and Symbol are optional and updated if the currency ID exists.
-fn save_currency(conn: &mut SqliteConnection, currency: &Currency) -> Result<(), Error> {
+fn save_currency(
+    conn: &mut SqliteConnection,
+    currency: &Currency,
+    download_id: i32,
+) -> Result<(), Error> {
     let entity = CurrencyEntity {
         id: currency.CurrencyID as i32,
+        download_id,
         name: currency.CurrencyName.clone(),
         rate: currency.Rate,
         symbol: currency.Symbol.clone(),
     };
     diesel::insert_into(currencies::table)
         .values(&entity)
-        .on_conflict(currencies::id)
-        .do_update()
-        .set((
-            currencies::name.eq(&entity.name),
-            currencies::rate.eq(&entity.rate),
-            currencies::symbol.eq(&entity.symbol),
-        ))
+        .on_conflict((currencies::id, currencies::download_id))
+        .do_nothing()
         .execute(conn)
         .map_err(|e| Error::Io(format!("Database error saving currency: {}", e)))?;
     Ok(())
@@ -477,7 +483,7 @@ fn save_currency(conn: &mut SqliteConnection, currency: &Currency) -> Result<(),
 
 // Persists a User and their associated Language.
 // This function acts as an aggregate root saver for User data.
-fn save_user(conn: &mut SqliteConnection, user: &User) -> Result<(), Error> {
+fn save_user(conn: &mut SqliteConnection, user: &User, download_id: i32) -> Result<(), Error> {
     // Save Language first to ensure the Foreign Key in 'users' is valid.
     save_language(conn, &user.Language)?;
 
@@ -485,6 +491,7 @@ fn save_user(conn: &mut SqliteConnection, user: &User) -> Result<(), Error> {
 
     let entity = UserEntity {
         id: user.UserID as i32,
+        download_id,
         name: user.Name.clone(),
         login_name: user.Loginname.clone(),
         supporter_tier: supporter_tier_str,
@@ -498,32 +505,28 @@ fn save_user(conn: &mut SqliteConnection, user: &User) -> Result<(), Error> {
 
     diesel::insert_into(users::table)
         .values(&entity)
-        .on_conflict(users::id)
-        .do_update()
-        .set((
-            users::name.eq(&entity.name),
-            users::login_name.eq(&entity.login_name),
-            users::supporter_tier.eq(&entity.supporter_tier),
-            users::last_login_date.eq(&entity.last_login_date),
-            users::has_manager_license.eq(&entity.has_manager_license),
-            users::language_id.eq(&entity.language_id),
-            users::language_name.eq(&entity.language_name),
-        ))
+        .on_conflict((users::id, users::download_id))
+        .do_nothing()
         .execute(conn)
         .map_err(|e| Error::Io(format!("Database error saving user: {}", e)))?;
     Ok(())
 }
 
 // Persists a Country and its optional Currency.
-fn save_country(conn: &mut SqliteConnection, country: &Country) -> Result<(), Error> {
+fn save_country(
+    conn: &mut SqliteConnection,
+    country: &Country,
+    download_id: i32,
+) -> Result<(), Error> {
     if let Some(c) = &country.Currency {
-        save_currency(conn, c)?;
+        save_currency(conn, c, download_id)?;
     }
 
     let flag = get_flag_emoji(country.CountryCode.as_deref());
 
     let entity = CountryEntity {
         id: country.CountryID as i32,
+        download_id,
         name: country.CountryName.clone(),
         currency_id: country.Currency.as_ref().map(|c| c.CurrencyID as i32),
         country_code: country.CountryCode.clone(),
@@ -533,15 +536,8 @@ fn save_country(conn: &mut SqliteConnection, country: &Country) -> Result<(), Er
     };
     diesel::insert_into(countries::table)
         .values(&entity)
-        .on_conflict(countries::id)
-        .do_update()
-        .set((
-            countries::name.eq(&entity.name),
-            countries::currency_id.eq(&entity.currency_id),
-            countries::country_code.eq(&entity.country_code),
-            countries::date_format.eq(&entity.date_format),
-            countries::time_format.eq(&entity.time_format),
-        ))
+        .on_conflict((countries::id, countries::download_id))
+        .do_nothing()
         .execute(conn)
         .map_err(|e| Error::Io(format!("Database error saving country: {}", e)))?;
     Ok(())
@@ -552,21 +548,19 @@ fn save_region(
     conn: &mut SqliteConnection,
     region: &Region,
     country_id_opt: Option<u32>,
+    download_id: i32,
 ) -> Result<(), Error> {
     if let Some(c_id) = country_id_opt {
         let entity = RegionEntity {
             id: region.RegionID as i32,
+            download_id,
             name: region.RegionName.clone(),
             country_id: c_id as i32,
         };
         diesel::insert_into(regions::table)
             .values(&entity)
-            .on_conflict(regions::id)
-            .do_update()
-            .set((
-                regions::name.eq(&entity.name),
-                regions::country_id.eq(&entity.country_id),
-            ))
+            .on_conflict((regions::id, regions::download_id))
+            .do_nothing()
             .execute(conn)
             .map_err(|e| Error::Io(format!("Database error saving region: {}", e)))?;
     }
@@ -579,9 +573,11 @@ fn save_league(
     conn: &mut SqliteConnection,
     league: &League,
     country_id_opt: Option<u32>,
+    download_id: i32,
 ) -> Result<(), Error> {
     let entity = LeagueEntity {
         id: league.LeagueID as i32,
+        download_id,
         name: league.LeagueName.clone(),
         country_id: country_id_opt.map(|id| id as i32),
         short_name: league.ShortName.clone(),
@@ -600,25 +596,8 @@ fn save_league(
     };
     diesel::insert_into(leagues::table)
         .values(&entity)
-        .on_conflict(leagues::id)
-        .do_update()
-        .set((
-            leagues::name.eq(&entity.name),
-            leagues::country_id.eq(&entity.country_id),
-            leagues::short_name.eq(&entity.short_name),
-            leagues::continent.eq(&entity.continent),
-            leagues::season.eq(&entity.season),
-            leagues::season_offset.eq(&entity.season_offset),
-            leagues::match_round.eq(&entity.match_round),
-            leagues::zone_name.eq(&entity.zone_name),
-            leagues::english_name.eq(&entity.english_name),
-            leagues::language_id.eq(&entity.language_id),
-            leagues::national_team_id.eq(&entity.national_team_id),
-            leagues::u20_team_id.eq(&entity.u20_team_id),
-            leagues::active_teams.eq(&entity.active_teams),
-            leagues::active_users.eq(&entity.active_users),
-            leagues::number_of_levels.eq(&entity.number_of_levels),
-        ))
+        .on_conflict((leagues::id, leagues::download_id))
+        .do_nothing()
         .execute(conn)
         .map_err(|e| Error::Io(format!("Database error saving league: {}", e)))?;
     Ok(())
@@ -660,20 +639,20 @@ pub fn save_team(
     user: &User,
     download_id: i32,
 ) -> Result<(), Error> {
-    save_user(conn, user)?;
+    save_user(conn, user, download_id)?;
 
     if let Some(c) = &team.Country {
-        save_country(conn, c)?;
+        save_country(conn, c, download_id)?;
     }
 
     let country_id = team.Country.as_ref().map(|c| c.CountryID);
 
     if let Some(r) = &team.Region {
-        save_region(conn, r, country_id)?;
+        save_region(conn, r, country_id, download_id)?;
     }
 
     if let Some(l) = &team.League {
-        save_league(conn, l, country_id)?;
+        save_league(conn, l, country_id, download_id)?;
     }
 
     if let Some(c) = &team.Cup {
@@ -801,8 +780,144 @@ pub fn get_teams_summary(
 
     Ok(results
         .into_iter()
-        .map(|(id, name, logo_url)| (id as u32, name, logo_url))
+        .map(|(id, name, logo)| (id as u32, name, logo))
         .collect())
+}
+
+pub fn get_latest_country(
+    conn: &mut SqliteConnection,
+    country_id_val: i32,
+) -> Result<Option<crate::chpp::model::Country>, Error> {
+    use crate::db::schema::countries::dsl::*;
+
+    let entity: Option<CountryEntity> = countries
+        .filter(id.eq(country_id_val))
+        .order(download_id.desc())
+        .first::<CountryEntity>(conn)
+        .optional()
+        .map_err(|e| Error::Db(format!("Failed to get country: {}", e)))?;
+
+    if let Some(e) = entity {
+        // Fetch currency if available
+        let currency = if let Some(c_id) = e.currency_id {
+            get_latest_currency(conn, c_id)?
+        } else {
+            None
+        };
+
+        Ok(Some(crate::chpp::model::Country {
+            CountryID: e.id as u32,
+            CountryName: e.name,
+            Currency: currency,
+            CountryCode: e.country_code,
+            DateFormat: e.date_format,
+            TimeFormat: e.time_format,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn get_latest_currency(
+    conn: &mut SqliteConnection,
+    currency_id_val: i32,
+) -> Result<Option<crate::chpp::model::Currency>, Error> {
+    use crate::db::schema::currencies::dsl::*;
+
+    let entity: Option<CurrencyEntity> = currencies
+        .filter(id.eq(currency_id_val))
+        .order(download_id.desc())
+        .first::<CurrencyEntity>(conn)
+        .optional()
+        .map_err(|e| Error::Db(format!("Failed to get currency: {}", e)))?;
+
+    Ok(entity.map(|e| crate::chpp::model::Currency {
+        CurrencyID: e.id as u32,
+        CurrencyName: e.name,
+        Rate: e.rate,
+        Symbol: e.symbol,
+    }))
+}
+
+pub fn get_latest_region(
+    conn: &mut SqliteConnection,
+    region_id_val: i32,
+) -> Result<Option<crate::chpp::model::Region>, Error> {
+    use crate::db::schema::regions::dsl::*;
+
+    let entity: Option<RegionEntity> = regions
+        .filter(id.eq(region_id_val))
+        .order(download_id.desc())
+        .first::<RegionEntity>(conn)
+        .optional()
+        .map_err(|e| Error::Db(format!("Failed to get region: {}", e)))?;
+
+    Ok(entity.map(|e| crate::chpp::model::Region {
+        RegionID: e.id as u32,
+        RegionName: e.name,
+    }))
+}
+
+pub fn get_latest_user(
+    conn: &mut SqliteConnection,
+    user_id_val: i32,
+) -> Result<Option<crate::chpp::model::User>, Error> {
+    use crate::db::schema::users::dsl::*;
+
+    let entity: Option<UserEntity> = users
+        .filter(id.eq(user_id_val))
+        .order(download_id.desc())
+        .first::<UserEntity>(conn)
+        .optional()
+        .map_err(|e| Error::Db(format!("Failed to get user: {}", e)))?;
+
+    if let Some(e) = entity {
+        // We need language for User model
+        // For now constructing a minimal Language object or fetching if needed.
+        // Since we didn't version languages, we can just use stored name/id
+        let lang = Language {
+            LanguageID: e.language_id.unwrap_or(0) as u32,
+            LanguageName: e.language_name.unwrap_or_default(),
+        };
+
+        let tier = match e.supporter_tier.as_str() {
+            "Diamond" => SupporterTier::Diamond,
+            "Platinum" => SupporterTier::Platinum,
+            "Gold" => SupporterTier::Gold,
+            "Silver" => SupporterTier::Silver,
+            _ => SupporterTier::None,
+        };
+
+        Ok(Some(crate::chpp::model::User {
+            UserID: e.id as u32,
+            Name: e.name,
+            Loginname: e.login_name,
+            SupporterTier: tier,
+            SignupDate: e.signup_date.unwrap_or_default(),
+            ActivationDate: e.activation_date.unwrap_or_default(),
+            LastLoginDate: e.last_login_date.unwrap_or_default(),
+            HasManagerLicense: e.has_manager_license.unwrap_or(false),
+            Language: lang,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn get_user_id_for_team(
+    conn: &mut SqliteConnection,
+    team_id_val: i32,
+) -> Result<Option<i32>, Error> {
+    use crate::db::schema::teams::dsl::*;
+
+    teams
+        .filter(id.eq(team_id_val))
+        .order(download_id.desc())
+        .select(user_id)
+        .first::<Option<i32>>(conn)
+        .optional()
+        .map_err(|e| Error::Db(format!("Failed to get user id for team: {}", e)))
+        .map(|res| res.flatten())
 }
 
 pub fn get_players_for_team(
@@ -884,8 +999,8 @@ pub fn get_players_for_team(
                     MatchId: entity.last_match_id.unwrap_or(0) as u32,
                     PositionCode: entity.last_match_position_code.unwrap_or(0) as u32,
                     PlayedMinutes: entity.last_match_played_minutes.unwrap_or(0) as u32,
-                    Rating: entity.last_match_rating.map(|v| v as u32),
-                    RatingEndOfMatch: entity.last_match_rating_end_of_match.map(|v| v as u32),
+                    Rating: entity.last_match_rating.map(|v| v as f64),
+                    RatingEndOfMatch: entity.last_match_rating_end_of_match.map(|v| v as f64),
                 })
             } else {
                 None
@@ -1160,5 +1275,63 @@ mod tests {
         assert_eq!(Some("🇬🇱".to_string()), get_flag_emoji(Some("GL")));
         // The way the flag displays below (for invalid pair) depends on the system (and probably the font?)
         assert_eq!(Some("🇧🇨".to_string()), get_flag_emoji(Some("BC")));
+    }
+
+    #[test]
+    fn test_get_latest_logic() {
+        let mut conn = establish_connection();
+
+        // Download 1
+        let d1 = DownloadEntity {
+            id: 1,
+            timestamp: "2023-01-01T00:00:00Z".to_string(),
+            status: "completed".to_string(),
+        };
+        diesel::insert_into(crate::db::schema::downloads::table)
+            .values(&d1)
+            .execute(&mut conn)
+            .expect("Failed to create download 1");
+
+        // Download 2
+        let d2 = DownloadEntity {
+            id: 2,
+            timestamp: "2023-01-02T00:00:00Z".to_string(),
+            status: "completed".to_string(),
+        };
+        diesel::insert_into(crate::db::schema::downloads::table)
+            .values(&d2)
+            .execute(&mut conn)
+            .expect("Failed to create download 2");
+
+        let user = User {
+            UserID: 1,
+            Name: "User".to_string(),
+            Loginname: "user".to_string(),
+            SupporterTier: SupporterTier::None,
+            SignupDate: "".to_string(),
+            ActivationDate: "".to_string(),
+            LastLoginDate: "".to_string(),
+            HasManagerLicense: false,
+            Language: Language {
+                LanguageID: 1,
+                LanguageName: "en".to_string(),
+            },
+        };
+
+        // Save Team version 1
+        let mut team_v1 = Team::default();
+        team_v1.TeamID = "99".to_string();
+        team_v1.TeamName = "Team Version 1".to_string();
+        save_team(&mut conn, &team_v1, &user, 1).expect("Saved v1");
+
+        // Save Team version 2
+        let mut team_v2 = Team::default();
+        team_v2.TeamID = "99".to_string();
+        team_v2.TeamName = "Team Version 2".to_string();
+        save_team(&mut conn, &team_v2, &user, 2).expect("Saved v2");
+
+        // Get latest should be v2
+        let fetched = get_team(&mut conn, 99).expect("Fetch").unwrap();
+        assert_eq!(fetched.TeamName, "Team Version 2");
     }
 }
