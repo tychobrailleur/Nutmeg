@@ -163,6 +163,12 @@ mod tests {
             Symbol: Some("$".to_string()),
         };
 
+        // Save reference data first (simulating world_details fetch)
+        use crate::db::teams::{save_country, save_currency, save_language};
+
+        save_language(&mut conn, &user.Language).expect("Failed to save language");
+        save_currency(&mut conn, &currency, 1).expect("Failed to save currency");
+
         let country = Country {
             CountryID: 5,
             CountryName: "USA".to_string(),
@@ -172,10 +178,12 @@ mod tests {
             TimeFormat: None,
         };
 
+        save_country(&mut conn, &country, 1).expect("Failed to save country");
+
         let mut team = Team::default();
         team.TeamID = "100".to_string();
         team.TeamName = "Test Team".to_string();
-        team.Country = Some(country);
+        team.Country = Some(country.clone());
 
         save_team(&mut conn, &team, &user, 1).expect("Saved team");
 

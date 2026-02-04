@@ -456,7 +456,7 @@ pub fn save_players(
 // Persists a Language entity.
 // We use ON CONFLICT DO UPDATE to handle cases where the language already exists
 // but might have a different name (though unlikely for IDs).
-fn save_language(conn: &mut SqliteConnection, language: &Language) -> Result<(), Error> {
+pub fn save_language(conn: &mut SqliteConnection, language: &Language) -> Result<(), Error> {
     let entity = LanguageEntity {
         id: language.LanguageID as i32,
         name: language.LanguageName.clone(),
@@ -473,7 +473,7 @@ fn save_language(conn: &mut SqliteConnection, language: &Language) -> Result<(),
 
 // Persists a Currency entity.
 // Rate and Symbol are optional and updated if the currency ID exists.
-fn save_currency(
+pub fn save_currency(
     conn: &mut SqliteConnection,
     currency: &Currency,
     download_id: i32,
@@ -526,7 +526,7 @@ fn save_user(conn: &mut SqliteConnection, user: &User, download_id: i32) -> Resu
 }
 
 // Persists a Country and its optional Currency.
-fn save_country(
+pub fn save_country(
     conn: &mut SqliteConnection,
     country: &Country,
     download_id: i32,
@@ -643,9 +643,7 @@ fn save_cup(conn: &mut SqliteConnection, cup: &Cup) -> Result<(), Error> {
 }
 
 /// Orchestrates the saving of a Team and all its related reference data.
-/// This acts as the main entry point for persisting team details, ensuring
-/// that dependencies (User, Country, Region, League, Cup) are saved first
-/// to satisfy Foreign Key constraints.
+/// This acts as the main entry point for persisting team details.
 pub fn save_team(
     conn: &mut SqliteConnection,
     team: &Team,
@@ -654,19 +652,19 @@ pub fn save_team(
 ) -> Result<(), Error> {
     save_user(conn, user, download_id)?;
 
-    if let Some(c) = &team.Country {
-        save_country(conn, c, download_id)?;
-    }
+    // if let Some(c) = &team.Country {
+    //     save_country(conn, c, download_id)?;
+    // }
 
-    let country_id = team.Country.as_ref().map(|c| c.CountryID);
+    // let country_id = team.Country.as_ref().map(|c| c.CountryID);
 
-    if let Some(r) = &team.Region {
-        save_region(conn, r, country_id, download_id)?;
-    }
+    // if let Some(r) = &team.Region {
+    //     save_region(conn, r, country_id, download_id)?;
+    // }
 
-    if let Some(l) = &team.League {
-        save_league(conn, l, country_id, download_id)?;
-    }
+    // if let Some(l) = &team.League {
+    //     save_league(conn, l, country_id, download_id)?;
+    // }
 
     if let Some(c) = &team.Cup {
         save_cup(conn, c)?;
@@ -1226,11 +1224,25 @@ mod tests {
         team.Country = Some(Country {
             CountryID: 100,
             CountryName: "Sweden".to_string(),
-            Currency: Some(currency),
+            Currency: Some(currency.clone()),
             CountryCode: None,
             DateFormat: None,
             TimeFormat: None,
         });
+
+        // Save reference data first (simulating world_details fetch)
+        save_language(
+            &mut conn,
+            &Language {
+                LanguageID: 2,
+                LanguageName: "Swedish".to_string(),
+            },
+        )
+        .expect("Failed to save language");
+
+        save_currency(&mut conn, &currency, 0).expect("Failed to save currency");
+
+        save_country(&mut conn, team.Country.as_ref().unwrap(), 0).expect("Failed to save country");
 
         save_team(&mut conn, &team, &user, 0).expect("Failed to save team");
 

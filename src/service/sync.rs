@@ -656,8 +656,11 @@ impl SyncService {
         on_progress(0.05, "Creating download record...");
         let download_id = Self::create_download_record(db_manager.clone()).await?;
 
-        on_progress(0.1, "Fetching user data...");
-        let team_id = Self::fetch_and_save_user_data(
+        on_progress(
+            0.1,
+            "Fetching world details (countries, leagues, currencies)...",
+        );
+        Self::fetch_and_save_world_details(
             db_manager.clone(),
             client.clone(),
             &get_auth,
@@ -665,8 +668,8 @@ impl SyncService {
         )
         .await?;
 
-        on_progress(0.3, "Fetching world details (leagues, currency)...");
-        Self::fetch_and_save_world_details(
+        on_progress(0.5, "Fetching user data...");
+        let team_id = Self::fetch_and_save_user_data(
             db_manager.clone(),
             client.clone(),
             &get_auth,
