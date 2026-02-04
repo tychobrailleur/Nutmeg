@@ -119,8 +119,9 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_create_and_retrieve_entry() {
-        let db = DbManager::new();
+    fn test_create_download_entry() {
+        let db = DbManager::from_url(":memory:");
+        db.run_migrations().expect("Failed to run migrations");
         let mut conn = db.get_connection().expect("Failed to get connection");
 
         // Create a download first
@@ -165,7 +166,8 @@ mod tests {
     #[test]
     #[serial]
     fn test_update_entry_status() {
-        let db = DbManager::new();
+        let db = DbManager::from_url(":memory:");
+        db.run_migrations().expect("Failed to run migrations");
         let mut conn = db.get_connection().expect("Failed to get connection");
 
         // Create download and entry
