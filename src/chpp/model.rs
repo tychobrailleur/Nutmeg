@@ -385,9 +385,6 @@ pub struct Player {
     pub LastMatch: Option<LastMatch>,
 }
 
-
-
-
 #[allow(non_snake_case)]
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct MotherClub {
