@@ -119,6 +119,17 @@ diesel::table! {
         last_match_played_minutes -> Nullable<Integer>,
         last_match_rating -> Nullable<Integer>,
         last_match_rating_end_of_match -> Nullable<Integer>,
+        arrival_date -> Nullable<Text>,
+        player_category_id -> Nullable<Integer>,
+        mother_club_team_id -> Nullable<Integer>,
+        mother_club_team_name -> Nullable<Text>,
+        native_country_id -> Nullable<Integer>,
+        native_league_id -> Nullable<Integer>,
+        native_league_name -> Nullable<Text>,
+        matches_current_team -> Nullable<Integer>,
+        goals_current_team -> Nullable<Integer>,
+        assists_current_team -> Nullable<Integer>,
+        career_assists -> Nullable<Integer>,
     }
 }
 

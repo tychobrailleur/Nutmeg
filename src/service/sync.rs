@@ -222,6 +222,37 @@ fn merge_player_data(
                 d.LastMatch = basic.LastMatch.clone();
             }
 
+            if d.ArrivalDate.is_none() && basic.ArrivalDate.is_some() {
+                d.ArrivalDate = basic.ArrivalDate.clone();
+            }
+            if d.PlayerCategoryId.is_none() && basic.PlayerCategoryId.is_some() {
+                d.PlayerCategoryId = basic.PlayerCategoryId;
+            }
+            if d.MotherClub.is_none() && basic.MotherClub.is_some() {
+                d.MotherClub = basic.MotherClub.clone();
+            }
+            if d.NativeCountryID.is_none() && basic.NativeCountryID.is_some() {
+                d.NativeCountryID = basic.NativeCountryID;
+            }
+            if d.NativeLeagueID.is_none() && basic.NativeLeagueID.is_some() {
+                d.NativeLeagueID = basic.NativeLeagueID;
+            }
+            if d.NativeLeagueName.is_none() && basic.NativeLeagueName.is_some() {
+                d.NativeLeagueName = basic.NativeLeagueName.clone();
+            }
+            if d.MatchesCurrentTeam.is_none() && basic.MatchesCurrentTeam.is_some() {
+                d.MatchesCurrentTeam = basic.MatchesCurrentTeam;
+            }
+            if d.GoalsCurrentTeam.is_none() && basic.GoalsCurrentTeam.is_some() {
+                d.GoalsCurrentTeam = basic.GoalsCurrentTeam;
+            }
+            if d.AssistsCurrentTeam.is_none() && basic.AssistsCurrentTeam.is_some() {
+                d.AssistsCurrentTeam = basic.AssistsCurrentTeam;
+            }
+            if d.CareerAssists.is_none() && basic.CareerAssists.is_some() {
+                d.CareerAssists = basic.CareerAssists;
+            }
+
             d
         }
         None => {

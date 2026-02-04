@@ -166,6 +166,15 @@ mod imp {
 
             // Setup Signals
             obj.setup_signals();
+
+            // Load CSS
+            let provider = gtk::CssProvider::new();
+            provider.load_from_data(include_str!("style.css"));
+            gtk::style_context_add_provider_for_display(
+                &gdk::Display::default().unwrap(),
+                &provider,
+                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
         }
     }
     impl WidgetImpl for HoctaneWindow {}
@@ -195,7 +204,9 @@ impl HoctaneWindow {
             factory.connect_setup(move |_, item| {
                 let item = item.downcast_ref::<gtk::ListItem>().unwrap();
                 let label = gtk::Label::new(None);
-                label.set_halign(gtk::Align::Start);
+                label.set_halign(gtk::Align::Fill);
+                label.set_hexpand(true);
+                label.set_xalign(0.0);
                 item.set_child(Some(&label));
             });
         };
@@ -206,6 +217,13 @@ impl HoctaneWindow {
             let item = item.downcast_ref::<gtk::ListItem>().unwrap();
             let player_obj = item.item().and_downcast::<PlayerObject>().unwrap();
             let label = item.child().and_downcast::<gtk::Label>().unwrap();
+            
+            if player_obj.player().MotherClubBonus {
+                label.add_css_class("mother-club");
+            } else {
+                label.remove_css_class("mother-club");
+            }
+            
             let flag_str = player_obj.player().Flag.unwrap_or_else(|| "🏳️".to_string());
             label.set_label(&flag_str);
         });
@@ -216,6 +234,13 @@ impl HoctaneWindow {
             let item = item.downcast_ref::<gtk::ListItem>().unwrap();
             let player_obj = item.item().and_downcast::<PlayerObject>().unwrap();
             let label = item.child().and_downcast::<gtk::Label>().unwrap();
+
+            if player_obj.player().MotherClubBonus {
+                label.add_css_class("mother-club");
+            } else {
+                label.remove_css_class("mother-club");
+            }
+
             let num_str = player_obj
                 .player()
                 .PlayerNumber
@@ -230,6 +255,12 @@ impl HoctaneWindow {
             let item = item.downcast_ref::<gtk::ListItem>().unwrap();
             let player_obj = item.item().and_downcast::<PlayerObject>().unwrap();
             let label = item.child().and_downcast::<gtk::Label>().unwrap();
+
+            if player_obj.player().MotherClubBonus {
+                label.add_css_class("mother-club");
+            } else {
+                label.remove_css_class("mother-club");
+            }
             let p = player_obj.player();
             label.set_label(&format!("{} {}", p.FirstName, p.LastName));
         });
@@ -240,6 +271,13 @@ impl HoctaneWindow {
             let item = item.downcast_ref::<gtk::ListItem>().unwrap();
             let player_obj = item.item().and_downcast::<PlayerObject>().unwrap();
             let label = item.child().and_downcast::<gtk::Label>().unwrap();
+
+            if player_obj.player().MotherClubBonus {
+                label.add_css_class("mother-club");
+            } else {
+                label.remove_css_class("mother-club");
+            }
+
             let p = player_obj.player();
             label.set_label(&format!("{}.{}", p.Age, p.AgeDays.unwrap_or(0)));
         });
@@ -250,6 +288,13 @@ impl HoctaneWindow {
             let item = item.downcast_ref::<gtk::ListItem>().unwrap();
             let player_obj = item.item().and_downcast::<PlayerObject>().unwrap();
             let label = item.child().and_downcast::<gtk::Label>().unwrap();
+
+            if player_obj.player().MotherClubBonus {
+                label.add_css_class("mother-club");
+            } else {
+                label.remove_css_class("mother-club");
+            }
+
             label.set_label(&player_obj.player().PlayerForm.to_string());
         });
 
@@ -259,6 +304,13 @@ impl HoctaneWindow {
             let item = item.downcast_ref::<gtk::ListItem>().unwrap();
             let player_obj = item.item().and_downcast::<PlayerObject>().unwrap();
             let label = item.child().and_downcast::<gtk::Label>().unwrap();
+            
+            if player_obj.player().MotherClubBonus {
+                label.add_css_class("mother-club");
+            } else {
+                label.remove_css_class("mother-club");
+            }
+
             label.set_label(&player_obj.player().TSI.to_string());
         });
     }
@@ -290,9 +342,9 @@ impl HoctaneWindow {
                         hbox.set_margin_bottom(4);
 
                         // Logo placeholder (32x32)
-                        let logo = gtk::Picture::new();
-                        logo.set_size_request(32, 32);
-                        logo.set_can_shrink(false);
+
+                        let logo = gtk::Image::new();
+                        logo.set_pixel_size(32);
                         hbox.append(&logo);
 
                         // Team name + ID label
@@ -312,7 +364,7 @@ impl HoctaneWindow {
                         let logo = hbox
                             .first_child()
                             .unwrap()
-                            .downcast::<gtk::Picture>()
+                            .downcast::<gtk::Image>()
                             .unwrap();
                         let label = logo
                             .next_sibling()

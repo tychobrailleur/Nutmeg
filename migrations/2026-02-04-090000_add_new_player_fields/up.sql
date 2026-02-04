@@ -1,0 +1,11 @@
+ALTER TABLE players ADD COLUMN arrival_date TEXT;
+ALTER TABLE players ADD COLUMN player_category_id INTEGER;
+ALTER TABLE players ADD COLUMN mother_club_team_id INTEGER;
+ALTER TABLE players ADD COLUMN mother_club_team_name TEXT;
+ALTER TABLE players ADD COLUMN native_country_id INTEGER;
+ALTER TABLE players ADD COLUMN native_league_id INTEGER;
+ALTER TABLE players ADD COLUMN native_league_name TEXT;
+ALTER TABLE players ADD COLUMN matches_current_team INTEGER;
+ALTER TABLE players ADD COLUMN goals_current_team INTEGER;
+ALTER TABLE players ADD COLUMN assists_current_team INTEGER;
+ALTER TABLE players ADD COLUMN career_assists INTEGER;

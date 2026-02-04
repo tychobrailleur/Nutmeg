@@ -163,6 +163,7 @@ pub async fn players_request(
         params.push(("teamID", tid_str.as_str()));
     }
     params.push(("actionType", "view"));
+    params.push(("includeMatchInfo", "true"));
     chpp_request::<PlayersData>("players", "2.4", Some(&params), data, key).await
 }
 

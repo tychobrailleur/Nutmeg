@@ -304,6 +304,7 @@ pub struct PlayerSkills {
     pub SetPiecesSkill: u32,
 }
 
+// TODO Check whether this can be Match instead of LastMatch...
 #[allow(non_snake_case)]
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct LastMatch {
@@ -317,6 +318,7 @@ pub struct LastMatch {
 
 #[allow(non_snake_case)]
 #[derive(Deserialize, Serialize, Debug, Clone)]
+// Player maps to Player in players and playerdetails
 pub struct Player {
     pub PlayerID: u32,
     pub FirstName: String,
@@ -351,6 +353,8 @@ pub struct Player {
     pub FriendliesGoals: Option<u32>,
     pub CareerGoals: Option<u32>,
     pub CareerHattricks: Option<u32>,
+
+    pub CareerAssists: Option<u32>,
     pub Speciality: Option<u32>,
     #[serde(
         deserialize_with = "deserialize_bool",
@@ -367,7 +371,28 @@ pub struct Player {
     #[serde(skip)]
     pub Flag: Option<String>,
     pub PlayerSkills: Option<PlayerSkills>, // Only visible for own team or if authorized
+
+    pub ArrivalDate: Option<String>,
+    pub PlayerCategoryId: Option<u32>, // 1 = keeper, 2 wingbacl, 3 central defender, 4 winger,
+    // 5 inner midfield, 6 forward, 7 sub, 8 reserve, 9 extra 1, 10 extra 2, 0 no category
+    pub MotherClub: Option<MotherClub>,
+    pub NativeCountryID: Option<u32>,
+    pub NativeLeagueID: Option<u32>,
+    pub NativeLeagueName: Option<String>,
+    pub MatchesCurrentTeam: Option<u32>,
+    pub GoalsCurrentTeam: Option<u32>,
+    pub AssistsCurrentTeam: Option<u32>,
     pub LastMatch: Option<LastMatch>,
+}
+
+
+
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct MotherClub {
+    pub TeamID: u32,
+    pub TeamName: String,
 }
 
 #[allow(non_snake_case)]

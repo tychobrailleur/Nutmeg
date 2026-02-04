@@ -254,6 +254,17 @@ struct PlayerEntity {
     last_match_played_minutes: Option<i32>,
     last_match_rating: Option<i32>,
     last_match_rating_end_of_match: Option<i32>,
+    arrival_date: Option<String>,
+    player_category_id: Option<i32>,
+    mother_club_team_id: Option<i32>,
+    mother_club_team_name: Option<String>,
+    native_country_id: Option<i32>,
+    native_league_id: Option<i32>,
+    native_league_name: Option<String>,
+    matches_current_team: Option<i32>,
+    goals_current_team: Option<i32>,
+    assists_current_team: Option<i32>,
+    career_assists: Option<i32>,
 }
 
 pub fn save_world_details(
@@ -400,6 +411,17 @@ pub fn save_players(
                 .LastMatch
                 .as_ref()
                 .and_then(|m| m.RatingEndOfMatch.map(|v| v as i32)),
+            arrival_date: player.ArrivalDate.clone(),
+            player_category_id: player.PlayerCategoryId.map(|v| v as i32),
+            mother_club_team_id: player.MotherClub.as_ref().map(|m| m.TeamID as i32),
+            mother_club_team_name: player.MotherClub.as_ref().map(|m| m.TeamName.clone()),
+            native_country_id: player.NativeCountryID.map(|v| v as i32),
+            native_league_id: player.NativeLeagueID.map(|v| v as i32),
+            native_league_name: player.NativeLeagueName.clone(),
+            matches_current_team: player.MatchesCurrentTeam.map(|v| v as i32),
+            goals_current_team: player.GoalsCurrentTeam.map(|v| v as i32),
+            assists_current_team: player.AssistsCurrentTeam.map(|v| v as i32),
+            career_assists: player.CareerAssists.map(|v| v as i32),
         };
 
         diesel::insert_into(players::table)
@@ -868,6 +890,25 @@ pub fn get_players_for_team(
             } else {
                 None
             },
+            ArrivalDate: entity.arrival_date,
+            PlayerCategoryId: entity.player_category_id.map(|v| v as u32),
+            MotherClub: if let (Some(id), Some(name)) =
+                (entity.mother_club_team_id, entity.mother_club_team_name)
+            {
+                Some(crate::chpp::model::MotherClub {
+                    TeamID: id as u32,
+                    TeamName: name,
+                })
+            } else {
+                None
+            },
+            NativeCountryID: entity.native_country_id.map(|v| v as u32),
+            NativeLeagueID: entity.native_league_id.map(|v| v as u32),
+            NativeLeagueName: entity.native_league_name,
+            MatchesCurrentTeam: entity.matches_current_team.map(|v| v as u32),
+            GoalsCurrentTeam: entity.goals_current_team.map(|v| v as u32),
+            AssistsCurrentTeam: entity.assists_current_team.map(|v| v as u32),
+            CareerAssists: entity.career_assists.map(|v| v as u32),
         });
     }
 
