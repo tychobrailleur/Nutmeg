@@ -281,7 +281,7 @@ pub fn save_world_details(
     for world_league in &world_details.LeagueList.Leagues {
         // Save Language if present
         if let (Some(lang_id), Some(lang_name)) =
-            (world_league.LanguageID, &world_league.LanguageName)
+            (world_league.LanguageId, &world_league.LanguageName)
         {
             let language = Language {
                 LanguageID: lang_id,
@@ -300,9 +300,8 @@ pub fn save_world_details(
         ) {
             // Parse rate (handle comma as decimal separator)
             let rate = currency_rate_str.replace(',', ".").parse::<f64>().ok();
-
             let currency = Currency {
-                CurrencyID: country_id, // Using country ID as currency ID
+                CurrencyID: country_id, // Using country ID as currency ID (TODO is it ok?)
                 CurrencyName: currency_name.clone(),
                 Rate: rate,
                 Symbol: Some(currency_name.clone()), // Using name as symbol for now
@@ -310,6 +309,8 @@ pub fn save_world_details(
             save_currency(conn, &currency, download_id)?;
         }
 
+        // TODO Investigate if we need both WorldLeague and League structs,
+        // or WorldCountry and Country structs, etc.
         // Construct a standard League object from WorldLeague data
         let league = League {
             LeagueID: world_league.LeagueID,
@@ -321,7 +322,7 @@ pub fn save_world_details(
             MatchRound: world_league.MatchRound,
             ZoneName: world_league.ZoneName.clone(),
             EnglishName: world_league.EnglishName.clone(),
-            LanguageID: world_league.LanguageID,
+            LanguageID: world_league.LanguageId,
             NationalTeamId: world_league.NationalTeamId,
             U20TeamId: world_league.U20TeamId,
             ActiveTeams: world_league.ActiveTeams,
@@ -331,10 +332,20 @@ pub fn save_world_details(
 
         // Save Country
         if let Some(country_id) = world_league.Country.CountryID {
+            let currency = match &world_league.Country.CurrencyName {
+                Some(_) => Some(Currency {
+                    CurrencyID: country_id, // See above
+                    // placeholders, just need ID
+                    CurrencyName: "".to_string(),
+                    Rate: None,
+                    Symbol: None,
+                }),
+                None => None,
+            };
             let country_model = Country {
                 CountryID: country_id,
                 CountryName: world_league.Country.CountryName.clone().unwrap(),
-                Currency: None, // Currency is saved separately above
+                Currency: currency,
                 CountryCode: world_league.Country.CountryCode.clone(),
                 DateFormat: world_league.Country.DateFormat.clone(),
                 TimeFormat: world_league.Country.TimeFormat.clone(),

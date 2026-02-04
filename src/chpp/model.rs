@@ -21,9 +21,6 @@
 use serde::{Deserialize, Serialize};
 //use uuid::Uuid;
 
-// Team Details:
-// https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=teamdetails
-
 // Utility function for deserialisation
 fn deserialize_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
@@ -399,6 +396,9 @@ pub struct PlayerList {
     pub players: Vec<Player>,
 }
 
+// Team Details:
+// https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=teamdetails
+
 #[allow(non_snake_case)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Team {
@@ -509,7 +509,7 @@ pub struct WorldLeague {
     pub Continent: Option<String>,
     pub ZoneName: Option<String>,
     pub EnglishName: Option<String>,
-    pub LanguageID: Option<u32>,
+    pub LanguageId: Option<u32>, // Watch out, lowercase D!
     pub LanguageName: Option<String>,
     pub NationalTeamId: Option<u32>,
     pub U20TeamId: Option<u32>,

@@ -51,6 +51,7 @@ pub trait DataSyncService {
 pub struct SyncService {
     db_manager: Arc<DbManager>,
     client: Arc<dyn ChppClient>,
+    // Service to retrieve secret from keyring
     secret_service: Arc<dyn SecretStorageService>,
 }
 
@@ -91,7 +92,7 @@ impl DataSyncService for SyncService {
         let secret_service = self.secret_service.clone();
 
         Box::pin(async move {
-            Self::do_sync(
+            Self::do_full_sync(
                 db_manager,
                 client,
                 secret_service,
@@ -120,7 +121,7 @@ impl DataSyncService for SyncService {
             let secret_exists = secret_service.get_secret("access_secret").await.is_ok();
 
             if token_exists && secret_exists {
-                match Self::do_sync(
+                match Self::do_full_sync(
                     db_manager,
                     client,
                     secret_service,
@@ -450,6 +451,7 @@ impl SyncService {
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
         // Log download entry for world_details
+        // TODO: find a cleaner way to manage endpoint versions (maybe an enum or constants instead of hardcoded strings)
         let entry_id =
             Self::log_download_entry(db_manager.clone(), download_id, "worlddetails", "1.9", None)
                 .await?;
@@ -615,7 +617,7 @@ impl SyncService {
         Ok(())
     }
 
-    async fn do_sync(
+    async fn do_full_sync(
         db_manager: Arc<DbManager>,
         client: Arc<dyn ChppClient>,
         secret_service: Arc<dyn SecretStorageService>,
@@ -638,8 +640,8 @@ impl SyncService {
 
         debug!("consumer_key: {}", consumer_key);
         debug!("consumer_secret: {}", consumer_secret);
-        debug!("access_token: {}", access_token);
-        debug!("access_secret: {}", access_secret);
+        debug!("access_token size: {}", access_token.len());
+        debug!("access_secret size: {}", access_secret.len());
 
         // Helper to get fresh auth data
         let get_auth = || {

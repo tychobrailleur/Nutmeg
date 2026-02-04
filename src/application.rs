@@ -152,7 +152,8 @@ impl NutmegApplication {
                 .program_name("nutmeg")
                 .logo_icon_name("org.gnome.Nutmeg")
                 .version(VERSION)
-                .authors(vec!["sebastien"])
+                .authors(vec!["Sébastien Le Callonnec"])
+           //     .license_type(gtk::LicenseType::Gpl3)
                 .translator_credits(&gettext("translator-credits"))
                 .copyright("© 2026 Sébastien Le Callonnec")
                 .build();
