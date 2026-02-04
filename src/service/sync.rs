@@ -20,6 +20,7 @@
 
 use crate::chpp::client::HattrickClient;
 use crate::chpp::{create_oauth_context, retry_with_default_config, ChppClient, Error};
+use crate::db::download_entries::{create_download_entry, update_entry_status, NewDownloadEntry};
 use crate::db::manager::DbManager;
 use crate::db::schema::downloads;
 use crate::db::teams::{save_players, save_team, save_world_details};
@@ -313,6 +314,66 @@ impl SyncService {
         Ok(())
     }
 
+    /// Log a download entry for an API call
+    async fn log_download_entry(
+        db_manager: Arc<DbManager>,
+        download_id: i32,
+        endpoint: &str,
+        version: &str,
+        user_id: Option<i32>,
+    ) -> Result<i32, Error> {
+        let db = db_manager.clone();
+        let endpoint = endpoint.to_string();
+        let version = version.to_string();
+        let fetched_date = Utc::now().to_rfc3339();
+
+        tokio::task::spawn_blocking(move || {
+            let mut conn = db
+                .get_connection()
+                .map_err(|e| Error::Db(format!("Failed to get database connection: {}", e)))?;
+
+            let entry = NewDownloadEntry {
+                download_id,
+                endpoint,
+                version,
+                user_id,
+                status: "in_progress".to_string(),
+                fetched_date,
+                error_message: None,
+                retry_count: 0,
+            };
+
+            create_download_entry(&mut conn, entry)
+                .map_err(|e| Error::Db(format!("Failed to create download entry: {}", e)))
+        })
+        .await
+        .map_err(|e| Error::Io(format!("Join error: {}", e)))?
+    }
+
+    /// Update download entry status (success or error)
+    async fn update_download_entry(
+        db_manager: Arc<DbManager>,
+        entry_id: i32,
+        status: &str,
+        error_msg: Option<String>,
+    ) -> Result<(), Error> {
+        let db = db_manager.clone();
+        let status = status.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let mut conn = db
+                .get_connection()
+                .map_err(|e| Error::Db(format!("Failed to get database connection: {}", e)))?;
+
+            update_entry_status(&mut conn, entry_id, &status, error_msg, false)
+                .map_err(|e| Error::Db(format!("Failed to update download entry: {}", e)))?;
+
+            Ok::<(), Error>(())
+        })
+        .await
+        .map_err(|e| Error::Io(format!("Join error: {}", e)))?
+    }
+
     async fn fetch_and_save_user_data<F>(
         db_manager: Arc<DbManager>,
         client: Arc<dyn ChppClient>,
@@ -322,9 +383,29 @@ impl SyncService {
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
+        // Log download entry for team_details
+        let entry_id =
+            Self::log_download_entry(db_manager.clone(), download_id, "teamdetails", "3.5", None)
+                .await?;
+
         // Get user / team details
         let (data, key) = get_auth();
-        let hattrick_data = client.team_details(data, key, None).await?;
+        let hattrick_data = match client.team_details(data, key, None).await {
+            Ok(data) => {
+                Self::update_download_entry(db_manager.clone(), entry_id, "success", None).await?;
+                data
+            }
+            Err(e) => {
+                Self::update_download_entry(
+                    db_manager.clone(),
+                    entry_id,
+                    "error",
+                    Some(e.to_string()),
+                )
+                .await?;
+                return Err(e);
+            }
+        };
 
         log::info!(
             "User: {} ({})",
@@ -368,8 +449,29 @@ impl SyncService {
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
+        // Log download entry for world_details
+        let entry_id =
+            Self::log_download_entry(db_manager.clone(), download_id, "worlddetails", "1.9", None)
+                .await?;
+
         let (data, key) = get_auth();
-        let world_details = client.world_details(data, key).await?;
+        let world_details = match client.world_details(data, key).await {
+            Ok(data) => {
+                Self::update_download_entry(db_manager.clone(), entry_id, "success", None).await?;
+                data
+            }
+            Err(e) => {
+                Self::update_download_entry(
+                    db_manager.clone(),
+                    entry_id,
+                    "error",
+                    Some(e.to_string()),
+                )
+                .await?;
+                return Err(e);
+            }
+        };
+
         log::info!(
             "Fetched world details with {} leagues",
             world_details.LeagueList.Leagues.len()
@@ -399,9 +501,29 @@ impl SyncService {
         // Send is for concurrency, F safe to be sent to another thread, Sync means muliple threads can safely access
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
+        // Log download entry for players
+        let entry_id =
+            Self::log_download_entry(db_manager.clone(), download_id, "players", "2.4", None)
+                .await?;
+
         // Get Players for the team
         let (data, key) = get_auth();
-        let players_resp = client.players(data, key, None).await?;
+        let players_resp = match client.players(data, key, None).await {
+            Ok(data) => {
+                Self::update_download_entry(db_manager.clone(), entry_id, "success", None).await?;
+                data
+            }
+            Err(e) => {
+                Self::update_download_entry(
+                    db_manager.clone(),
+                    entry_id,
+                    "error",
+                    Some(e.to_string()),
+                )
+                .await?;
+                return Err(e);
+            }
+        };
 
         let player_list = if let Some(pl) = players_resp.Team.PlayerList {
             pl
@@ -424,11 +546,38 @@ impl SyncService {
                 let player_id = basic_player.PlayerID;
                 let operation_name = format!("player_details({})", player_id);
 
+                // Log download entry for this player_details call
+                let entry_id = Self::log_download_entry(
+                    db_manager.clone(),
+                    download_id,
+                    "playerdetails",
+                    "2.4",
+                    None,
+                )
+                .await?;
+
                 // Use retry utility for player details fetching
                 let result = retry_with_default_config(&operation_name, get_auth, |data, key| {
                     client.player_details(data, key, player_id)
                 })
                 .await;
+
+                // Update entry status based on result
+                match &result {
+                    Ok(_) => {
+                        Self::update_download_entry(db_manager.clone(), entry_id, "success", None)
+                            .await?;
+                    }
+                    Err(e) => {
+                        Self::update_download_entry(
+                            db_manager.clone(),
+                            entry_id,
+                            "error",
+                            Some(e.to_string()),
+                        )
+                        .await?;
+                    }
+                }
 
                 // Merge detailed data with basic data
                 let merged = match result {

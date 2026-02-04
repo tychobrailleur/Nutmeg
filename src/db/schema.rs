@@ -44,6 +44,20 @@ diesel::table! {
 }
 
 diesel::table! {
+    download_entries (id) {
+        id -> Integer,
+        download_id -> Integer,
+        endpoint -> Text,
+        version -> Text,
+        user_id -> Nullable<Integer>,
+        status -> Text,
+        fetched_date -> Text,
+        error_message -> Nullable<Text>,
+        retry_count -> Integer,
+    }
+}
+
+diesel::table! {
     languages (id) {
         id -> Integer,
         name -> Text,
@@ -218,6 +232,7 @@ diesel::table! {
 
 diesel::joinable!(countries -> downloads (download_id));
 diesel::joinable!(currencies -> downloads (download_id));
+diesel::joinable!(download_entries -> downloads (download_id));
 diesel::joinable!(leagues -> downloads (download_id));
 diesel::joinable!(players -> downloads (download_id));
 diesel::joinable!(regions -> downloads (download_id));
@@ -229,5 +244,15 @@ diesel::joinable!(users -> languages (language_id));
 diesel::joinable!(teams -> cups (cup_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    countries, currencies, cups, downloads, languages, leagues, players, regions, teams, users,
+    countries,
+    currencies,
+    cups,
+    download_entries,
+    downloads,
+    languages,
+    leagues,
+    players,
+    regions,
+    teams,
+    users,
 );
