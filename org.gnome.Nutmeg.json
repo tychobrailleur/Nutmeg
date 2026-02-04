@@ -1,12 +1,12 @@
 {
-    "id": "org.gnome.Hoctane",
+    "id": "org.gnome.Nutmeg",
     "runtime": "org.gnome.Platform",
     "runtime-version": "master",
     "sdk": "org.gnome.Sdk",
     "sdk-extensions": [
         "org.freedesktop.Sdk.Extension.rust-stable"
     ],
-    "command": "hoctane",
+    "command": "nutmeg",
     "finish-args": [
         "--share=network",
         "--share=ipc",
@@ -22,7 +22,7 @@
         ],
         "env": {
             "RUST_BACKTRACE": "1",
-            "RUST_LOG": "hoctane=debug"
+            "RUST_LOG": "nutmeg=debug"
         }
     },
     "cleanup": [
@@ -38,7 +38,7 @@
     ],
     "modules": [
         {
-            "name": "hoctane",
+            "name": "nutmeg",
             "builddir": true,
             "buildsystem": "meson",
             "sources": [

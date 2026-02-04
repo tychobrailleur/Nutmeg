@@ -1,4 +1,4 @@
-application_id = 'org.gnome.Hoctane'
+application_id = 'org.gnome.Nutmeg'
 
 scalable_dir = 'hicolor' / 'scalable' / 'apps'
 install_data(

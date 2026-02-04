@@ -28,7 +28,7 @@ use crate::chpp::error::Error;
 use crate::chpp::model::{
     ChppErrorResponse, HattrickData, Player, PlayerDetailsData, PlayersData, WorldDetails,
 };
-use crate::chpp::{CHPP_URL, HOCTANE_USER_AGENT};
+use crate::chpp::{CHPP_URL, NUTMEG_USER_AGENT};
 
 use serde::de::DeserializeOwned;
 
@@ -84,7 +84,7 @@ pub async fn chpp_request<T: DeserializeOwned>(
         .get(send_url)
         .header("Authorization", authorization)
         .header("Content-Length", "0")
-        .header("User-Agent", HOCTANE_USER_AGENT)
+        .header("User-Agent", NUTMEG_USER_AGENT)
         .header("Accept-Language", "en")
         .header(
             "Accept",

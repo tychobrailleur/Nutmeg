@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.gnome.Nutmeg
+Exec=@bindir@/nutmeg --gapplication-service

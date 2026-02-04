@@ -61,12 +61,12 @@ impl SecretStorageService for GnomeSecretService {
 
         // Define attributes to identify the secret
         let mut attributes = HashMap::new();
-        attributes.insert("application", "hoctane");
+        attributes.insert("application", "nutmeg");
         attributes.insert("key", key);
 
         keyring
             .create_item(
-                "Hoctane Secret",
+                "Nutmeg Secret",
                 &attributes,
                 value,
                 true, // replace
@@ -81,7 +81,7 @@ impl SecretStorageService for GnomeSecretService {
         let keyring = oo7::Keyring::new().await?;
 
         let mut attributes = HashMap::new();
-        attributes.insert("application", "hoctane");
+        attributes.insert("application", "nutmeg");
         attributes.insert("key", key);
 
         let items = keyring.search_items(&attributes).await?;
@@ -100,7 +100,7 @@ impl SecretStorageService for GnomeSecretService {
         let keyring = oo7::Keyring::new().await?;
 
         let mut attributes = HashMap::new();
-        attributes.insert("application", "hoctane");
+        attributes.insert("application", "nutmeg");
         attributes.insert("key", key);
 
         keyring.delete(&attributes).await?;

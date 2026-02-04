@@ -19,5 +19,5 @@
  */
 
 fn main() {
-    glib_build_tools::compile_resources(&["src"], "src/hoctane.gresource.xml", "hoctane.gresource");
+    glib_build_tools::compile_resources(&["src"], "src/nutmeg.gresource.xml", "nutmeg.gresource");
 }

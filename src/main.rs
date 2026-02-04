@@ -26,7 +26,7 @@ mod service;
 mod setup_window;
 mod window;
 
-use self::application::HoctaneApplication;
+use self::application::NutmegApplication;
 
 use config::{GETTEXT_PACKAGE, LOCALEDIR, PKGDATADIR};
 use gettextrs::{bind_textdomain_codeset, bindtextdomain, textdomain};
@@ -61,12 +61,12 @@ fn main() -> glib::ExitCode {
     textdomain(GETTEXT_PACKAGE).expect("Unable to switch to the text domain");
 
     // Load resources
-    gio::resources_register_include!("hoctane.gresource").expect("Failed to register resources");
+    gio::resources_register_include!("nutmeg.gresource").expect("Failed to register resources");
 
     // Create a new GtkApplication. The application manages our main loop,
     // application windows, integration with the window manager/compositor, and
     // desktop features such as file opening and single-instance applications.
-    let app = HoctaneApplication::new("org.gnome.Hoctane", &gio::ApplicationFlags::NON_UNIQUE);
+    let app = NutmegApplication::new("org.gnome.Nutmeg", &gio::ApplicationFlags::NON_UNIQUE);
 
     // Initialize Tokio Runtime to support async features in the GTK loop
     let runtime = Runtime::new().expect("Unable to create Tokio runtime");

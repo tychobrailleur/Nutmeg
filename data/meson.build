@@ -1,6 +1,6 @@
 desktop_file = i18n.merge_file(
-        input: 'org.gnome.Hoctane.desktop.in',
-       output: 'org.gnome.Hoctane.desktop',
+        input: 'org.gnome.Nutmeg.desktop.in',
+       output: 'org.gnome.Nutmeg.desktop',
          type: 'desktop',
        po_dir: '../po',
       install: true,
@@ -13,8 +13,8 @@ if desktop_utils.found()
 endif
 
 appstream_file = i18n.merge_file(
-        input: 'org.gnome.Hoctane.metainfo.xml.in',
-       output: 'org.gnome.Hoctane.metainfo.xml',
+        input: 'org.gnome.Nutmeg.metainfo.xml.in',
+       output: 'org.gnome.Nutmeg.metainfo.xml',
        po_dir: '../po',
       install: true,
   install_dir: get_option('datadir') / 'metainfo'
@@ -24,7 +24,7 @@ appstreamcli = find_program('appstreamcli', required: false, disabler: true)
 test('Validate appstream file', appstreamcli,
      args: ['validate', '--no-net', '--explain', appstream_file])
 
-install_data('org.gnome.Hoctane.gschema.xml',
+install_data('org.gnome.Nutmeg.gschema.xml',
   install_dir: get_option('datadir') / 'glib-2.0' / 'schemas'
 )
 
@@ -37,8 +37,8 @@ test('Validate schema file',
 service_conf = configuration_data()
 service_conf.set('bindir', get_option('prefix') / get_option('bindir'))
 configure_file(
-  input: 'org.gnome.Hoctane.service.in',
-  output: 'org.gnome.Hoctane.service',
+  input: 'org.gnome.Nutmeg.service.in',
+  output: 'org.gnome.Nutmeg.service',
   configuration: service_conf,
   install_dir: get_option('datadir') / 'dbus-1' / 'services'
 )

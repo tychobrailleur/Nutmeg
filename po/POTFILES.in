@@ -1,7 +1,7 @@
 # List of source files containing translatable strings.
 # Please keep this file sorted alphabetically.
-data/org.gnome.Hoctane.desktop.in
-data/org.gnome.Hoctane.metainfo.xml.in
-data/org.gnome.Hoctane.gschema.xml
+data/org.gnome.Nutmeg.desktop.in
+data/org.gnome.Nutmeg.metainfo.xml.in
+data/org.gnome.Nutmeg.gschema.xml
 src/setup_window.ui
 src/window.ui

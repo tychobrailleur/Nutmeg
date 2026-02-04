@@ -115,8 +115,8 @@ mod imp {
     use super::*;
 
     #[derive(Debug, Default, CompositeTemplate)]
-    #[template(resource = "/org/gnome/Hoctane/window.ui")]
-    pub struct HoctaneWindow {
+    #[template(resource = "/org/gnome/Nutmeg/window.ui")]
+    pub struct NutmegWindow {
         #[template_child]
         pub combo_teams: TemplateChild<gtk::DropDown>,
         #[template_child]
@@ -196,9 +196,9 @@ mod imp {
     }
 
     #[glib::object_subclass]
-    impl ObjectSubclass for HoctaneWindow {
-        const NAME: &'static str = "HoctaneWindow";
-        type Type = super::HoctaneWindow;
+    impl ObjectSubclass for NutmegWindow {
+        const NAME: &'static str = "NutmegWindow";
+        type Type = super::NutmegWindow;
         type ParentType = gtk::ApplicationWindow;
 
         fn class_init(klass: &mut Self::Class) {
@@ -210,9 +210,9 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for HoctaneWindow {
+    impl ObjectImpl for NutmegWindow {
         fn constructed(&self) {
-            info!("HoctaneWindow constructed");
+            info!("NutmegWindow constructed");
             self.parent_constructed();
             let obj = self.obj();
 
@@ -235,19 +235,19 @@ mod imp {
             );
         }
     }
-    impl WidgetImpl for HoctaneWindow {}
-    impl WindowImpl for HoctaneWindow {}
-    impl ApplicationWindowImpl for HoctaneWindow {}
+    impl WidgetImpl for NutmegWindow {}
+    impl WindowImpl for NutmegWindow {}
+    impl ApplicationWindowImpl for NutmegWindow {}
 }
 
 glib::wrapper! {
-    pub struct HoctaneWindow(ObjectSubclass<imp::HoctaneWindow>)
+    pub struct NutmegWindow(ObjectSubclass<imp::NutmegWindow>)
         @extends gtk::Widget, gtk::Window, gtk::ApplicationWindow,
         @implements gio::ActionGroup, gio::ActionMap, gtk::Accessible, gtk::Buildable,
                     gtk::ConstraintTarget, gtk::Native, gtk::Root, gtk::ShortcutManager;
 }
 
-impl HoctaneWindow {
+impl NutmegWindow {
     pub fn new<P: IsA<gtk::Application>>(application: &P) -> Self {
         glib::Object::builder()
             .property("application", application)

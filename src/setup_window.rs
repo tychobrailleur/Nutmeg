@@ -30,7 +30,7 @@ use std::sync::Arc;
 use crate::config::{consumer_key, consumer_secret};
 use crate::db::manager::DbManager;
 use crate::service::sync::SyncService;
-use crate::window::HoctaneWindow;
+use crate::window::NutmegWindow;
 
 mod imp {
     use super::*;
@@ -38,7 +38,7 @@ mod imp {
     use gtk::{CompositeTemplate, TemplateChild};
 
     #[derive(Debug, Default, CompositeTemplate)]
-    #[template(resource = "/org/gnome/Hoctane/setup_window.ui")]
+    #[template(resource = "/org/gnome/Nutmeg/setup_window.ui")]
     pub struct SetupWindow {
         #[template_child]
         pub stack: TemplateChild<Stack>,
@@ -231,7 +231,7 @@ impl SetupWindow {
                             Ok(_) => {
                                 info!("Initial sync successful");
                                 if let Some(app) = win.application() {
-                                    let main_win = HoctaneWindow::new(&app);
+                                    let main_win = NutmegWindow::new(&app);
                                     main_win.present();
                                 }
                                 win.close();

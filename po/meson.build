@@ -1,1 +1,1 @@
-i18n.gettext('hoctane', preset: 'glib')
+i18n.gettext('nutmeg', preset: 'glib')

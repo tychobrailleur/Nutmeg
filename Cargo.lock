@@ -1783,35 +1783,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hoctane"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "diesel",
- "diesel_migrations",
- "dotenvy",
- "env_logger",
- "gdk-pixbuf",
- "gettext-rs",
- "glib-build-tools",
- "gtk4",
- "http-types",
- "libadwaita",
- "log",
- "oauth-1a",
- "oo7",
- "open",
- "reqwest",
- "serde",
- "serde-xml-rs",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "http"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2521,6 +2492,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "nutmeg"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "diesel",
+ "diesel_migrations",
+ "dotenvy",
+ "env_logger",
+ "gdk-pixbuf",
+ "gettext-rs",
+ "glib-build-tools",
+ "gtk4",
+ "http-types",
+ "libadwaita",
+ "log",
+ "oauth-1a",
+ "oo7",
+ "open",
+ "reqwest",
+ "serde",
+ "serde-xml-rs",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

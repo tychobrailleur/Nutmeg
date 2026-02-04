@@ -1,3 +1,0 @@
-[D-BUS Service]
-Name=org.gnome.Hoctane
-Exec=@bindir@/hoctane --gapplication-service

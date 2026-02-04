@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: hoctane\n"
+"Project-Id-Version: nutmeg\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-02-01 12:00+0000\n"
 "PO-Revision-Date: 2026-02-01 12:00+0000\n"
@@ -13,24 +13,24 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
 #: src/setup_window.ui:5
-msgid "Welcome to Hoctane"
-msgstr "Bienvenue sur Hoctane"
+msgid "Welcome to Nutmeg"
+msgstr "Bienvenue sur Nutmeg"
 
 #: src/setup_window.ui:32
-msgid "Manage your team! <b>Hoctane</b> is here."
-msgstr "Gérez votre équipe ! <b>Hoctane</b> est là."
+msgid "Manage your team! <b>Nutmeg</b> is here."
+msgstr "Gérez votre équipe ! <b>Nutmeg</b> est là."
 
 #: src/setup_window.ui:39
-msgid "It looks like this is your first time using Hoctane.\nWe need to connect to Hattrick to get your team data."
-msgstr "On dirait que c'est votre première utilisation de Hoctane.\nNous devons nous connecter à Hattrick pour récupérer les données de votre équipe."
+msgid "It looks like this is your first time using Nutmeg.\nWe need to connect to Hattrick to get your team data."
+msgstr "On dirait que c'est votre première utilisation de Nutmeg.\nNous devons nous connecter à Hattrick pour récupérer les données de votre équipe."
 
 #: src/setup_window.ui:47
 msgid "Get Started"
 msgstr "C'est parti"
 
 #: src/setup_window.ui:66
-msgid "Click below to open your browser and authorize Hoctane accessing your Hattrick data."
-msgstr "Cliquez ci-dessous pour ouvrir votre navigateur et autoriser Hoctane à accéder à vos données Hattrick."
+msgid "Click below to open your browser and authorize Nutmeg accessing your Hattrick data."
+msgstr "Cliquez ci-dessous pour ouvrir votre navigateur et autoriser Nutmeg à accéder à vos données Hattrick."
 
 #: src/setup_window.ui:73
 msgid "Open Browser"

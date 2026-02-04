@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
   <template class="SetupWindow" parent="GtkWindow">
-    <property name="title" translatable="yes">Welcome to Hoctane</property>
+    <property name="title" translatable="yes">Welcome to Nutmeg</property>
     <property name="modal">True</property>
     <property name="default-width">400</property>
     <property name="default-height">300</property>
@@ -26,21 +26,21 @@
                 
                 <child>
                   <object class="GtkImage">
-                    <property name="icon-name">org.gnome.Hoctane</property>
+                    <property name="icon-name">org.gnome.Nutmeg</property>
                     <property name="pixel-size">64</property>
                   </object>
                 </child>
                 
                 <child>
                   <object class="GtkLabel">
-                    <property name="label" translatable="yes">Manage your team! &lt;b&gt;Hoctane&lt;/b&gt; is here.</property>
+                    <property name="label" translatable="yes">Manage your team! &lt;b&gt;Nutmeg&lt;/b&gt; is here.</property>
                     <property name="use-markup">True</property>
                   </object>
                 </child>
                 
                 <child>
                   <object class="GtkLabel">
-                    <property name="label" translatable="yes">It looks like this is your first time using Hoctane.
+                    <property name="label" translatable="yes">It looks like this is your first time using Nutmeg.
 We need to connect to Hattrick to get your team data.</property>
                     <property name="wrap">True</property>
                     <property name="justify">center</property>
@@ -72,7 +72,7 @@ We need to connect to Hattrick to get your team data.</property>
                 
                 <child>
                   <object class="GtkLabel">
-                    <property name="label" translatable="yes">Click below to open your browser and authorize Hoctane accessing your Hattrick data.</property>
+                    <property name="label" translatable="yes">Click below to open your browser and authorize Nutmeg accessing your Hattrick data.</property>
                     <property name="wrap">True</property>
                   </object>
                 </child>

@@ -22,7 +22,7 @@ use gtk::glib;
 use thiserror::Error;
 
 #[derive(Clone, Error, Debug, glib::Boxed)]
-#[boxed_type(name = "HoctaneError")]
+#[boxed_type(name = "NutmegError")]
 pub enum Error {
     #[error("Network error: {0}")]
     Network(String),

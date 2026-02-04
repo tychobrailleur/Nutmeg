@@ -64,13 +64,13 @@ impl DbManager {
 
     fn get_db_path() -> PathBuf {
         let home_dir = env::var("HOME").expect("HOME environment variable not set");
-        let config_dir = Path::new(&home_dir).join(".hoctane");
+        let config_dir = Path::new(&home_dir).join(".nutmeg");
 
         if let Err(e) = fs::create_dir_all(&config_dir) {
             eprintln!("Failed to create config directory: {}", e);
         }
 
-        config_dir.join("hoctane.db")
+        config_dir.join("nutmeg.db")
     }
 
     pub fn get_connection(

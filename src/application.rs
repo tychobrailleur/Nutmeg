@@ -25,23 +25,23 @@ use gtk::{gio, glib};
 
 use crate::config::VERSION;
 use crate::service::sync::DataSyncService;
-use crate::window::HoctaneWindow;
+use crate::window::NutmegWindow;
 use log::{debug, error, info};
 
 mod imp {
     use super::*;
 
     #[derive(Debug, Default)]
-    pub struct HoctaneApplication {}
+    pub struct NutmegApplication {}
 
     #[glib::object_subclass]
-    impl ObjectSubclass for HoctaneApplication {
-        const NAME: &'static str = "HoctaneApplication";
-        type Type = super::HoctaneApplication;
+    impl ObjectSubclass for NutmegApplication {
+        const NAME: &'static str = "NutmegApplication";
+        type Type = super::NutmegApplication;
         type ParentType = gtk::Application; // Should we make it adw::Application?
     }
 
-    impl ObjectImpl for HoctaneApplication {
+    impl ObjectImpl for NutmegApplication {
         fn constructed(&self) {
             self.parent_constructed();
             let obj = self.obj();
@@ -50,7 +50,7 @@ mod imp {
         }
     }
 
-    impl ApplicationImpl for HoctaneApplication {
+    impl ApplicationImpl for NutmegApplication {
         // We connect to the activate callback to create a window when the application
         // has been launched. Additionally, this callback notifies us when the user
         // tries to launch a "second instance" of the application. When they try
@@ -90,7 +90,7 @@ mod imp {
                         Ok(true) => {
                             info!("Successfully synced with stored credentials");
                             // Synced successfully, open main window and close setup
-                            let window = crate::window::HoctaneWindow::new(&app_clone);
+                            let window = crate::window::NutmegWindow::new(&app_clone);
                             window.present();
                             setup_clone.close();
                         }
@@ -108,7 +108,7 @@ mod imp {
                 info!("Existing user found, opening main window");
                 // Show Main Window
                 let window = application.active_window().unwrap_or_else(|| {
-                    let window = HoctaneWindow::new(&*application);
+                    let window = NutmegWindow::new(&*application);
                     window.upcast()
                 });
                 window.present();
@@ -116,21 +116,21 @@ mod imp {
         }
     }
 
-    impl GtkApplicationImpl for HoctaneApplication {}
+    impl GtkApplicationImpl for NutmegApplication {}
 }
 
 glib::wrapper! {
-    pub struct HoctaneApplication(ObjectSubclass<imp::HoctaneApplication>)
+    pub struct NutmegApplication(ObjectSubclass<imp::NutmegApplication>)
         @extends gio::Application, gtk::Application,
     @implements gio::ActionGroup, gio::ActionMap;
 }
 
-impl HoctaneApplication {
+impl NutmegApplication {
     pub fn new(application_id: &str, flags: &gio::ApplicationFlags) -> Self {
         glib::Object::builder()
             .property("application-id", application_id)
             .property("flags", flags)
-            .property("resource-base-path", "/org/gnome/Hoctane")
+            .property("resource-base-path", "/org/gnome/Nutmeg")
             .build()
     }
 
@@ -149,12 +149,12 @@ impl HoctaneApplication {
             let about = gtk::AboutDialog::builder()
                 .transient_for(&window)
                 .modal(true)
-                .program_name("hoctane")
-                .logo_icon_name("org.gnome.Hoctane")
+                .program_name("nutmeg")
+                .logo_icon_name("org.gnome.Nutmeg")
                 .version(VERSION)
                 .authors(vec!["sebastien"])
                 .translator_credits(&gettext("translator-credits"))
-                .copyright("© 2026 sebastien")
+                .copyright("© 2026 Sébastien Le Callonnec")
                 .build();
 
             about.present();
