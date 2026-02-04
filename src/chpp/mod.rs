@@ -27,6 +27,7 @@ static NUTMEG_USER_AGENT: &str = "Nutmeg/v1.0";
 //pub mod authenticator;
 pub mod client;
 pub mod error;
+pub mod metadata;
 pub mod model;
 mod oauth;
 mod request;
