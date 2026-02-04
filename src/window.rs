@@ -10,6 +10,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+use gettextrs::gettext;
 use crate::chpp::model::Player;
 use crate::db::manager::DbManager;
 use crate::db::teams::{get_players_for_team, get_teams_summary};
@@ -134,6 +135,63 @@ mod imp {
         #[template_child]
         pub factory_tsi: TemplateChild<gtk::SignalListItemFactory>,
 
+        #[template_child]
+        pub details_panel: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub details_name: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_id: TemplateChild<gtk::Label>,
+
+        // Category
+        #[template_child]
+        pub details_category: TemplateChild<gtk::Label>,
+
+        // Level
+        #[template_child]
+        pub details_form: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_stamina: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_tsi: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_injury: TemplateChild<gtk::Label>,
+
+        // Skills
+        #[template_child]
+        pub details_skill_keeper: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_skill_defender: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_skill_playmaker: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_skill_winger: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_skill_passing: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_skill_scorer: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_skill_set_pieces: TemplateChild<gtk::Label>,
+
+        // Career / Club
+        #[template_child]
+        pub details_career_goals: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_league_goals: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_loyalty: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_mother_club: TemplateChild<gtk::Label>,
+
+        // Last Match
+        #[template_child]
+        pub details_last_match_date: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_played_minutes: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_position_code: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_rating: TemplateChild<gtk::Label>,
+
         pub current_players: RefCell<Option<gtk::SingleSelection>>,
     }
 
@@ -217,13 +275,13 @@ impl HoctaneWindow {
             let item = item.downcast_ref::<gtk::ListItem>().unwrap();
             let player_obj = item.item().and_downcast::<PlayerObject>().unwrap();
             let label = item.child().and_downcast::<gtk::Label>().unwrap();
-            
+
             if player_obj.player().MotherClubBonus {
                 label.add_css_class("mother-club");
             } else {
                 label.remove_css_class("mother-club");
             }
-            
+
             let flag_str = player_obj.player().Flag.unwrap_or_else(|| "🏳️".to_string());
             label.set_label(&flag_str);
         });
@@ -304,7 +362,7 @@ impl HoctaneWindow {
             let item = item.downcast_ref::<gtk::ListItem>().unwrap();
             let player_obj = item.item().and_downcast::<PlayerObject>().unwrap();
             let label = item.child().and_downcast::<gtk::Label>().unwrap();
-            
+
             if player_obj.player().MotherClubBonus {
                 label.add_css_class("mother-club");
             } else {
@@ -443,7 +501,7 @@ impl HoctaneWindow {
     }
 
     fn load_players(&self, team_id: u32) {
-        let imp = self.imp();
+        let _imp = self.imp();
         let db = DbManager::new();
 
         if let Ok(mut conn) = db.get_connection() {
@@ -456,6 +514,78 @@ impl HoctaneWindow {
                     }
 
                     let selection = gtk::SingleSelection::new(Some(model));
+
+                    let imp = self.imp();
+                    let window = self.clone();
+                    selection.connect_selected_item_notify(move |selection| {
+                         if let Some(item) = selection.selected_item() {
+                             if let Ok(player_obj) = item.downcast::<PlayerObject>() {
+                                 let p = player_obj.player();
+                                 let imp = window.imp();
+
+                                 // Show panel
+                                 imp.details_panel.set_visible(true);
+
+                                 // Header
+                                 imp.details_name.set_label(&format!("{} {}", p.FirstName, p.LastName));
+                                 imp.details_id.set_label(&p.PlayerID.to_string());
+
+                                 // Category
+                                 let cat_str = match p.PlayerCategoryId {
+                                     Some(1) => gettext("Keeper"),
+                                     Some(2) => gettext("Right Back"),
+                                     Some(3) => gettext("Central Defender"),
+                                     Some(4) => gettext("Winger"),
+                                     Some(5) => gettext("Inner Midfielder"),
+                                     Some(6) => gettext("Forward"),
+                                     _ => gettext("Unknown/Unset")
+                                 };
+                                 imp.details_category.set_label(&cat_str);
+
+                                 // Level
+                                 imp.details_form.set_label(&p.PlayerForm.to_string());
+
+                                 let stamina = p.PlayerSkills.as_ref().map(|s| s.StaminaSkill.to_string()).unwrap_or_else(|| "-".to_string());
+                                 imp.details_stamina.set_label(&stamina);
+
+                                 imp.details_tsi.set_label(&p.TSI.to_string());
+                                 imp.details_injury.set_label(&p.InjuryLevel.map(|v| v.to_string()).unwrap_or("-".to_string()));
+
+                                 // Skills
+                                 let skills = p.PlayerSkills.as_ref();
+                                 imp.details_skill_keeper.set_label(&skills.map(|s| s.KeeperSkill.to_string()).unwrap_or_else(|| "-".to_string()));
+                                 imp.details_skill_defender.set_label(&skills.map(|s| s.DefenderSkill.to_string()).unwrap_or_else(|| "-".to_string()));
+                                 imp.details_skill_playmaker.set_label(&skills.map(|s| s.PlaymakerSkill.to_string()).unwrap_or_else(|| "-".to_string()));
+                                 imp.details_skill_winger.set_label(&skills.map(|s| s.WingerSkill.to_string()).unwrap_or_else(|| "-".to_string()));
+                                 imp.details_skill_passing.set_label(&skills.map(|s| s.PassingSkill.to_string()).unwrap_or_else(|| "-".to_string()));
+                                 imp.details_skill_scorer.set_label(&skills.map(|s| s.ScorerSkill.to_string()).unwrap_or_else(|| "-".to_string()));
+                                 imp.details_skill_set_pieces.set_label(&skills.map(|s| s.SetPiecesSkill.to_string()).unwrap_or_else(|| "-".to_string()));
+
+                                 // Career / Club
+                                 imp.details_career_goals.set_label(&p.CareerGoals.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string()));
+                                 imp.details_league_goals.set_label(&p.LeagueGoals.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string()));
+                                 imp.details_loyalty.set_label(&p.Loyalty.to_string());
+                                 
+                                 let mother_club_text = if p.MotherClubBonus { gettext("Yes") } else { gettext("No") };
+                                 imp.details_mother_club.set_label(&mother_club_text);
+
+                                 // Last Match
+                                 imp.details_last_match_date.set_label(p.LastMatch.as_ref().map(|m| m.Date.as_str()).unwrap_or("-"));
+                                 imp.details_played_minutes.set_label(&p.LastMatch.as_ref().map(|m| m.PlayedMinutes.to_string()).unwrap_or_else(|| "-".to_string()));
+                                 imp.details_position_code.set_label(&p.LastMatch.as_ref().map(|m| m.PositionCode.to_string()).unwrap_or_else(|| "-".to_string()));
+
+                                 let rating_str = p.LastMatch.as_ref()
+                                     .and_then(|m| m.Rating)
+                                     .map(|r| r.to_string())
+                                     .unwrap_or_else(|| "-".to_string());
+                                 imp.details_rating.set_label(&rating_str);
+                             }
+                         } else {
+                             // Hide panel if nothing selected
+                             window.imp().details_panel.set_visible(false);
+                         }
+                    });
+
                     imp.view_players.set_model(Some(&selection));
                 }
                 Err(e) => error!("Failed to load players: {}", e),
