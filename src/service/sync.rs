@@ -19,6 +19,7 @@
  */
 
 use crate::chpp::client::HattrickClient;
+use crate::chpp::metadata::ChppEndpoints;
 use crate::chpp::{create_oauth_context, retry_with_default_config, ChppClient, Error};
 use crate::db::download_entries::{create_download_entry, update_entry_status, NewDownloadEntry};
 use crate::db::manager::DbManager;
@@ -385,9 +386,14 @@ impl SyncService {
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
         // Log download entry for team_details
-        let entry_id =
-            Self::log_download_entry(db_manager.clone(), download_id, "teamdetails", "3.5", None)
-                .await?;
+        let entry_id = Self::log_download_entry(
+            db_manager.clone(),
+            download_id,
+            ChppEndpoints::TEAM_DETAILS.name,
+            ChppEndpoints::TEAM_DETAILS.version,
+            None,
+        )
+        .await?;
 
         // Get user / team details
         let (data, key) = get_auth();
@@ -452,9 +458,14 @@ impl SyncService {
     {
         // Log download entry for world_details
         // TODO: find a cleaner way to manage endpoint versions (maybe an enum or constants instead of hardcoded strings)
-        let entry_id =
-            Self::log_download_entry(db_manager.clone(), download_id, "worlddetails", "1.9", None)
-                .await?;
+        let entry_id = Self::log_download_entry(
+            db_manager.clone(),
+            download_id,
+            ChppEndpoints::WORLD_DETAILS.name,
+            ChppEndpoints::WORLD_DETAILS.version,
+            None,
+        )
+        .await?;
 
         let (data, key) = get_auth();
         let world_details = match client.world_details(data, key).await {
@@ -504,9 +515,14 @@ impl SyncService {
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
         // Log download entry for players
-        let entry_id =
-            Self::log_download_entry(db_manager.clone(), download_id, "players", "2.4", None)
-                .await?;
+        let entry_id = Self::log_download_entry(
+            db_manager.clone(),
+            download_id,
+            ChppEndpoints::PLAYERS.name,
+            ChppEndpoints::PLAYERS.version,
+            None,
+        )
+        .await?;
 
         // Get Players for the team
         let (data, key) = get_auth();
@@ -552,8 +568,8 @@ impl SyncService {
                 let entry_id = Self::log_download_entry(
                     db_manager.clone(),
                     download_id,
-                    "playerdetails",
-                    "2.4",
+                    ChppEndpoints::PLAYER_DETAILS.name,
+                    ChppEndpoints::PLAYER_DETAILS.version,
                     None,
                 )
                 .await?;

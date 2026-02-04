@@ -152,15 +152,15 @@ mod tests {
             HasManagerLicense: false,
             Language: Language {
                 LanguageID: 2,
-                LanguageName: "English".to_string(),
+                LanguageName: "Svenska".to_string(),
             },
         };
 
         let currency = Currency {
             CurrencyID: 10,
-            CurrencyName: "Dollar".to_string(),
+            CurrencyName: "SEK".to_string(),
             Rate: Some(1.0),
-            Symbol: Some("$".to_string()),
+            Symbol: Some("kr".to_string()),
         };
 
         // Save reference data first (simulating world_details fetch)
@@ -171,7 +171,7 @@ mod tests {
 
         let country = Country {
             CountryID: 5,
-            CountryName: "USA".to_string(),
+            CountryName: "Sweden".to_string(),
             Currency: Some(currency),
             CountryCode: None,
             DateFormat: None,
@@ -198,12 +198,12 @@ mod tests {
         assert_eq!(ctx.user.unwrap().Loginname, "testuser");
 
         assert!(ctx.country.is_some());
-        assert_eq!(ctx.country.unwrap().CountryName, "USA");
+        assert_eq!(ctx.country.unwrap().CountryName, "Sweden");
 
         assert!(ctx.currency.is_some());
-        assert_eq!(ctx.currency.unwrap().CurrencyName, "Dollar");
+        assert_eq!(ctx.currency.unwrap().CurrencyName, "SEK");
 
         assert!(ctx.language.is_some());
-        assert_eq!(ctx.language.unwrap().LanguageName, "English");
+        assert_eq!(ctx.language.unwrap().LanguageName, "Svenska");
     }
 }

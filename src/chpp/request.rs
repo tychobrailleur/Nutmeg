@@ -25,6 +25,7 @@ use serde_xml_rs::from_str;
 use std::collections::BTreeMap;
 
 use crate::chpp::error::Error;
+use crate::chpp::metadata::ChppEndpoints;
 use crate::chpp::model::{
     ChppErrorResponse, HattrickData, Player, PlayerDetailsData, PlayersData, WorldDetails,
 };
@@ -134,7 +135,14 @@ pub async fn world_details_request(
     data: OAuthData,
     key: SigningKey,
 ) -> Result<WorldDetails, Error> {
-    chpp_request::<WorldDetails>("worlddetails", "1.9", None, data, key).await
+    chpp_request::<WorldDetails>(
+        ChppEndpoints::WORLD_DETAILS.name,
+        ChppEndpoints::WORLD_DETAILS.version,
+        None,
+        data,
+        key,
+    )
+    .await
 }
 
 pub async fn team_details_request(
@@ -145,9 +153,23 @@ pub async fn team_details_request(
     if let Some(tid) = team_id {
         let tid_str = tid.to_string();
         let p = vec![("teamID", tid_str.as_str())];
-        chpp_request::<HattrickData>("teamdetails", "3.7", Some(&p), data, key).await
+        chpp_request::<HattrickData>(
+            ChppEndpoints::TEAM_DETAILS.name,
+            ChppEndpoints::TEAM_DETAILS.version,
+            Some(&p),
+            data,
+            key,
+        )
+        .await
     } else {
-        chpp_request::<HattrickData>("teamdetails", "3.7", None, data, key).await
+        chpp_request::<HattrickData>(
+            ChppEndpoints::TEAM_DETAILS.name,
+            ChppEndpoints::TEAM_DETAILS.version,
+            None,
+            data,
+            key,
+        )
+        .await
     }
 }
 
@@ -164,7 +186,14 @@ pub async fn players_request(
     }
     params.push(("actionType", "view"));
     params.push(("includeMatchInfo", "true"));
-    chpp_request::<PlayersData>("players", "2.4", Some(&params), data, key).await
+    chpp_request::<PlayersData>(
+        ChppEndpoints::PLAYERS.name,
+        ChppEndpoints::PLAYERS.version,
+        Some(&params),
+        data,
+        key,
+    )
+    .await
 }
 
 pub async fn player_details_request(
@@ -175,7 +204,13 @@ pub async fn player_details_request(
     let pid_str = player_id.to_string();
     let params = vec![("playerID", pid_str.as_str())];
 
-    let response =
-        chpp_request::<PlayerDetailsData>("playerdetails", "3.1", Some(&params), data, key).await?;
+    let response = chpp_request::<PlayerDetailsData>(
+        ChppEndpoints::PLAYER_DETAILS.name,
+        ChppEndpoints::PLAYER_DETAILS.version,
+        Some(&params),
+        data,
+        key,
+    )
+    .await?;
     Ok(response.Player)
 }
