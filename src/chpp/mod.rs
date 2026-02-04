@@ -31,12 +31,12 @@ pub mod model;
 mod oauth;
 mod request;
 pub mod retry;
+// mod tests_parsing;
 
-pub use client::{ChppClient, HattrickClient};
+pub use client::ChppClient;
 pub use error::Error;
 pub use oauth::create_oauth_context;
 pub use oauth::exchange_verification_code;
 pub use oauth::get_request_token_url;
-pub use oauth::request_token;
 pub use oauth::OauthSettings;
-pub use retry::{retry_with_backoff, retry_with_default_config, should_retry, RetryConfig};
+pub use retry::retry_with_default_config;

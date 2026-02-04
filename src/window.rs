@@ -10,7 +10,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use crate::chpp::model::{Country, Currency, Language, Player, Region, Team, User};
+use crate::chpp::model::Player;
 use crate::db::manager::DbManager;
 use crate::db::teams::{get_players_for_team, get_teams_summary};
 use gettextrs::gettext;
@@ -19,7 +19,6 @@ use gtk::subclass::prelude::*;
 use gtk::{gdk, gio, glib, CompositeTemplate, TemplateChild};
 use log::{debug, error, info};
 use std::cell::RefCell;
-use std::rc::Rc;
 
 use crate::service::context::{AppContext, ContextService};
 use std::sync::Arc;

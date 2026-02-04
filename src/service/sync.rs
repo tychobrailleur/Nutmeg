@@ -19,7 +19,7 @@
  */
 
 use crate::chpp::client::HattrickClient;
-use crate::chpp::{self, create_oauth_context, retry_with_default_config, ChppClient, Error};
+use crate::chpp::{create_oauth_context, retry_with_default_config, ChppClient, Error};
 use crate::db::manager::DbManager;
 use crate::db::schema::downloads;
 use crate::db::teams::{save_players, save_team, save_world_details};

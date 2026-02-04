@@ -20,7 +20,7 @@
 
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::{glib, Button, Entry, Label, ProgressBar, Stack, Window};
+use gtk::{glib, Button, Entry, Label, ProgressBar, Stack};
 use log::{debug, error, info};
 use open;
 use std::cell::RefCell;
@@ -34,7 +34,7 @@ use crate::window::NutmegWindow;
 
 mod imp {
     use super::*;
-    use gtk::subclass::prelude::*;
+
     use gtk::{CompositeTemplate, TemplateChild};
 
     #[derive(Debug, Default, CompositeTemplate)]

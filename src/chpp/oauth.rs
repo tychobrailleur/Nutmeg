@@ -27,7 +27,6 @@ use http_types::{Method, Url};
 use log::info;
 use oauth_1a::*;
 pub use oauth_1a::{OAuthData, SigningKey}; // Export these public types
-use std::env;
 
 use crate::chpp::error::Error;
 use crate::chpp::CHPP_OAUTH_AUTH_URL;

@@ -26,7 +26,7 @@ use gtk::{gio, glib};
 use crate::config::VERSION;
 use crate::service::sync::DataSyncService;
 use crate::window::NutmegWindow;
-use log::{debug, error, info};
+use log::{error, info};
 
 mod imp {
     use super::*;
