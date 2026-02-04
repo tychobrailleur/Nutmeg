@@ -2,6 +2,7 @@ CREATE TABLE players (
     id INTEGER PRIMARY KEY NOT NULL,
     team_id INTEGER NOT NULL,
     first_name TEXT NOT NULL,
+    nick_name TEXT,
     last_name TEXT NOT NULL,
     player_number INTEGER NOT NULL,
     age INTEGER NOT NULL,

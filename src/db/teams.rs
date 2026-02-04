@@ -215,6 +215,7 @@ struct PlayerEntity {
     download_id: i32,
     team_id: i32,
     first_name: String,
+    nick_name: Option<String>,
     last_name: String,
     player_number: i32,
     age: i32,
@@ -359,6 +360,7 @@ pub fn save_players(
             download_id,
             team_id: team_id as i32,
             first_name: player.FirstName.clone(),
+            nick_name: player.NickName.clone(),
             last_name: player.LastName.clone(),
             player_number: player.PlayerNumber.unwrap_or(100) as i32,
             age: player.Age as i32,
@@ -943,6 +945,7 @@ pub fn get_players_for_team(
         players.push(crate::chpp::model::Player {
             PlayerID: entity.id as u32,
             FirstName: entity.first_name,
+            NickName: entity.nick_name,
             LastName: entity.last_name,
             PlayerNumber: if entity.player_number == 100 {
                 None

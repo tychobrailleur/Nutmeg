@@ -323,6 +323,7 @@ pub struct Player {
     pub PlayerID: u32,
     pub FirstName: String,
     pub LastName: String,
+    pub NickName: Option<String>,
     #[serde(deserialize_with = "deserialize_player_number")]
     pub PlayerNumber: Option<u32>,
     pub Age: u32,
@@ -371,7 +372,6 @@ pub struct Player {
     #[serde(skip)]
     pub Flag: Option<String>,
     pub PlayerSkills: Option<PlayerSkills>, // Only visible for own team or if authorized
-
     pub ArrivalDate: Option<String>,
     pub PlayerCategoryId: Option<u32>, // 1 = keeper, 2 wingbacl, 3 central defender, 4 winger,
     // 5 inner midfield, 6 forward, 7 sub, 8 reserve, 9 extra 1, 10 extra 2, 0 no category

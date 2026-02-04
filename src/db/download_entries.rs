@@ -19,8 +19,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use diesel::prelude::*;
 use crate::db::schema::download_entries;
+use diesel::prelude::*;
 
 #[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = download_entries)]
@@ -57,10 +57,12 @@ pub fn create_download_entry(
     diesel::insert_into(download_entries::table)
         .values(&entry)
         .execute(conn)?;
-    
+
     // Get the last inserted ID
-    diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("last_insert_rowid()"))
-        .get_result(conn)
+    diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>(
+        "last_insert_rowid()",
+    ))
+    .get_result(conn)
 }
 
 /// Update the status of a download entry (for retry tracking)
@@ -72,7 +74,7 @@ pub fn update_entry_status(
     increment_retry: bool,
 ) -> QueryResult<usize> {
     use crate::db::schema::download_entries::dsl::*;
-    
+
     if increment_retry {
         diesel::update(download_entries.find(entry_id))
             .set((
@@ -83,10 +85,7 @@ pub fn update_entry_status(
             .execute(conn)
     } else {
         diesel::update(download_entries.find(entry_id))
-            .set((
-                status.eq(new_status),
-                error_message.eq(error_msg),
-            ))
+            .set((status.eq(new_status), error_message.eq(error_msg)))
             .execute(conn)
     }
 }
@@ -97,7 +96,7 @@ pub fn get_entries_for_download(
     dl_id: i32,
 ) -> QueryResult<Vec<DownloadEntry>> {
     use crate::db::schema::download_entries::dsl::*;
-    
+
     download_entries
         .filter(download_id.eq(dl_id))
         .order(id.asc())
@@ -109,19 +108,19 @@ mod tests {
     use super::*;
     use crate::db::manager::DbManager;
     use crate::db::schema::downloads;
-    
+
     #[derive(Insertable)]
     #[diesel(table_name = downloads)]
     struct NewDownload {
         timestamp: String,
         status: String,
     }
-    
+
     #[test]
     fn test_create_and_retrieve_entry() {
         let db = DbManager::new_in_memory().expect("Failed to create in-memory DB");
         let mut conn = db.get_connection().expect("Failed to get connection");
-        
+
         // Create a download first
         let download: i32 = diesel::insert_into(downloads::table)
             .values(NewDownload {
@@ -131,7 +130,7 @@ mod tests {
             .returning(downloads::id)
             .get_result(&mut conn)
             .expect("Failed to create download");
-        
+
         // Create an entry
         let entry = NewDownloadEntry {
             download_id: download,
@@ -143,10 +142,10 @@ mod tests {
             error_message: None,
             retry_count: 0,
         };
-        
+
         let entry_id = create_download_entry(&mut conn, entry).expect("Failed to create entry");
         assert!(entry_id > 0);
-        
+
         // Retrieve entries
         let entries = get_entries_for_download(&mut conn, download).expect("Failed to get entries");
         assert_eq!(entries.len(), 1);
@@ -154,12 +153,12 @@ mod tests {
         assert_eq!(entries[0].status, "success");
         assert_eq!(entries[0].retry_count, 0);
     }
-    
+
     #[test]
     fn test_update_entry_status() {
         let db = DbManager::new_in_memory().expect("Failed to create in-memory DB");
         let mut conn = db.get_connection().expect("Failed to get connection");
-        
+
         // Create download and entry
         let download: i32 = diesel::insert_into(downloads::table)
             .values(NewDownload {
@@ -169,7 +168,7 @@ mod tests {
             .returning(downloads::id)
             .get_result(&mut conn)
             .expect("Failed to create download");
-        
+
         let entry = NewDownloadEntry {
             download_id: download,
             endpoint: "players".to_string(),
@@ -180,20 +179,15 @@ mod tests {
             error_message: Some("Connection timeout".to_string()),
             retry_count: 1,
         };
-        
+
         let entry_id = create_download_entry(&mut conn, entry).expect("Failed to create entry");
-        
+
         // Update to success
-        let rows_updated = update_entry_status(
-            &mut conn,
-            entry_id,
-            "success",
-            None,
-            false,
-        ).expect("Failed to update entry");
-        
+        let rows_updated = update_entry_status(&mut conn, entry_id, "success", None, false)
+            .expect("Failed to update entry");
+
         assert_eq!(rows_updated, 1);
-        
+
         // Verify the update
         let entries = get_entries_for_download(&mut conn, download).expect("Failed to get entries");
         assert_eq!(entries[0].status, "success");

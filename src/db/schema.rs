@@ -92,6 +92,7 @@ diesel::table! {
         download_id -> Integer,
         team_id -> Integer,
         first_name -> Text,
+        nick_name -> Nullable<Text>,
         last_name -> Text,
         player_number -> Integer,
         age -> Integer,
