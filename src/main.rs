@@ -52,7 +52,6 @@ fn main() -> glib::ExitCode {
         Err(e) => println!("ERROR: HT_CONSUMER_SECRET not found in env: {}", e),
     }
 
-    // Initialize logger
     env_logger::init();
 
     // Set up gettext translations
@@ -64,22 +63,16 @@ fn main() -> glib::ExitCode {
     // Load resources
     gio::resources_register_include!("nutmeg.gresource").expect("Failed to register resources");
 
-    // Create a new GtkApplication. The application manages our main loop,
-    // application windows, integration with the window manager/compositor, and
-    // desktop features such as file opening and single-instance applications.
     let app = NutmegApplication::new("org.gnome.Nutmeg", &gio::ApplicationFlags::NON_UNIQUE);
 
     // Initialize Tokio Runtime to support async features in the GTK loop
     let runtime = Runtime::new().expect("Unable to create Tokio runtime");
     let _guard = runtime.enter();
 
-    // Run the application. This function will block until the application
-    // exits. Upon return, we have our exit code to return to the shell. (This
-    // is the code you see when you do `echo $?` after running a command in a
-    // terminal.
     app.run()
 
     /*
+    // For OAuth dance troubleshooting...
     // Load env vars
     if let Err(_) = dotenvy::dotenv() {
         // Fallback to .zshrc if .env fails (as requested originally)
