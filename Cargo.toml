@@ -24,6 +24,7 @@ async-trait = "0.1"
 chrono = "0.4"
 oo7 = "0.3"
 gdk-pixbuf = "0.21"
+num-format = { version = "0.4.4", features = ["with-system-locale"] }
 
 [dependencies.adw]
 package = "libadwaita"

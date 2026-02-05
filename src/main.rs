@@ -25,6 +25,7 @@ mod db;
 mod service;
 mod setup_window;
 mod window;
+mod player_display;
 
 use self::application::NutmegApplication;
 

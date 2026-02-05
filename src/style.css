@@ -1,4 +1,6 @@
+@define-color mother_club_bg rgba(64, 224, 208, 0.3);
+
 .mother-club {
-    background-color: rgba(64, 224, 208, 0.3);
+    background-color: @mother_club_bg;
     color: inherit;
 }

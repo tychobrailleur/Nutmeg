@@ -59,58 +59,11 @@
               <object class="GtkScrolledWindow">
                 <property name="vexpand">true</property>
                 <property name="child">
-                  <object class="GtkColumnView" id="view_players">
-                    <property name="show-row-separators">true</property>
-                    <property name="show-column-separators">true</property>
-                    <child>
-                      <object class="GtkColumnViewColumn">
-                        <property name="title" translatable="yes">Name</property>
-                        <property name="expand">true</property>
-                        <property name="factory">
-                          <object class="GtkSignalListItemFactory" id="factory_name"/>
-                        </property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkColumnViewColumn">
-                        <property name="title" translatable="yes">Flag</property>
-                        <property name="factory">
-                          <object class="GtkSignalListItemFactory" id="factory_flag"/>
-                        </property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkColumnViewColumn">
-                        <property name="title" translatable="yes">No.</property>
-                        <property name="factory">
-                          <object class="GtkSignalListItemFactory" id="factory_number"/>
-                        </property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkColumnViewColumn">
-                        <property name="title" translatable="yes">Age</property>
-                        <property name="factory">
-                          <object class="GtkSignalListItemFactory" id="factory_age"/>
-                        </property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkColumnViewColumn">
-                        <property name="title" translatable="yes">Form</property>
-                        <property name="factory">
-                          <object class="GtkSignalListItemFactory" id="factory_form"/>
-                        </property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkColumnViewColumn">
-                        <property name="title" translatable="yes">TSI</property>
-                        <property name="factory">
-                          <object class="GtkSignalListItemFactory" id="factory_tsi"/>
-                        </property>
-                      </object>
-                    </child>
+                  <object class="GtkTreeView" id="view_players">
+                    <property name="vexpand">true</property>
+                    <property name="hexpand">true</property>
+                    <property name="headers-visible">true</property>
+                    <property name="activate-on-single-click">true</property>
                   </object>
                 </property>
               </object>
