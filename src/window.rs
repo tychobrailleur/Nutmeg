@@ -1,17 +1,25 @@
 #![allow(deprecated)]
 /* window.rs
- *
- * Copyright 2026 Sébastien Le Callonnec
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * SPDX-License-Identifier: GPL-3.0-or-later
- */
+*
+* Copyright 2026 Sébastien Le Callonnec
+*
+* This program is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::chpp::model::{Player, Team};
+*
+* SPDX-License-Identifier: GPL-3.0-or-later
+*/
+
 use crate::db::manager::DbManager;
 use crate::db::teams::{get_players_for_team, get_teams_summary};
 use gettextrs::gettext;
@@ -19,101 +27,14 @@ use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, gio, glib, CompositeTemplate, TemplateChild};
 use log::{debug, error, info};
-use num_format::{Buffer, SystemLocale};
+use num_format::SystemLocale;
 use std::cell::RefCell;
 
 use crate::service::context::{AppContext, ContextService};
 use std::sync::Arc;
 
-// TODO see if the template cannot be dfined as a .ui file
-mod team_object {
-    use gtk::glib;
-    use gtk::subclass::prelude::*;
-    use std::cell::RefCell;
-
-    #[derive(Clone, Debug)]
-    pub struct TeamData {
-        pub id: u32,
-        pub name: String,
-        pub logo_url: Option<String>,
-    }
-
-    mod imp {
-        use super::*;
-
-        #[derive(Default)]
-        pub struct TeamObject {
-            pub data: RefCell<Option<TeamData>>,
-        }
-
-        #[glib::object_subclass]
-        impl ObjectSubclass for TeamObject {
-            const NAME: &'static str = "TeamObject";
-            type Type = super::TeamObject;
-        }
-
-        impl ObjectImpl for TeamObject {}
-    }
-
-    glib::wrapper! {
-        pub struct TeamObject(ObjectSubclass<imp::TeamObject>);
-    }
-
-    impl TeamObject {
-        pub fn new(id: u32, name: String, logo_url: Option<String>) -> Self {
-            let obj: Self = glib::Object::new();
-            obj.imp()
-                .data
-                .replace(Some(TeamData { id, name, logo_url }));
-            obj
-        }
-
-        pub fn team_data(&self) -> TeamData {
-            self.imp().data.borrow().as_ref().unwrap().clone()
-        }
-    }
-}
-
-mod player_object {
-    use super::*;
-    use gtk::glib;
-
-    mod imp {
-        use super::*;
-
-        #[derive(Default)]
-        pub struct PlayerObject {
-            pub data: RefCell<Option<Player>>,
-        }
-
-        #[glib::object_subclass]
-        impl ObjectSubclass for PlayerObject {
-            const NAME: &'static str = "PlayerObject";
-            type Type = super::PlayerObject;
-        }
-
-        impl ObjectImpl for PlayerObject {}
-    }
-
-    glib::wrapper! {
-        pub struct PlayerObject(ObjectSubclass<imp::PlayerObject>);
-    }
-
-    impl PlayerObject {
-        pub fn new(player: Player) -> Self {
-            let obj: Self = glib::Object::new();
-            obj.imp().data.replace(Some(player));
-            obj
-        }
-
-        pub fn player(&self) -> Player {
-            self.imp().data.borrow().as_ref().unwrap().clone()
-        }
-    }
-}
-
-use player_object::PlayerObject;
-use team_object::TeamObject;
+use crate::ui::player_object::PlayerObject;
+use crate::ui::team_object::TeamObject;
 
 mod imp {
     use super::*;
@@ -616,7 +537,7 @@ impl NutmegWindow {
 
                     for p in players {
                         let obj = PlayerObject::new(p.clone());
-                        let display = crate::player_display::PlayerDisplay::new(&p, &locale);
+                        let display = crate::ui::player_display::PlayerDisplay::new(&p, &locale);
 
                         let bg = if p.MotherClubBonus {
                             mother_club_bg_str.as_deref()
