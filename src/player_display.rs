@@ -27,10 +27,13 @@ impl PlayerDisplay {
     pub fn new(p: &Player, locale: &SystemLocale) -> Self {
         let name = format!("{} {}", p.FirstName, p.LastName);
         let flag = p.Flag.clone().unwrap_or_else(|| "🏳️".to_string());
-        let number = p.PlayerNumber.map(|n| n.to_string()).unwrap_or_else(|| "-".to_string());
+        let number = p
+            .PlayerNumber
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "-".to_string());
         let age = format!("{}.{}", p.Age, p.AgeDays.unwrap_or(0));
         let form = p.PlayerForm.to_string();
-        
+
         let mut buf_tsi = Buffer::default();
         buf_tsi.write_formatted(&p.TSI, locale);
         let tsi = buf_tsi.as_str().to_string();
@@ -65,9 +68,17 @@ impl PlayerDisplay {
         };
 
         let last_pos_code = p.LastMatch.as_ref().map(|m| m.PositionCode).unwrap_or(0);
-        let last_pos = if last_pos_code == 0 { "-".to_string() } else { last_pos_code.to_string() };
+        let last_pos = if last_pos_code == 0 {
+            "-".to_string()
+        } else {
+            last_pos_code.to_string()
+        };
 
-        let stamina = p.PlayerSkills.as_ref().map(|s| s.StaminaSkill.to_string()).unwrap_or_else(|| "-".to_string());
+        let stamina = p
+            .PlayerSkills
+            .as_ref()
+            .map(|s| s.StaminaSkill.to_string())
+            .unwrap_or_else(|| "-".to_string());
 
         let injured = match p.InjuryLevel {
             Some(i) if i == 0 => "🩹".to_string(),
@@ -82,7 +93,11 @@ impl PlayerDisplay {
             _ => "".to_string(),
         };
 
-        let mother_club = if p.MotherClubBonus { "❤️".to_string() } else { "".to_string() };
+        let mother_club = if p.MotherClubBonus {
+            "❤️".to_string()
+        } else {
+            "".to_string()
+        };
 
         Self {
             name,
@@ -110,7 +125,7 @@ impl PlayerDisplay {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chpp::model::{Player, PlayerSkills, LastMatch};
+    use crate::chpp::model::{LastMatch, Player, PlayerSkills};
 
     fn create_dummy_player() -> Player {
         Player {
@@ -196,8 +211,8 @@ mod tests {
         // gettext might return English or translation, but in unit test environment usually defaults to msgid if not initialized
         // Assuming "Quick" for ID 2
         // We might need to mock gettext or check potential values
-        // assert_eq!(display.specialty, "Quick"); 
-        
+        // assert_eq!(display.specialty, "Quick");
+
         assert_eq!(display.xp, "3");
         assert_eq!(display.mother_club, "❤️");
         assert_eq!(display.injured, "🚑 1w");
@@ -210,10 +225,11 @@ mod tests {
     fn test_player_display_locale() {
         // Try a locale with separators if available, else stick to C
         // Note: Creating specific locales might fail on some systems if not generated.
-        // We'll skip complex locale verification to avoid environment flakiness, 
+        // We'll skip complex locale verification to avoid environment flakiness,
         // relying on num-format's own tests for correctness.
         // Just verify it doesn't crash.
-        let locale = SystemLocale::default().unwrap_or_else(|_| SystemLocale::from_name("C").unwrap());
+        let locale =
+            SystemLocale::default().unwrap_or_else(|_| SystemLocale::from_name("C").unwrap());
         let p = create_dummy_player();
         let _display = PlayerDisplay::new(&p, &locale);
     }

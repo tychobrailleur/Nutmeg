@@ -11,7 +11,6 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use num_format::{Buffer, SystemLocale};
 use crate::chpp::model::{Player, Team};
 use crate::db::manager::DbManager;
 use crate::db::teams::{get_players_for_team, get_teams_summary};
@@ -20,6 +19,7 @@ use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, gio, glib, CompositeTemplate, TemplateChild};
 use log::{debug, error, info};
+use num_format::{Buffer, SystemLocale};
 use std::cell::RefCell;
 
 use crate::service::context::{AppContext, ContextService};
@@ -264,12 +264,12 @@ impl NutmegWindow {
             view.append_column(&column);
         };
 
-        // Columns: 
+        // Columns:
         // 0: Name, 1: Flag, 2: Number, 3: Age, 4: Form, 5: TSI
         // 6: Salary, 7: Specialty, 8: Experience, 9: Leadership, 10: Loyalty
         // 11: Best Pos, 12: Last Pos, 13: BG Color, 14: Stamina, 15: Injured, 16: Cards, 17: Mother Club
         // 18: PlayerObj
-        
+
         add_column(&gettext("Name"), 0);
         add_column(&gettext("Flag"), 1);
         add_column(&gettext("No."), 2);
@@ -562,7 +562,7 @@ impl NutmegWindow {
     }
 
     fn load_players(&self, team_id: u32) {
-        let _imp = self.imp();
+        let imp = self.imp();
         let db_manager = Arc::new(DbManager::new());
         let context_service = ContextService::new(db_manager.clone());
         let new_ctx = context_service.load_team_context(team_id);
@@ -611,7 +611,8 @@ impl NutmegWindow {
                         .or_else(|| Some("rgba(64, 224, 208, 0.3)".to_string())); // Fallback
 
                     // Get locale for formatting
-                    let locale = SystemLocale::default().unwrap_or_else(|_| SystemLocale::from_name("C").unwrap());
+                    let locale = SystemLocale::default()
+                        .unwrap_or_else(|_| SystemLocale::from_name("C").unwrap());
 
                     for p in players {
                         let obj = PlayerObject::new(p.clone());

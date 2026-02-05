@@ -22,10 +22,10 @@ mod application;
 mod chpp;
 mod config;
 mod db;
+mod player_display;
 mod service;
 mod setup_window;
 mod window;
-mod player_display;
 
 use self::application::NutmegApplication;
 

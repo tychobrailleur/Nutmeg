@@ -32,6 +32,7 @@ pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
 pub type SqlitePool = Pool<ConnectionManager<SqliteConnection>>;
 
+#[derive(Clone, Debug)]
 pub struct DbManager {
     pool: SqlitePool,
 }
