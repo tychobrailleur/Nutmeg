@@ -382,6 +382,123 @@ pub struct Player {
     pub LastMatch: Option<LastMatch>,
 }
 
+impl Player {
+    /// Merges two players, typically one from the basic players endpoint
+    ///    and one from the detailed playerdetails endpoint.
+    ///
+    /// Strategy:
+    /// - If detailed data is available, use it as the primary source
+    /// - Fill in any None fields in detailed data with values from basic data
+    /// - This ensures we capture all available information from both endpoints
+    ///
+    /// Note: PlayerSkills are only available in playerdetails for own team,
+    /// so basic data will never have skills to contribute.
+    pub fn merge_player_data(
+        &self,
+        other: Option<crate::chpp::model::Player>,
+    ) -> crate::chpp::model::Player {
+        match other {
+            Some(mut o) => {
+                if o.PlayerNumber.is_none() && self.PlayerNumber.is_some() {
+                    o.PlayerNumber = self.PlayerNumber;
+                }
+                if o.AgeDays.is_none() && self.AgeDays.is_some() {
+                    o.AgeDays = self.AgeDays;
+                }
+                if o.Statement.is_none() && self.Statement.is_some() {
+                    o.Statement = self.Statement.clone();
+                }
+                if o.ReferencePlayerID.is_none() && self.ReferencePlayerID.is_some() {
+                    o.ReferencePlayerID = self.ReferencePlayerID;
+                }
+                if o.LeagueGoals.is_none() && self.LeagueGoals.is_some() {
+                    o.LeagueGoals = self.LeagueGoals;
+                }
+                if o.CupGoals.is_none() && self.CupGoals.is_some() {
+                    o.CupGoals = self.CupGoals;
+                }
+                if o.FriendliesGoals.is_none() && self.FriendliesGoals.is_some() {
+                    o.FriendliesGoals = self.FriendliesGoals;
+                }
+                if o.CareerGoals.is_none() && self.CareerGoals.is_some() {
+                    o.CareerGoals = self.CareerGoals;
+                }
+                if o.CareerHattricks.is_none() && self.CareerHattricks.is_some() {
+                    o.CareerHattricks = self.CareerHattricks;
+                }
+                if o.Speciality.is_none() && self.Speciality.is_some() {
+                    o.Speciality = self.Speciality;
+                }
+                if o.NationalTeamID.is_none() && self.NationalTeamID.is_some() {
+                    o.NationalTeamID = self.NationalTeamID;
+                }
+                if o.CountryID.is_none() && self.CountryID.is_some() {
+                    o.CountryID = self.CountryID;
+                }
+                // Set country ID to native country ID if country ID is not present.
+                if o.CountryID.is_none() && o.NativeCountryID.is_some() {
+                    o.CountryID = o.NativeCountryID;
+                }
+                // National team stats
+                if o.Caps.is_none() && self.Caps.is_some() {
+                    o.Caps = self.Caps;
+                }
+                if o.CapsU20.is_none() && self.CapsU20.is_some() {
+                    o.CapsU20 = self.CapsU20;
+                }
+                if o.Cards.is_none() && self.Cards.is_some() {
+                    o.Cards = self.Cards;
+                }
+                if o.InjuryLevel.is_none() && self.InjuryLevel.is_some() {
+                    o.InjuryLevel = self.InjuryLevel;
+                }
+                if o.Sticker.is_none() && self.Sticker.is_some() {
+                    o.Sticker = self.Sticker.clone();
+                }
+                if o.LastMatch.is_none() && self.LastMatch.is_some() {
+                    o.LastMatch = self.LastMatch.clone();
+                }
+                if o.ArrivalDate.is_none() && self.ArrivalDate.is_some() {
+                    o.ArrivalDate = self.ArrivalDate.clone();
+                }
+                if o.PlayerCategoryId.is_none() && self.PlayerCategoryId.is_some() {
+                    o.PlayerCategoryId = self.PlayerCategoryId;
+                }
+                if o.MotherClub.is_none() && self.MotherClub.is_some() {
+                    o.MotherClub = self.MotherClub.clone();
+                }
+                if o.NativeCountryID.is_none() && self.NativeCountryID.is_some() {
+                    o.NativeCountryID = self.NativeCountryID;
+                }
+                if o.NativeLeagueID.is_none() && self.NativeLeagueID.is_some() {
+                    o.NativeLeagueID = self.NativeLeagueID;
+                }
+                if o.NativeLeagueName.is_none() && self.NativeLeagueName.is_some() {
+                    o.NativeLeagueName = self.NativeLeagueName.clone();
+                }
+                if o.MatchesCurrentTeam.is_none() && self.MatchesCurrentTeam.is_some() {
+                    o.MatchesCurrentTeam = self.MatchesCurrentTeam;
+                }
+                if o.GoalsCurrentTeam.is_none() && self.GoalsCurrentTeam.is_some() {
+                    o.GoalsCurrentTeam = self.GoalsCurrentTeam;
+                }
+                if o.AssistsCurrentTeam.is_none() && self.AssistsCurrentTeam.is_some() {
+                    o.AssistsCurrentTeam = self.AssistsCurrentTeam;
+                }
+                if o.CareerAssists.is_none() && self.CareerAssists.is_some() {
+                    o.CareerAssists = self.CareerAssists;
+                }
+
+                o
+            }
+            None => {
+                // Other struct missing, just return self
+                self.clone()
+            }
+        }
+    }
+}
+
 #[allow(non_snake_case)]
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct MotherClub {
@@ -1141,5 +1258,202 @@ mod tests {
 
         let res2: Example = from_str(xml2).expect("Failed to deserialize Example data");
         assert_eq!(res2.EmptyTag, None);
+    }
+
+    #[test]
+    fn test_merge_player_data_with_detailed() {
+        use crate::chpp::model::Player;
+
+        // Create basic player with some fields
+        let basic = Player {
+            PlayerID: 1,
+            FirstName: "John".to_string(),
+            LastName: "Doe".to_string(),
+            NickName: None,
+            PlayerNumber: Some(10),
+            Age: 25,
+            AgeDays: Some(100),
+            TSI: 1000,
+            PlayerForm: 5,
+            Statement: Some("Basic statement".to_string()),
+            Experience: 3,
+            Loyalty: 10,
+            ReferencePlayerID: Some(999),
+            MotherClubBonus: false,
+            Leadership: 3,
+            Salary: 500,
+            IsAbroad: false,
+            Agreeability: 3,
+            Aggressiveness: 3,
+            Honesty: 3,
+            LeagueGoals: Some(5),
+            CupGoals: Some(2),
+            FriendliesGoals: Some(1),
+            CareerGoals: Some(50),
+            CareerHattricks: Some(2),
+            Speciality: Some(1),
+            TransferListed: false,
+            NationalTeamID: Some(100),
+            CountryID: Some(10),
+            Caps: Some(5),
+            CapsU20: Some(10),
+            Cards: Some(1),
+            InjuryLevel: Some(-1),
+            Sticker: Some("Basic sticker".to_string()),
+            Flag: None,
+            PlayerSkills: None,
+            LastMatch: None,
+            ArrivalDate: None,
+            PlayerCategoryId: None,
+            MotherClub: None,
+            NativeCountryID: None,
+            NativeLeagueID: None,
+            NativeLeagueName: None,
+            MatchesCurrentTeam: None,
+            GoalsCurrentTeam: None,
+            AssistsCurrentTeam: None,
+            CareerAssists: None,
+        };
+
+        // Create detailed player with most fields but some missing
+        let detailed = Player {
+            PlayerID: 1,
+            FirstName: "John".to_string(),
+            LastName: "Doe".to_string(),
+            NickName: Some("H.".to_string()),
+            PlayerNumber: None, // Missing in detailed
+            Age: 25,
+            AgeDays: None, // Missing in detailed
+            TSI: 1500,     // Different value
+            PlayerForm: 6, // Different value
+            Statement: Some("Detailed statement".to_string()),
+            Experience: 4,
+            Loyalty: 11,
+            ReferencePlayerID: None, // Missing in detailed
+            MotherClubBonus: false,
+            Leadership: 4,
+            Salary: 600,
+            IsAbroad: false,
+            Agreeability: 4,
+            Aggressiveness: 4,
+            Honesty: 4,
+            LeagueGoals: Some(6),
+            CupGoals: None, // Missing in detailed
+            FriendliesGoals: Some(2),
+            CareerGoals: Some(55),
+            CareerHattricks: None, // Missing in detailed
+            Speciality: Some(1),
+            TransferListed: false,
+            NationalTeamID: Some(100),
+            CountryID: Some(10),
+            Caps: Some(6),
+            CapsU20: None, // Missing in detailed
+            Cards: Some(1),
+            InjuryLevel: Some(0),
+            Sticker: None, // Missing in detailed
+            Flag: None,
+            PlayerSkills: Some(crate::chpp::model::PlayerSkills {
+                StaminaSkill: 7,
+                KeeperSkill: 1,
+                PlaymakerSkill: 5,
+                ScorerSkill: 6,
+                PassingSkill: 5,
+                WingerSkill: 4,
+                DefenderSkill: 3,
+                SetPiecesSkill: 4,
+            }),
+            LastMatch: None,
+            ArrivalDate: None,
+            PlayerCategoryId: None,
+            MotherClub: None,
+            NativeCountryID: None,
+            NativeLeagueID: None,
+            NativeLeagueName: None,
+            MatchesCurrentTeam: None,
+            GoalsCurrentTeam: None,
+            AssistsCurrentTeam: None,
+            CareerAssists: None,
+        };
+
+        let merged = basic.merge_player_data(Some(detailed));
+
+        // Verify detailed data is primary
+        assert_eq!(merged.TSI, 1500);
+        assert_eq!(merged.PlayerForm, 6);
+        assert_eq!(merged.Statement, Some("Detailed statement".to_string()));
+        assert!(merged.PlayerSkills.is_some());
+
+        // Verify missing fields filled from basic
+        assert_eq!(merged.PlayerNumber, Some(10)); // From basic
+        assert_eq!(merged.AgeDays, Some(100)); // From basic
+        assert_eq!(merged.ReferencePlayerID, Some(999)); // From basic
+        assert_eq!(merged.CupGoals, Some(2)); // From basic
+        assert_eq!(merged.CareerHattricks, Some(2)); // From basic
+        assert_eq!(merged.CapsU20, Some(10)); // From basic
+        assert_eq!(merged.Sticker, Some("Basic sticker".to_string())); // From basic
+    }
+
+    #[test]
+    fn test_merge_player_data_without_detailed() {
+        use crate::chpp::model::Player;
+
+        let basic = Player {
+            PlayerID: 1,
+            FirstName: "John".to_string(),
+            LastName: "Doe".to_string(),
+            NickName: None,
+            PlayerNumber: Some(10),
+            Age: 25,
+            AgeDays: Some(100),
+            TSI: 1000,
+            PlayerForm: 5,
+            Statement: Some("Basic statement".to_string()),
+            Experience: 3,
+            Loyalty: 10,
+            ReferencePlayerID: Some(999),
+            MotherClubBonus: false,
+            Leadership: 3,
+            Salary: 500,
+            IsAbroad: false,
+            Agreeability: 3,
+            Aggressiveness: 3,
+            Honesty: 3,
+            LeagueGoals: Some(5),
+            CupGoals: Some(2),
+            FriendliesGoals: Some(1),
+            CareerGoals: Some(50),
+            CareerHattricks: Some(2),
+            Speciality: Some(1),
+            TransferListed: false,
+            NationalTeamID: Some(100),
+            CountryID: Some(10),
+            Caps: Some(5),
+            CapsU20: Some(10),
+            Cards: Some(1),
+            InjuryLevel: Some(-1),
+            Sticker: Some("Basic sticker".to_string()),
+            Flag: None,
+            PlayerSkills: None,
+            LastMatch: None,
+            ArrivalDate: None,
+            PlayerCategoryId: None,
+            MotherClub: None,
+            NativeCountryID: None,
+            NativeLeagueID: None,
+            NativeLeagueName: None,
+            MatchesCurrentTeam: None,
+            GoalsCurrentTeam: None,
+            AssistsCurrentTeam: None,
+            CareerAssists: None,
+        };
+
+        let merged = basic.merge_player_data(None);
+
+        // Should be identical to basic
+        assert_eq!(merged.PlayerID, basic.PlayerID);
+        assert_eq!(merged.TSI, basic.TSI);
+        assert_eq!(merged.PlayerNumber, basic.PlayerNumber);
+        assert_eq!(merged.Statement, basic.Statement);
+        assert!(merged.PlayerSkills.is_none());
     }
 }
