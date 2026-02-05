@@ -94,7 +94,7 @@ impl PlayerDisplay {
         };
 
         let mother_club = if p.MotherClubBonus {
-            "❤️".to_string()
+            "🌟".to_string()
         } else {
             "".to_string()
         };
@@ -214,7 +214,7 @@ mod tests {
         // assert_eq!(display.specialty, "Quick");
 
         assert_eq!(display.xp, "3");
-        assert_eq!(display.mother_club, "❤️");
+        assert_eq!(display.mother_club, "🌟");
         assert_eq!(display.injured, "🚑 1w");
         assert_eq!(display.cards, "🟨");
         assert_eq!(display.stamina, "7");
