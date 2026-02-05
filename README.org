@@ -1,0 +1,9 @@
+* Nutmeg
+
+Nutmeg is a lightweight GNOME [[https://www.hattrick.org][Hattrick]] assistant manager, written in Rust and Gtk4.
+
+* License
+
+Copyright © 2026 Sébastien Le Callonnec
+
+This project is licensed under the GNU General Public License v3.0.
