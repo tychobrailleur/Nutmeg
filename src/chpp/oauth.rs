@@ -26,7 +26,7 @@ use std::{
 use http_types::{Method, Url};
 use log::info;
 use oauth_1a::*;
-pub use oauth_1a::{OAuthData, SigningKey}; // Export these public types
+pub use oauth_1a::{OAuthData, SigningKey};
 
 use crate::chpp::error::Error;
 use crate::chpp::CHPP_OAUTH_AUTH_URL;
@@ -39,7 +39,6 @@ pub struct OauthSettings {
     pub nonce: RefCell<String>,
     pub client_id: RefCell<String>,
     pub client_secret: RefCell<String>,
-    // Store access tokens if needed, but usually we just return them
 }
 
 impl Debug for OauthSettings {
@@ -110,7 +109,7 @@ pub fn get_request_token_url(
     }
 
     Ok(format!(
-        "{}?oauth_token={}&scope=set_matchorder,manage_youthplayers",
+        "{}?oauth_token={}&scope=set_matchorder",
         CHPP_OAUTH_AUTH_URL, &token.0
     ))
 }
@@ -176,7 +175,7 @@ pub fn request_token(
     // The callback needs to open the URL passed as an argument,
     // authenticate in Hattrick, and obtain the verification code.
     verif_callback(&format!(
-        "{}?oauth_token={}&scope=set_matchorder,manage_youthplayers",
+        "{}?oauth_token={}&scope=set_matchorder",
         CHPP_OAUTH_AUTH_URL, &token.0
     ));
 
@@ -265,7 +264,6 @@ pub fn create_oauth_context(
     };
 
     let key = SigningKey::with_token(client_secret, token_secret);
-
     (data, key)
 }
 
