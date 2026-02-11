@@ -1,5 +1,5 @@
 /*
- * nutmeg - Hattrick Organizer written in Rust
+ * Nutmeg
  *
  * Copyright 2026 Sébastien Le Callonnec
  *
