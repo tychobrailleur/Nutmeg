@@ -36,6 +36,7 @@ impl PlayerDisplay {
         let age = format!("{}.{}", p.Age, p.AgeDays.unwrap_or(0));
         let form = p.PlayerForm.to_string();
 
+        // TSI formatted with locale (thousands separators)
         let mut buf_tsi = Buffer::default();
         buf_tsi.write_formatted(&p.TSI, locale);
         let tsi = buf_tsi.as_str().to_string();
@@ -70,11 +71,7 @@ impl PlayerDisplay {
         };
 
         let last_pos_code = p.LastMatch.as_ref().map(|m| m.PositionCode).unwrap_or(0);
-        let last_pos = if last_pos_code == 0 {
-            "-".to_string()
-        } else {
-            last_pos_code.to_string()
-        };
+        let last_pos = translate_position_id(last_pos_code);
 
         let stamina = p
             .PlayerSkills
@@ -95,7 +92,9 @@ impl PlayerDisplay {
             _ => "".to_string(),
         };
 
-        let mother_club = if p.MotherClubBonus {
+        let mother_club = if p.MotherClub.is_some() {
+            p.MotherClub.as_ref().unwrap().TeamName.clone()
+        } else if p.MotherClubBonus {
             "🌟".to_string()
         } else {
             "".to_string()
@@ -120,6 +119,53 @@ impl PlayerDisplay {
             cards,
             mother_club,
             mother_club_bonus: p.MotherClubBonus,
+        }
+    }
+}
+
+pub fn translate_position_id(id: u32) -> String {
+    match id {
+        100 => gettext("Keeper"),
+        101 => gettext("Right Back"),
+        102 => gettext("Right Central Defender"),
+        103 => gettext("Middle Central Defender"),
+        104 => gettext("Left Central Defender"),
+        105 => gettext("Left Back"),
+        106 => gettext("Right Winger"),
+        107 => gettext("Right Inner Midfield"),
+        108 => gettext("Middle Inner Midfield"),
+        109 => gettext("Left Inner Midfield"),
+        110 => gettext("Left Winger"),
+        111 => gettext("Right Forward"),
+        112 => gettext("Middle Forward"),
+        113 => gettext("Left Forward"),
+        114 => gettext("Substitution (Keeper)"),
+        115 => gettext("Substitution (Defender)"),
+        116 => gettext("Substitution (Inner Midfield)"),
+        117 => gettext("Substitution (Winger)"),
+        118 => gettext("Substitution (Forward)"),
+        119 => gettext("Substitution (Wing Back)"),
+        120 => gettext("Substitution (Extra)"),
+        200 => gettext("Substitution (Keeper)"),
+        201 => gettext("Substitution (Central Defender)"),
+        202 => gettext("Substitution (Wing Back)"),
+        203 => gettext("Substitution (Inner Midfielder)"),
+        204 => gettext("Substitution (Forward)"),
+        205 => gettext("Substitution (Winger)"),
+        206 => gettext("Substitution (Extra)"),
+        207 => gettext("Backup (Keeper)"),
+        208 => gettext("Backup (Central Defender)"),
+        209 => gettext("Backup (Wing Back)"),
+        210 => gettext("Backup (Inner Midfielder)"),
+        211 => gettext("Backup (Forward)"),
+        212 => gettext("Backup (Winger)"),
+        213 => gettext("Backup (Extra)"),
+        _ => {
+            if id == 0 {
+                "-".to_string()
+            } else {
+                id.to_string()
+            }
         }
     }
 }

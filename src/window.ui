@@ -52,20 +52,44 @@
           </object>
         </child>
         <child>
-          <object class="GtkPaned">
+          <object class="GtkNotebook" id="notebook">
             <property name="vexpand">true</property>
-            <property name="position">550</property>
-            <property name="start-child">
-              <object class="SquadPlayerList" id="player_list"/>
-            </property>
-            <property name="end-child">
-              <object class="GtkScrolledWindow">
-                <property name="hscrollbar-policy">never</property>
-                <property name="child">
-                  <object class="SquadPlayerDetails" id="player_details"/>
+            <child>
+              <object class="GtkPaned" id="squad_view">
+                <property name="vexpand">true</property>
+                <property name="position">550</property>
+                <property name="start-child">
+                  <object class="SquadPlayerList" id="player_list"/>
+                </property>
+                <property name="end-child">
+                  <object class="GtkScrolledWindow">
+                    <property name="hscrollbar-policy">never</property>
+                    <property name="child">
+                      <object class="SquadPlayerDetails" id="player_details"/>
+                    </property>
+                  </object>
                 </property>
               </object>
-            </property>
+            </child>
+            <child type="tab">
+              <object class="GtkLabel">
+                <property name="label" translatable="yes">_Squad</property>
+                <property name="use-underline">True</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="label" translatable="yes">Coming soon...</property>
+                <property name="vexpand">true</property>
+                <property name="hexpand">true</property>
+              </object>
+            </child>
+            <child type="tab">
+               <object class="GtkLabel">
+                 <property name="label" translatable="yes">_Lineup Optimiser</property>
+                 <property name="use-underline">True</property>
+               </object>
+            </child>
           </object>
         </child>
         <child>

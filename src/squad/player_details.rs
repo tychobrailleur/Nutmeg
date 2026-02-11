@@ -2,7 +2,7 @@ use crate::ui::player_object::PlayerObject;
 use gettextrs::gettext;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::{glib, CompositeTemplate};
+use gtk::{gdk, gio, glib, CompositeTemplate};
 
 // Shows the details of a specific player in the squad view.
 
@@ -16,6 +16,8 @@ mod imp {
         pub details_name: TemplateChild<gtk::Label>,
         #[template_child]
         pub details_id: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_avatar: TemplateChild<gtk::Image>,
 
         // Category
         #[template_child]
@@ -30,6 +32,8 @@ mod imp {
         pub details_tsi: TemplateChild<gtk::Label>,
         #[template_child]
         pub details_injury: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub label_injury_title: TemplateChild<gtk::Label>,
 
         // Skills
         #[template_child]
@@ -55,7 +59,7 @@ mod imp {
         #[template_child]
         pub details_loyalty: TemplateChild<gtk::Label>,
         #[template_child]
-        pub details_mother_club: TemplateChild<gtk::Label>,
+        pub details_mother_club: TemplateChild<gtk::LinkButton>,
 
         // Last Match
         #[template_child]
@@ -112,6 +116,28 @@ impl SquadPlayerDetails {
                 .set_label(&format!("{} {}", p.FirstName, p.LastName));
             imp.details_id.set_label(&p.PlayerID.to_string());
 
+            // Avatar
+            if let Some(blob) = &p.AvatarBlob {
+                println!(
+                    "Player {} has avatar blob of size {}",
+                    p.PlayerID,
+                    blob.len()
+                );
+                let bytes = glib::Bytes::from(blob);
+                let stream = gio::MemoryInputStream::from_bytes(&bytes);
+                if let Ok(pixbuf) = gdk_pixbuf::Pixbuf::from_stream(&stream, gio::Cancellable::NONE)
+                {
+                    let texture = gdk::Texture::for_pixbuf(&pixbuf);
+                    imp.details_avatar.set_paintable(Some(&texture));
+                } else {
+                    imp.details_avatar
+                        .set_icon_name(Some("avatar-default-symbolic"));
+                }
+            } else {
+                imp.details_avatar
+                    .set_icon_name(Some("avatar-default-symbolic"));
+            }
+
             // Category
             let cat_str = match p.PlayerCategoryId {
                 Some(1) => gettext("Keeper"),
@@ -134,12 +160,32 @@ impl SquadPlayerDetails {
                 .unwrap_or_else(|| "-".to_string());
             imp.details_stamina.set_label(&stamina);
 
-            imp.details_tsi.set_label(&p.TSI.to_string());
-            imp.details_injury.set_label(
-                &p.InjuryLevel
-                    .map(|v| v.to_string())
-                    .unwrap_or("-".to_string()),
-            );
+            // TSI
+            let locale = num_format::SystemLocale::default()
+                .unwrap_or_else(|_| num_format::SystemLocale::from_name("C").unwrap());
+            let mut buf_tsi = num_format::Buffer::default();
+            buf_tsi.write_formatted(&p.TSI, &locale);
+            imp.details_tsi.set_label(buf_tsi.as_str());
+
+            // Injury
+            if let Some(injury_level) = p.InjuryLevel {
+                if injury_level == -1 {
+                    imp.details_injury.set_visible(false);
+                    imp.label_injury_title.set_visible(false);
+                } else {
+                    imp.details_injury.set_visible(true);
+                    imp.label_injury_title.set_visible(true);
+                    let injury_str = if injury_level == 0 {
+                        "🩹".to_string()
+                    } else {
+                        format!("🚑 {} w", injury_level)
+                    };
+                    imp.details_injury.set_label(&injury_str);
+                }
+            } else {
+                imp.details_injury.set_visible(false);
+                imp.label_injury_title.set_visible(false);
+            }
 
             // Skills
             let skills = p.PlayerSkills.as_ref();
@@ -192,12 +238,31 @@ impl SquadPlayerDetails {
             );
             imp.details_loyalty.set_label(&p.Loyalty.to_string());
 
-            let mother_club_text = if p.MotherClubBonus {
-                gettext("Yes")
+            // Mother Club
+            println!(
+                "MotherClub: {:?}, Bonus: {}",
+                p.MotherClub, p.MotherClubBonus
+            );
+            if let Some(mother_club) = &p.MotherClub {
+                if !p.MotherClubBonus {
+                    imp.details_mother_club.set_label(&mother_club.TeamName);
+                    imp.details_mother_club.set_uri(&format!(
+                        "https://www.hattrick.org/Club/?TeamID={}",
+                        mother_club.TeamID
+                    ));
+                    imp.details_mother_club.set_visible(true);
+                } else {
+                    imp.details_mother_club.set_visible(false);
+                }
             } else {
-                gettext("No")
-            };
-            imp.details_mother_club.set_label(&mother_club_text);
+                if p.MotherClubBonus {
+                    imp.details_mother_club.set_label(&gettext("Home Grown"));
+                    imp.details_mother_club.set_sensitive(false); // No link
+                    imp.details_mother_club.set_visible(true);
+                } else {
+                    imp.details_mother_club.set_visible(false);
+                }
+            }
 
             // Last Match
             imp.details_last_match_date
@@ -211,7 +276,7 @@ impl SquadPlayerDetails {
             imp.details_position_code.set_label(
                 &p.LastMatch
                     .as_ref()
-                    .map(|m| m.PositionCode.to_string())
+                    .map(|m| crate::ui::player_display::translate_position_id(m.PositionCode))
                     .unwrap_or_else(|| "-".to_string()),
             );
 

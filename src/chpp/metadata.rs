@@ -37,7 +37,7 @@ pub struct ChppEndpoints;
 impl ChppEndpoints {
     pub const TEAM_DETAILS: EndpointInfo = EndpointInfo {
         name: "teamdetails",
-        version: "3.7",
+        version: "3.8",
         description: "Team information",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=teamdetails",
@@ -53,7 +53,7 @@ impl ChppEndpoints {
 
     pub const PLAYERS: EndpointInfo = EndpointInfo {
         name: "players",
-        version: "2.4",
+        version: "2.8",
         description: "Players",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=players",
@@ -61,7 +61,7 @@ impl ChppEndpoints {
 
     pub const PLAYER_DETAILS: EndpointInfo = EndpointInfo {
         name: "playerdetails",
-        version: "2.4",
+        version: "3.2",
         description: "Detailed information for a player",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=playerdetails",
@@ -69,7 +69,7 @@ impl ChppEndpoints {
 
     pub const MATCH_DETAILS: EndpointInfo = EndpointInfo {
         name: "matchdetails",
-        version: "3.0",
+        version: "3.1",
         description: "Match details",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=matchdetails",
@@ -77,7 +77,7 @@ impl ChppEndpoints {
 
     pub const MATCHES: EndpointInfo = EndpointInfo {
         name: "matches",
-        version: "2.8",
+        version: "2.9",
         description: "List of matches",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=matches",
@@ -85,7 +85,7 @@ impl ChppEndpoints {
 
     pub const ECONOMY: EndpointInfo = EndpointInfo {
         name: "economy",
-        version: "1.2",
+        version: "1.4",
         description: "Team economy",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=economy",
@@ -93,7 +93,7 @@ impl ChppEndpoints {
 
     pub const ARENA_DETAILS: EndpointInfo = EndpointInfo {
         name: "arenadetails",
-        version: "1.5",
+        version: "1.7",
         description: "Arena information",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=arenadetails",
@@ -101,7 +101,7 @@ impl ChppEndpoints {
 
     pub const TRAINING: EndpointInfo = EndpointInfo {
         name: "training",
-        version: "1.2",
+        version: "2.2",
         description: "Training information",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=training",
@@ -109,7 +109,7 @@ impl ChppEndpoints {
 
     pub const ACHIEVEMENTS: EndpointInfo = EndpointInfo {
         name: "achievements",
-        version: "1.0",
+        version: "1.2",
         description: "The achievements of a specific user",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=achievements",
@@ -117,7 +117,7 @@ impl ChppEndpoints {
 
     pub const ALLIANCE_DETAILS: EndpointInfo = EndpointInfo {
         name: "alliancedetails",
-        version: "1.2",
+        version: "1.5",
         description: "Alliance / Federation information",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=alliancedetails",
@@ -125,7 +125,7 @@ impl ChppEndpoints {
 
     pub const ALLIANCES: EndpointInfo = EndpointInfo {
         name: "alliances",
-        version: "1.1",
+        version: "1.4",
         description: "Alliance / Federation search",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=alliances",
@@ -133,7 +133,7 @@ impl ChppEndpoints {
 
     pub const AVATARS: EndpointInfo = EndpointInfo {
         name: "avatars",
-        version: "1.0",
+        version: "1.1",
         description: "Avatars for all players of user's team",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=avatars",
@@ -149,7 +149,7 @@ impl ChppEndpoints {
 
     pub const CHALLENGES: EndpointInfo = EndpointInfo {
         name: "challenges",
-        version: "1.2",
+        version: "1.6",
         description: "Challenges",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=challenges",
@@ -157,14 +157,14 @@ impl ChppEndpoints {
 
     pub const CLUB: EndpointInfo = EndpointInfo {
         name: "club",
-        version: "1.1",
+        version: "1.5",
         description: "Information about specialists and youth",
         documentation_url: "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=club",
     };
 
     pub const CUP_MATCHES: EndpointInfo = EndpointInfo {
         name: "cupmatches",
-        version: "1.2",
+        version: "1.4",
         description: "Information about cup matches",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=cupmatches",
@@ -180,14 +180,14 @@ impl ChppEndpoints {
 
     pub const FANS: EndpointInfo = EndpointInfo {
         name: "fans",
-        version: "1.0",
+        version: "1.3",
         description: "Fanclub information",
         documentation_url: "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=fans",
     };
 
     pub const HOF_PLAYERS: EndpointInfo = EndpointInfo {
         name: "hofplayers",
-        version: "1.0",
+        version: "1.2",
         description: "Hall of Fame Players",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=hofplayers",
@@ -211,7 +211,7 @@ impl ChppEndpoints {
 
     pub const LEAGUE_DETAILS: EndpointInfo = EndpointInfo {
         name: "leaguedetails",
-        version: "1.2",
+        version: "1.6",
         description: "Information about a League Level Unit (series)",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=leaguedetails",
@@ -235,14 +235,14 @@ impl ChppEndpoints {
 
     pub const LIVE: EndpointInfo = EndpointInfo {
         name: "live",
-        version: "1.3",
+        version: "2.3",
         description: "Get (live) match ticker",
         documentation_url: "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=live",
     };
 
     pub const MANAGER_COMPENDIUM: EndpointInfo = EndpointInfo {
         name: "managercompendium",
-        version: "1.0",
+        version: "1.6",
         description: "The manager compendium of the logged in user",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=managercompendium",
@@ -250,7 +250,7 @@ impl ChppEndpoints {
 
     pub const MATCHES_ARCHIVE: EndpointInfo = EndpointInfo {
         name: "matchesarchive",
-        version: "1.1",
+        version: "1.5",
         description: "Matches Archive",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=matchesarchive",
@@ -258,7 +258,7 @@ impl ChppEndpoints {
 
     pub const MATCH_ORDERS: EndpointInfo = EndpointInfo {
         name: "matchorders",
-        version: "1.3",
+        version: "3.1",
         description: "Match orders for upcoming matches",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=matchorders",
@@ -266,7 +266,7 @@ impl ChppEndpoints {
 
     pub const MATCH_LINEUP: EndpointInfo = EndpointInfo {
         name: "matchlineup",
-        version: "1.2",
+        version: "2.1",
         description: "Match lineup for finished matches",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=matchlineup",
@@ -274,7 +274,7 @@ impl ChppEndpoints {
 
     pub const PLAYER_EVENTS: EndpointInfo = EndpointInfo {
         name: "playerevents",
-        version: "1.1",
+        version: "1.3",
         description: "Player events",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=playerevents",
@@ -298,7 +298,7 @@ impl ChppEndpoints {
 
     pub const STAFF_AVATARS: EndpointInfo = EndpointInfo {
         name: "staffavatars",
-        version: "1.0",
+        version: "1.1",
         description: "Avatars for all staff members",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=staffavatars",
@@ -306,7 +306,7 @@ impl ChppEndpoints {
 
     pub const STAFF_LIST: EndpointInfo = EndpointInfo {
         name: "stafflist",
-        version: "1.0",
+        version: "1.2",
         description: "A list of all staff members",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=stafflist",
@@ -331,7 +331,7 @@ impl ChppEndpoints {
 
     pub const TOURNAMENT_FIXTURES: EndpointInfo = EndpointInfo {
         name: "tournamentfixtures",
-        version: "1.0",
+        version: "1.1",
         description: "Information about matches for a tournament",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=tournamentfixtures",
@@ -339,7 +339,7 @@ impl ChppEndpoints {
 
     pub const TOURNAMENT_LEAGUE_TABLES: EndpointInfo = EndpointInfo {
         name: "tournamentleaguetables",
-        version: "1.0",
+        version: "1.1",
         description: "League tables for a tournament",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=tournamentleaguetables",
@@ -355,7 +355,7 @@ impl ChppEndpoints {
 
     pub const TRAINING_EVENTS: EndpointInfo = EndpointInfo {
         name: "trainingevents",
-        version: "1.1",
+        version: "1.3",
         description: "Get training events for a player",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=trainingevents",
@@ -363,7 +363,7 @@ impl ChppEndpoints {
 
     pub const TRANSFER_SEARCH: EndpointInfo = EndpointInfo {
         name: "transfersearch",
-        version: "1.0",
+        version: "1.1",
         description: "Search the transfer market",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=transfersearch",
@@ -387,7 +387,7 @@ impl ChppEndpoints {
 
     pub const TRANSLATIONS: EndpointInfo = EndpointInfo {
         name: "translations",
-        version: "1.0",
+        version: "1.2",
         description: "Translations for the denominations in the game",
         documentation_url:
             "https://www84.hattrick.org/Community/CHPP/NewDocs/File.aspx?name=translations",

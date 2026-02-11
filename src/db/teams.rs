@@ -132,6 +132,7 @@ struct LeagueEntity {
     active_teams: Option<i32>,
     active_users: Option<i32>,
     number_of_levels: Option<i32>,
+    league_system_id: i32,
 }
 
 #[derive(Queryable, Insertable)]
@@ -208,6 +209,7 @@ struct TeamEntity {
     bot_since: Option<String>,
     youth_team_id: Option<i32>,
     youth_team_name: Option<String>,
+    gender_id: i32,
 }
 
 #[derive(Queryable, Insertable)]
@@ -247,6 +249,7 @@ struct PlayerEntity {
     caps_u20: Option<i32>,
     cards: Option<i32>,
     injury_level: Option<i32>,
+    avatar: Option<Vec<u8>>,
     sticker: Option<String>,
     stamina_skill: Option<i32>,
     keeper_skill: Option<i32>,
@@ -273,6 +276,7 @@ struct PlayerEntity {
     goals_current_team: Option<i32>,
     assists_current_team: Option<i32>,
     career_assists: Option<i32>,
+    gender_id: i32,
 }
 
 pub fn save_world_details(
@@ -330,6 +334,7 @@ pub fn save_world_details(
             ActiveTeams: world_league.ActiveTeams,
             ActiveUsers: world_league.ActiveUsers,
             NumberOfLevels: world_league.NumberOfLevels,
+            LeagueSystemId: None,
         };
 
         // Save Country
@@ -403,6 +408,7 @@ pub fn save_players(
             caps_u20: player.CapsU20.map(|v| v as i32),
             cards: player.Cards.map(|v| v as i32),
             injury_level: player.InjuryLevel.map(|v| v as i32),
+            avatar: player.AvatarBlob.clone(),
             sticker: player.Sticker.clone(),
             // Skills
             stamina_skill: player.PlayerSkills.as_ref().map(|s| s.StaminaSkill as i32),
@@ -443,6 +449,7 @@ pub fn save_players(
             goals_current_team: player.GoalsCurrentTeam.map(|v| v as i32),
             assists_current_team: player.AssistsCurrentTeam.map(|v| v as i32),
             career_assists: player.CareerAssists.map(|v| v as i32),
+            gender_id: player.GenderID.unwrap_or(1) as i32,
         };
 
         diesel::insert_into(players::table)
@@ -612,6 +619,7 @@ fn save_league(
         active_teams: league.ActiveTeams.map(|v| v as i32),
         active_users: league.ActiveUsers.map(|v| v as i32),
         number_of_levels: league.NumberOfLevels.map(|v| v as i32),
+        league_system_id: league.LeagueSystemId.unwrap_or(1) as i32,
     };
     diesel::insert_into(leagues::table)
         .values(&entity)
@@ -751,6 +759,7 @@ pub fn save_team(
         bot_since: team.BotStatus.as_ref().and_then(|b| b.BotSince.clone()),
         youth_team_id: team.YouthTeamID.map(|v| v as i32),
         youth_team_name: team.YouthTeamName.clone(),
+        gender_id: team.GenderID.unwrap_or(1) as i32,
     };
 
     diesel::insert_into(teams::table)
@@ -991,12 +1000,14 @@ pub fn get_players_for_team(
             Speciality: entity.speciality.map(|v| v as u32),
             TransferListed: entity.transfer_listed,
             NationalTeamID: entity.national_team_id.map(|v| v as u32),
+            GenderID: Some(entity.gender_id as u32),
             CountryID: Some(entity.country_id as u32),
             Caps: entity.caps.map(|v| v as u32),
             CapsU20: entity.caps_u20.map(|v| v as u32),
             Cards: entity.cards.map(|v| v as u32),
             InjuryLevel: entity.injury_level.map(|v| v as i32),
             Sticker: entity.sticker,
+            AvatarBlob: entity.avatar,
             Flag: flag,
             ReferencePlayerID: None,
             PlayerSkills: if entity.stamina_skill.is_some() {

@@ -170,6 +170,7 @@ pub struct League {
     pub ActiveTeams: Option<u32>,
     pub ActiveUsers: Option<u32>,
     pub NumberOfLevels: Option<u32>,
+    pub LeagueSystemId: Option<u32>,
 }
 
 #[allow(non_snake_case)]
@@ -367,6 +368,8 @@ pub struct Player {
     pub InjuryLevel: Option<i32>, // -1 = No injury, 0 = Bruised, >0 = Weeks
     pub Sticker: Option<String>,
     #[serde(skip)]
+    pub AvatarBlob: Option<Vec<u8>>,
+    #[serde(skip)]
     pub Flag: Option<String>,
     pub PlayerSkills: Option<PlayerSkills>, // Only visible for own team or if authorized
     pub ArrivalDate: Option<String>,
@@ -380,6 +383,8 @@ pub struct Player {
     pub GoalsCurrentTeam: Option<u32>,
     pub AssistsCurrentTeam: Option<u32>,
     pub LastMatch: Option<LastMatch>,
+    #[serde(default, deserialize_with = "deserialize_empty_tag_is_none")]
+    pub GenderID: Option<u32>,
 }
 
 impl Player {
@@ -488,6 +493,9 @@ impl Player {
                 if o.CareerAssists.is_none() && self.CareerAssists.is_some() {
                     o.CareerAssists = self.CareerAssists;
                 }
+                if o.GenderID.is_none() && self.GenderID.is_some() {
+                    o.GenderID = self.GenderID;
+                }
 
                 o
             }
@@ -570,6 +578,10 @@ pub struct Team {
     pub PossibleToChallengeMidweek: Option<bool>,
     #[serde(deserialize_with = "deserialize_option_bool", default)]
     pub PossibleToChallengeWeekend: Option<bool>,
+    // TODO: Verify if GenderID is actually returned by teamdetails.
+    // If not, we might need to infer it or keep it as Option.
+    // Assuming it might be there or we default to 1 in DB.
+    pub GenderID: Option<u32>,
 }
 
 #[allow(non_snake_case)]

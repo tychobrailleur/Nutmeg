@@ -10,16 +10,34 @@
     <property name="spacing">12</property>
     <property name="visible">false</property>
     <child>
-      <object class="GtkLabel" id="details_name">
-        <property name="css-classes">title-2</property>
-        <property name="halign">start</property>
-        <property name="wrap">true</property>
-      </object>
-    </child>
-    <child>
-      <object class="GtkLabel" id="details_id">
-        <property name="css-classes">dim-label</property>
-        <property name="halign">start</property>
+      <object class="GtkBox">
+        <property name="orientation">horizontal</property>
+        <property name="spacing">12</property>
+        <child>
+            <object class="GtkImage" id="details_avatar">
+                <property name="pixel-size">64</property>
+                <property name="icon-name">avatar-default-symbolic</property> <!-- Fallback -->
+            </object>
+        </child>
+        <child>
+          <object class="GtkBox">
+            <property name="orientation">vertical</property>
+            <property name="valign">center</property>
+            <child>
+              <object class="GtkLabel" id="details_name">
+                <property name="css-classes">title-2</property>
+                <property name="halign">start</property>
+                <property name="wrap">true</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkLabel" id="details_id">
+                <property name="css-classes">dim-label</property>
+                <property name="halign">start</property>
+              </object>
+            </child>
+          </object>
+        </child>
       </object>
     </child>
     <child>
@@ -125,7 +143,7 @@
               </object>
             </child>
             <child>
-              <object class="GtkLabel">
+              <object class="GtkLabel" id="label_injury_title">
                 <property name="label" translatable="yes">Injury:</property>
                 <property name="halign">start</property>
                 <layout>
@@ -408,7 +426,7 @@
               </object>
             </child>
             <child>
-              <object class="GtkLabel" id="details_mother_club">
+              <object class="GtkLinkButton" id="details_mother_club">
                 <property name="label">-</property>
                 <property name="halign">start</property>
                 <layout>

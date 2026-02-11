@@ -105,6 +105,8 @@ mod imp {
                 &provider,
                 gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
             );
+
+            obj.set_maximized(true);
         }
     }
     impl WidgetImpl for NutmegWindow {}

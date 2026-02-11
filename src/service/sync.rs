@@ -478,12 +478,26 @@ impl SyncService {
                 }
 
                 // Merge detailed data with basic data
-                let merged = match result {
+                let mut merged = match result {
                     Ok(detailed_player) => {
                         debug!(
                             "Successfully fetched detailed data for player {}",
                             player_id
                         );
+                        if detailed_player.MotherClub.is_some() {
+                            debug!("Detailed player {} has MotherClub", player_id);
+                        } else {
+                            debug!("Detailed player {} has NO MotherClub", player_id);
+                        }
+                        if detailed_player.Sticker.is_some() {
+                            debug!(
+                                "Detailed player {} has Sticker: {:?}",
+                                player_id, detailed_player.Sticker
+                            );
+                        } else {
+                            debug!("Detailed player {} has NO Sticker", player_id);
+                        }
+
                         basic_player.merge_player_data(Some(detailed_player))
                     }
                     Err(e) => {
@@ -495,6 +509,35 @@ impl SyncService {
                         basic_player.merge_player_data(None)
                     }
                 };
+
+                // Download Avatar if Sticker is present
+                if let Some(sticker_url) = &merged.Sticker {
+                    // Hattrick URLs are protocol-relative
+                    let url = if sticker_url.starts_with("//") {
+                        format!("https:{}", sticker_url)
+                    } else {
+                        sticker_url.clone()
+                    };
+
+                    info!("Downloading avatar for player {} from {}", player_id, url);
+                    match reqwest::get(&url).await {
+                        Ok(response) => match response.bytes().await {
+                            Ok(bytes) => {
+                                merged.AvatarBlob = Some(bytes.to_vec());
+                            }
+                            Err(e) => {
+                                log::warn!(
+                                    "Failed to get avatar bytes for player {}: {}",
+                                    player_id,
+                                    e
+                                );
+                            }
+                        },
+                        Err(e) => {
+                            log::warn!("Failed to download avatar for player {}: {}", player_id, e);
+                        }
+                    }
+                }
 
                 merged_players.push(merged);
             }

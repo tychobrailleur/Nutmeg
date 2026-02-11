@@ -85,6 +85,7 @@ diesel::table! {
         active_teams -> Nullable<Integer>,
         active_users -> Nullable<Integer>,
         number_of_levels -> Nullable<Integer>,
+        league_system_id -> Integer,
     }
 }
 
@@ -124,6 +125,7 @@ diesel::table! {
         caps_u20 -> Nullable<Integer>,
         cards -> Nullable<Integer>,
         injury_level -> Nullable<Integer>,
+        avatar -> Nullable<Binary>,
         sticker -> Nullable<Text>,
         stamina_skill -> Nullable<Integer>,
         keeper_skill -> Nullable<Integer>,
@@ -150,6 +152,7 @@ diesel::table! {
         goals_current_team -> Nullable<Integer>,
         assists_current_team -> Nullable<Integer>,
         career_assists -> Nullable<Integer>,
+        gender_id -> Integer,
     }
 }
 
@@ -214,6 +217,7 @@ diesel::table! {
         bot_since -> Nullable<Text>,
         youth_team_id -> Nullable<Integer>,
         youth_team_name -> Nullable<Text>,
+        gender_id -> Integer,
     }
 }
 

@@ -133,7 +133,7 @@ pub fn create_player_model(players: &[crate::chpp::model::Player]) -> gtk::ListS
         let display = PlayerDisplay::new(&p, &locale);
 
         let bg = if p.MotherClubBonus {
-            Some("mother_club_bg")
+            Some("rgba(64, 224, 208, 0.3)")
         } else {
             None
         };
