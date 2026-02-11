@@ -1,5 +1,8 @@
 use crate::db::manager::DbManager;
 use crate::db::teams::get_players_for_team;
+use crate::rating::model::{Lineup, RatingPredictionModel, Team};
+use crate::rating::position_eval::evaluate_all_positions;
+use crate::rating::types::{Attitude, Location, TacticType, Weather};
 use crate::ui::player_display::PlayerDisplay;
 use crate::ui::player_object::PlayerObject;
 use crate::ui::team_object::TeamObject;
@@ -140,6 +143,102 @@ impl ContextModel {
         self.set_selected_player(None::<PlayerObject>);
     }
 
+    /// Calculate preferred position for a player
+    fn calculate_preferred_position(&self, player: &crate::chpp::model::Player) -> String {
+        // Use default team settings for evaluation
+        let team = Team::default();
+        let model = RatingPredictionModel::new(team);
+
+        // Default lineup context
+        let lineup = Lineup {
+            positions: vec![],
+            weather: Weather::Neutral,
+            tactic: TacticType::Normal,
+            attitude: Attitude::Normal,
+            location: Location::Home,
+        };
+
+        // Evaluate at minute 45 (mid-game)
+        let evaluation = evaluate_all_positions(&model, player, &lineup, 45);
+
+        // Debug logging
+        if let Some(skills) = &player.PlayerSkills {
+            log::debug!(
+                "Player {} {} - Form={} Skills: K={} D={} PM={} W={} P={} S={}",
+                player.FirstName,
+                player.LastName,
+                player.PlayerForm, // <-- ADDED FORM HERE
+                skills.KeeperSkill,
+                skills.DefenderSkill,
+                skills.PlaymakerSkill,
+                skills.WingerSkill,
+                skills.PassingSkill,
+                skills.ScorerSkill
+            );
+        } else {
+            log::warn!(
+                "Player {} {} - NO SKILLS DATA!",
+                player.FirstName,
+                player.LastName
+            );
+        }
+        log::debug!("  Evaluating {} positions", evaluation.positions.len());
+
+        // Format best position
+        if let Some(best) = evaluation.best_position {
+            log::debug!(
+                "  Best position: {:?} ({:?}) with rating {:.2}",
+                best.position,
+                best.behaviour,
+                best.rating
+            );
+            self.format_position_display(&best.position, &best.behaviour)
+        } else {
+            log::warn!(
+                "  No best position found for player {} {}",
+                player.FirstName,
+                player.LastName
+            );
+            "-".to_string()
+        }
+    }
+
+    /// Format position for display
+    fn format_position_display(
+        &self,
+        position: &crate::rating::types::PositionId,
+        behaviour: &crate::rating::types::Behaviour,
+    ) -> String {
+        use crate::rating::types::{Behaviour, PositionId};
+        use gettextrs::gettext;
+
+        let pos_name = match position {
+            PositionId::Keeper => gettext("Keeper"),
+            PositionId::LeftBack => gettext("Left Back"),
+            PositionId::LeftCentralDefender => gettext("Left CD"),
+            PositionId::MiddleCentralDefender => gettext("Central Defender"),
+            PositionId::RightCentralDefender => gettext("Right CD"),
+            PositionId::RightBack => gettext("Right Back"),
+            PositionId::LeftWinger => gettext("Left Winger"),
+            PositionId::LeftInnerMidfield => gettext("Left IM"),
+            PositionId::CentralInnerMidfield => gettext("Central IM"),
+            PositionId::RightInnerMidfield => gettext("Right IM"),
+            PositionId::RightWinger => gettext("Right Winger"),
+            PositionId::LeftForward => gettext("Left Forward"),
+            PositionId::CentralForward => gettext("Central Forward"),
+            PositionId::RightForward => gettext("Right Forward"),
+            PositionId::SetPieces => gettext("Set Pieces"),
+        };
+
+        match behaviour {
+            Behaviour::Normal => pos_name,
+            Behaviour::Offensive => format!("{} ({})", pos_name, gettext("Off")),
+            Behaviour::Defensive => format!("{} ({})", pos_name, gettext("Def")),
+            Behaviour::TowardsMiddle => format!("{} ({})", pos_name, gettext("TM")),
+            Behaviour::TowardsWing => format!("{} ({})", pos_name, gettext("TW")),
+        }
+    }
+
     // Copied/Refactored from window.rs
     fn create_player_list_store(&self, players: &[crate::chpp::model::Player]) -> gtk::ListStore {
         #[allow(deprecated)]
@@ -170,10 +269,27 @@ impl ContextModel {
 
         for p in players {
             let obj = PlayerObject::new(p.clone());
-            let display = PlayerDisplay::new(&p, &locale);
 
+            // Calculate preferred position
+            let preferred_pos = self.calculate_preferred_position(&p);
+
+            let display = PlayerDisplay::new(&p, &locale, Some(&preferred_pos));
+
+            // Get the actual background color from CSS by creating a styled widget
             let bg = if p.MotherClubBonus {
-                Some("mother_club_bg")
+                // Create a temporary widget with the CSS class to extract the color
+                let temp_widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+                temp_widget.add_css_class("mother-club");
+
+                // Force style resolution
+                #[allow(deprecated)]
+                let style_context = temp_widget.style_context();
+
+                // Try to get background-color property
+                // Since we can't easily query CSS properties in GTK4, use the hardcoded value
+                // that matches the CSS definition
+                // FIXME: is there really no way to avoid this hardcoded value??!
+                Some("rgba(64, 224, 208, 0.3)".to_string())
             } else {
                 None
             };

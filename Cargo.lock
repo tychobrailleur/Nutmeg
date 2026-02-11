@@ -2637,6 +2637,7 @@ dependencies = [
  "diesel_migrations",
  "dotenvy",
  "env_logger",
+ "fastrand 2.3.0",
  "gdk-pixbuf",
  "gettext-rs",
  "glib-build-tools",

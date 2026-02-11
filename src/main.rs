@@ -22,6 +22,7 @@ mod application;
 mod chpp;
 mod config;
 mod db;
+mod rating;
 mod service;
 mod setup_window;
 mod ui;

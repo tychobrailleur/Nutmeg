@@ -289,7 +289,7 @@ pub struct TrophyListWrapper {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct PlayerSkills {
     pub StaminaSkill: u32,
     pub KeeperSkill: u32,
@@ -303,7 +303,7 @@ pub struct PlayerSkills {
 
 // TODO Check whether this can be Match instead of LastMatch...
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct LastMatch {
     pub Date: String,
     pub MatchId: u32,
@@ -500,7 +500,7 @@ impl Player {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct MotherClub {
     pub TeamID: u32,
     pub TeamName: String,
