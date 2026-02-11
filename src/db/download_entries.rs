@@ -19,6 +19,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+// Record download metadata.
+
 use crate::db::schema::download_entries;
 use diesel::prelude::*;
 
