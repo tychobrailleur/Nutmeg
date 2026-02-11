@@ -1,13 +1,11 @@
 use crate::db::manager::DbManager;
 use crate::db::teams::get_players_for_team;
-use crate::ui::player_display::PlayerDisplay;
 use crate::ui::player_object::PlayerObject;
 use crate::ui::team_object::TeamObject;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use log::{error, info};
-use num_format::SystemLocale;
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
@@ -17,19 +15,19 @@ mod imp {
     use super::*;
 
     #[derive(Default)]
-    pub struct ContextModel {
+    pub struct ContextObject {
         pub selected_team: RefCell<Option<TeamObject>>,
         pub selected_player: RefCell<Option<PlayerObject>>,
         pub players: RefCell<Option<gtk::ListStore>>,
     }
 
     #[glib::object_subclass]
-    impl ObjectSubclass for ContextModel {
-        const NAME: &'static str = "ContextModel";
-        type Type = super::ContextModel;
+    impl ObjectSubclass for ContextObject {
+        const NAME: &'static str = "ContextObject";
+        type Type = super::ContextObject;
     }
 
-    impl ObjectImpl for ContextModel {
+    impl ObjectImpl for ContextObject {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
@@ -90,10 +88,10 @@ mod imp {
 }
 
 glib::wrapper! {
-    pub struct ContextModel(ObjectSubclass<imp::ContextModel>);
+    pub struct ContextObject(ObjectSubclass<imp::ContextObject>);
 }
 
-impl ContextModel {
+impl ContextObject {
     pub fn new() -> Self {
         glib::Object::new()
     }
@@ -107,6 +105,8 @@ impl ContextModel {
     }
 
     pub fn set_selected_player(&self, player: Option<PlayerObject>) {
+        self.set_property("selected-player", player);
+    }
 
     fn clear_context(&self) {
         // Clear players list
@@ -121,30 +121,27 @@ impl ContextModel {
     fn load_context_for_team(&self, team: TeamObject) {
         let team_data = team.team_data();
         let team_id = team_data.id;
-        info!("ContextModel: Loading context for team {}", team_id);
+        info!("ContextObject: Loading context for team {}", team_id);
 
         let db = DbManager::new();
         if let Ok(mut conn) = db.get_connection() {
             match get_players_for_team(&mut conn, team_id) {
                 Ok(players_data) => {
-                    info!("ContextModel: Loaded {} players", players_data.len());
+                    info!("ContextObject: Loaded {} players", players_data.len());
                     let list_store = create_player_model(&players_data);
                     self.imp().players.replace(Some(list_store));
                     self.notify("players");
                 }
-                Err(e) => error!("ContextModel: Failed to load players: {}", e),
+                Err(e) => error!("ContextObject: Failed to load players: {}", e),
             }
         }
 
         // Clear selected player when team changes
         self.set_selected_player(None::<PlayerObject>);
     }
-
-    // Copied/Refactored from window.rs
 }
 
-
-impl Default for ContextModel {
+impl Default for ContextObject {
     fn default() -> Self {
         Self::new()
     }

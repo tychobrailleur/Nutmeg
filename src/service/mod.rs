@@ -20,6 +20,5 @@
 
 pub mod auth;
 pub mod context;
-pub mod context_model;
 pub mod secret;
 pub mod sync;

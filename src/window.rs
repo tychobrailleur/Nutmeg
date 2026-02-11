@@ -27,7 +27,7 @@ use gtk::subclass::prelude::*;
 use gtk::{gdk, gio, glib, CompositeTemplate, TemplateChild};
 use log::{debug, error, info};
 
-use crate::service::context_model::ContextModel;
+use crate::ui::context_object::ContextObject;
 use crate::ui::player_object::PlayerObject;
 use crate::ui::team_object::TeamObject;
 
@@ -49,7 +49,7 @@ mod imp {
         #[template_child]
         pub player_details: TemplateChild<SquadPlayerDetails>,
 
-        pub context_model: ContextModel,
+        pub context_object: ContextObject,
     }
 
     #[glib::object_subclass]
@@ -218,21 +218,21 @@ impl NutmegWindow {
 
     fn setup_bindings(&self) {
         let imp = self.imp();
-        let model = &imp.context_model;
+        let model = &imp.context_object;
 
-        // Bind combo_teams selected item to ContextModel selected-team
+        // Bind combo_teams selected item to ContextObject selected-team
         imp.combo_teams
             .bind_property("selected-item", model, "selected-team")
             .sync_create()
             .build();
 
-        // Bind ContextModel players to TreeView model (inside PlayerList)
+        // Bind ContextObject players to TreeView model (inside PlayerList)
         model
             .bind_property("players", &imp.player_list.tree_view(), "model")
             .sync_create()
             .build();
 
-        // Listen to selected-player changes in ContextModel to update details panel
+        // Listen to selected-player changes in ContextObject to update details panel
         let window = self.clone();
         model.connect_notify_local(Some("selected-player"), move |model, _| {
             let player_obj: Option<PlayerObject> = model.property("selected-player");
@@ -243,10 +243,10 @@ impl NutmegWindow {
     fn setup_signals(&self) {
         let imp = self.imp();
 
-        // Player selection handler - updates ContextModel
+        // Player selection handler - updates ContextObject
         let view = imp.player_list.tree_view();
         let selection = view.selection();
-        let context_model = imp.context_model.clone();
+        let context_object = imp.context_object.clone();
 
         selection.connect_changed(move |selection| {
             #[allow(deprecated)]
@@ -254,10 +254,10 @@ impl NutmegWindow {
                 #[allow(deprecated)]
                 let obj_val = model.get_value(&iter, 18);
                 if let Ok(player_obj) = obj_val.get::<PlayerObject>() {
-                    context_model.set_selected_player(Some(player_obj));
+                    context_object.set_selected_player(Some(player_obj));
                 }
             } else {
-                context_model.set_selected_player(None);
+                context_object.set_selected_player(None);
             }
         });
     }

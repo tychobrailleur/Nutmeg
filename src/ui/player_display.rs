@@ -2,6 +2,8 @@ use crate::chpp::model::Player;
 use gettextrs::gettext;
 use num_format::{Buffer, SystemLocale};
 
+// Wraps the Player object for display purposes.
+
 pub struct PlayerDisplay {
     pub name: String,
     pub flag: String,

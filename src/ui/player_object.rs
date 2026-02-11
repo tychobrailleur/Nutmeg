@@ -3,6 +3,8 @@ use gtk::glib;
 use gtk::subclass::prelude::*;
 use std::cell::RefCell;
 
+// Wraps a Player in a GObject for use in the UI.
+
 mod imp {
     use super::*;
 
