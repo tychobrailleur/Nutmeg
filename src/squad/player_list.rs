@@ -1,7 +1,7 @@
+use gettextrs::gettext;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{glib, CompositeTemplate};
-use gettextrs::gettext;
 
 mod imp {
     use super::*;
@@ -98,71 +98,70 @@ impl SquadPlayerList {
     }
 }
 
-use crate::ui::player_object::PlayerObject;
 use crate::ui::player_display::PlayerDisplay;
+use crate::ui::player_object::PlayerObject;
 use num_format::SystemLocale;
 
 pub fn create_player_model(players: &[crate::chpp::model::Player]) -> gtk::ListStore {
-        #[allow(deprecated)]
-        let store = gtk::ListStore::new(&[
-            glib::Type::STRING, // 0 Name
-            glib::Type::STRING, // 1 Flag
-            glib::Type::STRING, // 2 Number
-            glib::Type::STRING, // 3 Age
-            glib::Type::STRING, // 4 Form
-            glib::Type::STRING, // 5 TSI
-            glib::Type::STRING, // 6 Salary
-            glib::Type::STRING, // 7 Specialty
-            glib::Type::STRING, // 8 Experience
-            glib::Type::STRING, // 9 Leadership
-            glib::Type::STRING, // 10 Loyalty
-            glib::Type::STRING, // 11 Best Position
-            glib::Type::STRING, // 12 Last Position
-            glib::Type::STRING, // 13 BG Color
-            glib::Type::STRING, // 14 Stamina
-            glib::Type::STRING, // 15 Injured
-            glib::Type::STRING, // 16 Cards
-            glib::Type::STRING, // 17 Mother Club
-            glib::Type::OBJECT, // 18 PlayerObject
-        ]);
+    #[allow(deprecated)]
+    let store = gtk::ListStore::new(&[
+        glib::Type::STRING, // 0 Name
+        glib::Type::STRING, // 1 Flag
+        glib::Type::STRING, // 2 Number
+        glib::Type::STRING, // 3 Age
+        glib::Type::STRING, // 4 Form
+        glib::Type::STRING, // 5 TSI
+        glib::Type::STRING, // 6 Salary
+        glib::Type::STRING, // 7 Specialty
+        glib::Type::STRING, // 8 Experience
+        glib::Type::STRING, // 9 Leadership
+        glib::Type::STRING, // 10 Loyalty
+        glib::Type::STRING, // 11 Best Position
+        glib::Type::STRING, // 12 Last Position
+        glib::Type::STRING, // 13 BG Color
+        glib::Type::STRING, // 14 Stamina
+        glib::Type::STRING, // 15 Injured
+        glib::Type::STRING, // 16 Cards
+        glib::Type::STRING, // 17 Mother Club
+        glib::Type::OBJECT, // 18 PlayerObject
+    ]);
 
-        let locale =
-            SystemLocale::default().unwrap_or_else(|_| SystemLocale::from_name("C").unwrap());
+    let locale = SystemLocale::default().unwrap_or_else(|_| SystemLocale::from_name("C").unwrap());
 
-        for p in players {
-            let obj = PlayerObject::new(p.clone());
-            let display = PlayerDisplay::new(&p, &locale);
+    for p in players {
+        let obj = PlayerObject::new(p.clone());
+        let display = PlayerDisplay::new(&p, &locale);
 
-            let bg = if p.MotherClubBonus {
-                Some("mother_club_bg")
-            } else {
-                None
-            };
+        let bg = if p.MotherClubBonus {
+            Some("mother_club_bg")
+        } else {
+            None
+        };
 
-            store.insert_with_values(
-                None,
-                &[
-                    (0, &display.name),
-                    (1, &display.flag),
-                    (2, &display.number),
-                    (3, &display.age),
-                    (4, &display.form),
-                    (5, &display.tsi),
-                    (6, &display.salary),
-                    (7, &display.specialty),
-                    (8, &display.xp),
-                    (9, &display.leadership),
-                    (10, &display.loyalty),
-                    (11, &display.best_pos),
-                    (12, &display.last_pos),
-                    (13, &bg),
-                    (14, &display.stamina),
-                    (15, &display.injured),
-                    (16, &display.cards),
-                    (17, &display.mother_club),
-                    (18, &obj),
-                ],
-            );
-        }
-        store
+        store.insert_with_values(
+            None,
+            &[
+                (0, &display.name),
+                (1, &display.flag),
+                (2, &display.number),
+                (3, &display.age),
+                (4, &display.form),
+                (5, &display.tsi),
+                (6, &display.salary),
+                (7, &display.specialty),
+                (8, &display.xp),
+                (9, &display.leadership),
+                (10, &display.loyalty),
+                (11, &display.best_pos),
+                (12, &display.last_pos),
+                (13, &bg),
+                (14, &display.stamina),
+                (15, &display.injured),
+                (16, &display.cards),
+                (17, &display.mother_club),
+                (18, &obj),
+            ],
+        );
+    }
+    store
 }

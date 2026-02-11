@@ -68,6 +68,29 @@
             </property>
           </object>
         </child>
+        <child>
+          <object class="GtkRevealer" id="sync_revealer">
+            <property name="reveal-child">False</property>
+            <property name="transition-type">slide-up</property>
+            <child>
+               <object class="GtkBox">
+                 <property name="orientation">horizontal</property>
+                 <property name="spacing">12</property>
+                 <child>
+                   <object class="GtkProgressBar" id="sync_progress_bar">
+                     <property name="hexpand">True</property>
+                     <property name="show-text">True</property>
+                   </object>
+                 </child>
+                 <child>
+                    <object class="GtkLabel" id="sync_status_label">
+                       <property name="label" translatable="yes">Syncing...</property>
+                    </object>
+                 </child>
+               </object>
+            </child>
+          </object>
+        </child>
       </object>
     </property>
   </template>

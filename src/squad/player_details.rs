@@ -1,8 +1,8 @@
+use crate::ui::player_object::PlayerObject;
+use gettextrs::gettext;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{glib, CompositeTemplate};
-use gettextrs::gettext;
-use crate::ui::player_object::PlayerObject;
 
 // Shows the details of a specific player in the squad view.
 
@@ -108,7 +108,8 @@ impl SquadPlayerDetails {
             let imp = self.imp();
             let p = player_obj.player();
             self.set_visible(true);
-            imp.details_name.set_label(&format!("{} {}", p.FirstName, p.LastName));
+            imp.details_name
+                .set_label(&format!("{} {}", p.FirstName, p.LastName));
             imp.details_id.set_label(&p.PlayerID.to_string());
 
             // Category

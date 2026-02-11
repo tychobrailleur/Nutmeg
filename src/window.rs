@@ -21,7 +21,9 @@
 */
 
 use crate::db::manager::DbManager;
-use crate::db::teams::get_teams_summary;
+use crate::db::teams::{get_flag_emoji, get_teams_summary};
+use crate::service::context::ContextService;
+use crate::service::sync::DataSyncService;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, gio, glib, CompositeTemplate, TemplateChild};
@@ -31,8 +33,8 @@ use crate::ui::context_object::ContextObject;
 use crate::ui::player_object::PlayerObject;
 use crate::ui::team_object::TeamObject;
 
-use crate::squad::player_list::SquadPlayerList;
 use crate::squad::player_details::SquadPlayerDetails;
+use crate::squad::player_list::SquadPlayerList;
 
 mod imp {
     use super::*;
@@ -48,6 +50,19 @@ mod imp {
 
         #[template_child]
         pub player_details: TemplateChild<SquadPlayerDetails>,
+
+        #[template_child]
+        pub team_sync: TemplateChild<gtk::Button>,
+
+        // https://docs.gtk.org/gtk4/class.Revealer.html
+        #[template_child]
+        pub sync_revealer: TemplateChild<gtk::Revealer>,
+
+        #[template_child]
+        pub sync_progress_bar: TemplateChild<gtk::ProgressBar>,
+
+        #[template_child]
+        pub sync_status_label: TemplateChild<gtk::Label>,
 
         pub context_object: ContextObject,
     }
@@ -260,6 +275,83 @@ impl NutmegWindow {
                 context_object.set_selected_player(None);
             }
         });
+
+        // Sync Handler
+        let window_weak = self.downgrade();
+        imp.team_sync.connect_clicked(move |_| {
+            let window = match window_weak.upgrade() {
+                Some(w) => w,
+                None => return,
+            };
+
+            let imp = window.imp();
+
+            // Disable button
+            imp.team_sync.set_sensitive(false);
+
+            // Show status bar
+            imp.sync_revealer.set_reveal_child(true);
+            imp.sync_progress_bar.set_fraction(0.0);
+            imp.sync_status_label.set_label("Starting sync...");
+
+            // Channel for progress updates
+            let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<(f64, String)>();
+
+            // Handle progress updates on main thread
+            let progress_bar = imp.sync_progress_bar.clone();
+            let status_label = imp.sync_status_label.clone();
+
+            glib::MainContext::default().spawn_local(async move {
+                while let Some((p, msg)) = receiver.recv().await {
+                    progress_bar.set_fraction(p);
+                    status_label.set_label(&msg);
+                }
+            });
+
+            // Keep weak ref to update UI later
+            let window_weak_completion = window.downgrade();
+
+            glib::MainContext::default().spawn_local(async move {
+                let db = std::sync::Arc::new(DbManager::new());
+                let sync = crate::service::sync::SyncService::new(db);
+                let key = crate::config::consumer_key();
+                let secret = crate::config::consumer_secret();
+
+                // Progress callback
+                let progress_cb = Box::new(move |p: f64, msg: &str| {
+                    let _ = sender.send((p, msg.to_string()));
+                });
+
+                match sync
+                    .perform_sync_with_stored_secrets(key, secret, progress_cb)
+                    .await
+                {
+                    Ok(true) => {
+                        info!("Sync completed successfully");
+                    }
+                    Ok(false) => {
+                        error!("Sync failed: No credentials found");
+                    }
+                    Err(e) => {
+                        error!("Sync failed: {}", e);
+                    }
+                }
+
+                // UI Cleanup
+                if let Some(win) = window_weak_completion.upgrade() {
+                    let imp = win.imp();
+
+                    // Delay hiding the status bar slightly so user sees 100%
+                    glib::timeout_future_seconds(2).await;
+
+                    imp.sync_revealer.set_reveal_child(false);
+                    imp.team_sync.set_sensitive(true);
+
+                    // Refresh teams
+                    win.load_teams();
+                }
+            });
+        });
     }
 }
 
@@ -273,5 +365,3 @@ async fn load_image_from_url(url: &str) -> Result<gdk::Texture, Box<dyn std::err
     let pixbuf = Pixbuf::from_stream(&stream, gio::Cancellable::NONE)?;
     Ok(gdk::Texture::for_pixbuf(&pixbuf))
 }
-
-

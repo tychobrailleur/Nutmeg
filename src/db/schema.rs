@@ -24,8 +24,9 @@ diesel::table! {
 }
 
 diesel::table! {
-    cups (id) {
+    cups (id, download_id) {
         id -> Integer,
+        download_id -> Integer,
         name -> Text,
         league_level -> Nullable<Integer>,
         level -> Nullable<Integer>,
@@ -58,8 +59,9 @@ diesel::table! {
 }
 
 diesel::table! {
-    languages (id) {
+    languages (id, download_id) {
         id -> Integer,
+        download_id -> Integer,
         name -> Text,
     }
 }
@@ -241,8 +243,8 @@ diesel::joinable!(teams -> downloads (download_id));
 diesel::joinable!(users -> downloads (download_id));
 
 // Retain simple FKs where constraints still essentially exist or for join logic if IDs match
-diesel::joinable!(users -> languages (language_id));
-diesel::joinable!(teams -> cups (cup_id));
+diesel::joinable!(cups -> downloads (download_id));
+diesel::joinable!(languages -> downloads (download_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     countries,

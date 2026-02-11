@@ -32,6 +32,7 @@ use diesel::sqlite::SqliteConnection;
 #[diesel(table_name = languages)]
 struct LanguageEntity {
     id: i32,
+    download_id: i32,
     name: String,
 }
 
@@ -74,7 +75,7 @@ struct CountryEntity {
     flag: Option<String>,
 }
 
-fn get_flag_emoji(country_code: Option<&str>) -> Option<String> {
+pub fn get_flag_emoji(country_code: Option<&str>) -> Option<String> {
     let code = country_code?;
     if code.len() != 2 {
         return None;
@@ -137,6 +138,7 @@ struct LeagueEntity {
 #[diesel(table_name = cups)]
 struct CupEntity {
     id: i32,
+    download_id: i32,
     name: String,
     league_level: Option<i32>,
     level: Option<i32>,
@@ -287,7 +289,7 @@ pub fn save_world_details(
                 LanguageID: lang_id,
                 LanguageName: lang_name.clone(),
             };
-            save_language(conn, &language)?;
+            save_language(conn, &language, download_id)?;
         }
 
         // Save Currency if present in WorldCountry
@@ -456,16 +458,20 @@ pub fn save_players(
 // Persists a Language entity.
 // We use ON CONFLICT DO UPDATE to handle cases where the language already exists
 // but might have a different name (though unlikely for IDs).
-pub fn save_language(conn: &mut SqliteConnection, language: &Language) -> Result<(), Error> {
+pub fn save_language(
+    conn: &mut SqliteConnection,
+    language: &Language,
+    download_id: i32,
+) -> Result<(), Error> {
     let entity = LanguageEntity {
         id: language.LanguageID as i32,
+        download_id,
         name: language.LanguageName.clone(),
     };
     diesel::insert_into(languages::table)
         .values(&entity)
-        .on_conflict(languages::id)
-        .do_update()
-        .set(languages::name.eq(&entity.name))
+        .on_conflict((languages::id, languages::download_id))
+        .do_nothing()
         .execute(conn)
         .map_err(|e| Error::Io(format!("Database error saving language: {}", e)))?;
     Ok(())
@@ -498,7 +504,7 @@ pub fn save_currency(
 // This function acts as an aggregate root saver for User data.
 fn save_user(conn: &mut SqliteConnection, user: &User, download_id: i32) -> Result<(), Error> {
     // Save Language first to ensure the Foreign Key in 'users' is valid.
-    save_language(conn, &user.Language)?;
+    save_language(conn, &user.Language, download_id)?;
 
     let supporter_tier_str = format!("{:?}", user.SupporterTier);
 
@@ -617,10 +623,12 @@ fn save_league(
 }
 
 // Persists Cup details.
-fn save_cup(conn: &mut SqliteConnection, cup: &Cup) -> Result<(), Error> {
+// Persists Cup details.
+fn save_cup(conn: &mut SqliteConnection, cup: &Cup, download_id: i32) -> Result<(), Error> {
     if let (Some(id), Some(name)) = (cup.CupID, &cup.CupName) {
         let entity = CupEntity {
             id: id as i32,
+            download_id,
             name: name.clone(),
             league_level: cup.CupLeagueLevel.map(|v| v as i32),
             level: cup.CupLevel.map(|v| v as i32),
@@ -630,12 +638,8 @@ fn save_cup(conn: &mut SqliteConnection, cup: &Cup) -> Result<(), Error> {
         };
         diesel::insert_into(cups::table)
             .values(&entity)
-            .on_conflict(cups::id)
-            .do_update()
-            .set((
-                cups::name.eq(&entity.name),
-                cups::match_round.eq(&entity.match_round),
-            ))
+            .on_conflict((cups::id, cups::download_id))
+            .do_nothing()
             .execute(conn)
             .map_err(|e| Error::Io(format!("Database error saving cup: {}", e)))?;
     }
@@ -667,7 +671,7 @@ pub fn save_team(
     // }
 
     if let Some(c) = &team.Cup {
-        save_cup(conn, c)?;
+        save_cup(conn, c, download_id)?;
     }
 
     let team_id_num = team
@@ -942,7 +946,11 @@ pub fn get_players_for_team(
     let download_id_filter = latest_download.unwrap();
 
     let results: Vec<(PlayerEntity, Option<String>)> = players::table
-        .left_join(countries::table.on(players::country_id.eq(countries::id)))
+        .left_join(
+            countries::table.on(players::country_id
+                .eq(countries::id)
+                .and(countries::download_id.eq(download_id_filter))),
+        )
         .filter(players::team_id.eq(team_id_in as i32))
         .filter(players::download_id.eq(download_id_filter))
         .select((players::all_columns, countries::flag.nullable()))
@@ -1237,6 +1245,7 @@ mod tests {
                 LanguageID: 2,
                 LanguageName: "Swedish".to_string(),
             },
+            0,
         )
         .expect("Failed to save language");
 

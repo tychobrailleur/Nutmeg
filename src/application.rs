@@ -86,7 +86,16 @@ mod imp {
                     let key = crate::config::consumer_key();
                     let secret = crate::config::consumer_secret();
 
-                    match sync.perform_sync_with_stored_secrets(key, secret).await {
+                    match sync
+                        .perform_sync_with_stored_secrets(
+                            key,
+                            secret,
+                            Box::new(|p, m| {
+                                log::debug!("Background sync: {:.0}% - {}", p * 100.0, m)
+                            }),
+                        )
+                        .await
+                    {
                         Ok(true) => {
                             info!("Successfully synced with stored credentials");
                             // Synced successfully, open main window and close setup

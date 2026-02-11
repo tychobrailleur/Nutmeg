@@ -166,7 +166,7 @@ mod tests {
         // Save reference data first (simulating world_details fetch)
         use crate::db::teams::{save_country, save_currency, save_language};
 
-        save_language(&mut conn, &user.Language).expect("Failed to save language");
+        save_language(&mut conn, &user.Language, 1).expect("Failed to save language");
         save_currency(&mut conn, &currency, 1).expect("Failed to save currency");
 
         let country = Country {

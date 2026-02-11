@@ -46,6 +46,7 @@ pub trait DataSyncService {
         &self,
         consumer_key: String,
         consumer_secret: String,
+        on_progress: Box<dyn Fn(f64, &str) + Send + Sync>,
     ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + '_>>;
 }
 
@@ -109,6 +110,7 @@ impl DataSyncService for SyncService {
         &self,
         consumer_key: String,
         consumer_secret: String,
+        on_progress: Box<dyn Fn(f64, &str) + Send + Sync>,
     ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + '_>> {
         let consumer_key = consumer_key.clone();
         let consumer_secret = consumer_secret.clone();
@@ -128,7 +130,7 @@ impl DataSyncService for SyncService {
                     secret_service,
                     consumer_key,
                     consumer_secret,
-                    Box::new(|p, m| debug!("Background sync: {:.0}% - {}", p * 100.0, m)),
+                    on_progress,
                 )
                 .await
                 {
