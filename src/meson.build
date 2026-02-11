@@ -6,6 +6,7 @@ gnome.compile_resources('nutmeg',
   gresource_bundle: true,
   install: true,
   install_dir: pkgdatadir,
+
 )
 
 conf = configuration_data()

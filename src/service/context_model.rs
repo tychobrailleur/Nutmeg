@@ -11,6 +11,8 @@ use num_format::SystemLocale;
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
+use crate::squad::player_list::create_player_model;
+
 mod imp {
     use super::*;
 
@@ -105,12 +107,10 @@ impl ContextModel {
     }
 
     pub fn set_selected_player(&self, player: Option<PlayerObject>) {
-        self.set_property("selected-player", player);
-    }
 
     fn clear_context(&self) {
         // Clear players list
-        let store = self.create_player_list_store(&[]);
+        let store = create_player_model(&[]);
         self.imp().players.replace(Some(store));
         self.notify("players");
 
@@ -128,7 +128,7 @@ impl ContextModel {
             match get_players_for_team(&mut conn, team_id) {
                 Ok(players_data) => {
                     info!("ContextModel: Loaded {} players", players_data.len());
-                    let list_store = self.create_player_list_store(&players_data);
+                    let list_store = create_player_model(&players_data);
                     self.imp().players.replace(Some(list_store));
                     self.notify("players");
                 }
@@ -141,71 +141,8 @@ impl ContextModel {
     }
 
     // Copied/Refactored from window.rs
-    fn create_player_list_store(&self, players: &[crate::chpp::model::Player]) -> gtk::ListStore {
-        #[allow(deprecated)]
-        let store = gtk::ListStore::new(&[
-            glib::Type::STRING, // 0 Name
-            glib::Type::STRING, // 1 Flag
-            glib::Type::STRING, // 2 Number
-            glib::Type::STRING, // 3 Age
-            glib::Type::STRING, // 4 Form
-            glib::Type::STRING, // 5 TSI
-            glib::Type::STRING, // 6 Salary
-            glib::Type::STRING, // 7 Specialty
-            glib::Type::STRING, // 8 Experience
-            glib::Type::STRING, // 9 Leadership
-            glib::Type::STRING, // 10 Loyalty
-            glib::Type::STRING, // 11 Best Position
-            glib::Type::STRING, // 12 Last Position
-            glib::Type::STRING, // 13 BG Color
-            glib::Type::STRING, // 14 Stamina
-            glib::Type::STRING, // 15 Injured
-            glib::Type::STRING, // 16 Cards
-            glib::Type::STRING, // 17 Mother Club
-            glib::Type::OBJECT, // 18 PlayerObject
-        ]);
-
-        let locale =
-            SystemLocale::default().unwrap_or_else(|_| SystemLocale::from_name("C").unwrap());
-
-        for p in players {
-            let obj = PlayerObject::new(p.clone());
-            let display = PlayerDisplay::new(&p, &locale);
-
-            let bg = if p.MotherClubBonus {
-                Some("mother_club_bg")
-            } else {
-                None
-            };
-
-            store.insert_with_values(
-                None,
-                &[
-                    (0, &display.name),
-                    (1, &display.flag),
-                    (2, &display.number),
-                    (3, &display.age),
-                    (4, &display.form),
-                    (5, &display.tsi),
-                    (6, &display.salary),
-                    (7, &display.specialty),
-                    (8, &display.xp),
-                    (9, &display.leadership),
-                    (10, &display.loyalty),
-                    (11, &display.best_pos),
-                    (12, &display.last_pos),
-                    (13, &bg),
-                    (14, &display.stamina),
-                    (15, &display.injured),
-                    (16, &display.cards),
-                    (17, &display.mother_club),
-                    (18, &obj),
-                ],
-            );
-        }
-        store
-    }
 }
+
 
 impl Default for ContextModel {
     fn default() -> Self {

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <template class="SquadPlayerList" parent="GtkBox">
+    <property name="orientation">vertical</property>
+    <property name="hexpand">true</property>
+    <property name="vexpand">true</property>
+    <child>
+      <object class="GtkScrolledWindow">
+        <property name="vexpand">true</property>
+        <property name="hexpand">true</property>
+        <property name="child">
+          <object class="GtkTreeView" id="view_players">
+            <property name="vexpand">true</property>
+            <property name="hexpand">true</property>
+            <property name="headers-visible">true</property>
+            <property name="activate-on-single-click">true</property>
+          </object>
+        </property>
+      </object>
+    </child>
+  </template>
+</interface>

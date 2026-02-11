@@ -22,7 +22,6 @@
 
 use crate::db::manager::DbManager;
 use crate::db::teams::get_teams_summary;
-use gettextrs::gettext;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, gio, glib, CompositeTemplate, TemplateChild};
@@ -32,6 +31,9 @@ use crate::service::context_model::ContextModel;
 use crate::ui::player_object::PlayerObject;
 use crate::ui::team_object::TeamObject;
 
+use crate::squad::player_list::SquadPlayerList;
+use crate::squad::player_details::SquadPlayerDetails;
+
 mod imp {
     use super::*;
 
@@ -40,67 +42,14 @@ mod imp {
     pub struct NutmegWindow {
         #[template_child]
         pub combo_teams: TemplateChild<gtk::DropDown>,
+
         #[template_child]
-        pub view_players: TemplateChild<gtk::TreeView>,
+        pub player_list: TemplateChild<SquadPlayerList>,
+
+        #[template_child]
+        pub player_details: TemplateChild<SquadPlayerDetails>,
 
         pub context_model: ContextModel,
-
-        #[template_child]
-        pub details_panel: TemplateChild<gtk::Box>,
-        #[template_child]
-        pub details_name: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub details_id: TemplateChild<gtk::Label>,
-
-        // Category
-        #[template_child]
-        pub details_category: TemplateChild<gtk::Label>,
-
-        // Level
-        #[template_child]
-        pub details_form: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub details_stamina: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub details_tsi: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub details_injury: TemplateChild<gtk::Label>,
-
-        // Skills
-        #[template_child]
-        pub details_skill_keeper: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub details_skill_defender: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub details_skill_playmaker: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub details_skill_winger: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub details_skill_passing: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub details_skill_scorer: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub details_skill_set_pieces: TemplateChild<gtk::Label>,
-
-        // Career / Club
-        #[template_child]
-        pub details_career_goals: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub details_league_goals: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub details_loyalty: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub details_mother_club: TemplateChild<gtk::Label>,
-
-        // Last Match
-        #[template_child]
-        pub details_last_match_date: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub details_played_minutes: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub details_position_code: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub details_rating: TemplateChild<gtk::Label>,
     }
 
     #[glib::object_subclass]
@@ -123,9 +72,6 @@ mod imp {
             info!("NutmegWindow constructed");
             self.parent_constructed();
             let obj = self.obj();
-
-            // Setup TreeView Columns
-            obj.setup_tree_view();
 
             // Load Teams
             obj.load_teams();
@@ -165,49 +111,7 @@ impl NutmegWindow {
             .build()
     }
 
-    fn setup_tree_view(&self) {
-        let imp = self.imp();
-        let view = &imp.view_players;
-
-        // Helper to add a text column
-        let add_column = |title: &str, col_id: i32| {
-            let renderer = gtk::CellRendererText::new();
-            let column = gtk::TreeViewColumn::new();
-            column.set_title(title);
-            column.set_reorderable(true);
-            column.set_resizable(true);
-            column.pack_start(&renderer, true);
-            column.add_attribute(&renderer, "text", col_id);
-            column.add_attribute(&renderer, "cell-background", 13); // BG Color is now at index 13
-            view.append_column(&column);
-        };
-
-        // Columns:
-        // 0: Name, 1: Flag, 2: Number, 3: Age, 4: Form, 5: TSI
-        // 6: Salary, 7: Specialty, 8: Experience, 9: Leadership, 10: Loyalty
-        // 11: Best Pos, 12: Last Pos, 13: BG Color, 14: Stamina, 15: Injured, 16: Cards, 17: Mother Club
-        // 18: PlayerObj
-
-        add_column(&gettext("Name"), 0);
-        add_column(&gettext("Flag"), 1);
-        add_column(&gettext("No."), 2);
-        add_column(&gettext("Age"), 3);
-        add_column(&gettext("Form"), 4);
-        add_column(&gettext("TSI"), 5);
-        add_column(&gettext("Salary"), 6);
-        add_column(&gettext("Specialty"), 7);
-        add_column(&gettext("XP"), 8);
-        add_column(&gettext("Lead"), 9);
-        add_column(&gettext("Loyalty"), 10);
-        add_column(&gettext("Best Pos"), 11);
-        add_column(&gettext("Last Pos"), 12);
-        // BG Color is 13, not displayed as column
-        add_column(&gettext("Stamina"), 14);
-        add_column(&gettext("Injured"), 15);
-        add_column(&gettext("Cards"), 16);
-        add_column(&gettext("Mother Club"), 17);
-    }
-
+    // Loads the teams associated with the user to populate the main dropdown.
     fn load_teams(&self) {
         let imp = self.imp();
         let db = DbManager::new();
@@ -322,9 +226,9 @@ impl NutmegWindow {
             .sync_create()
             .build();
 
-        // Bind ContextModel players to TreeView model
+        // Bind ContextModel players to TreeView model (inside PlayerList)
         model
-            .bind_property("players", &*imp.view_players, "model")
+            .bind_property("players", &imp.player_list.tree_view(), "model")
             .sync_create()
             .build();
 
@@ -332,7 +236,7 @@ impl NutmegWindow {
         let window = self.clone();
         model.connect_notify_local(Some("selected-player"), move |model, _| {
             let player_obj: Option<PlayerObject> = model.property("selected-player");
-            window.update_details(player_obj);
+            window.imp().player_details.set_player(player_obj);
         });
     }
 
@@ -340,7 +244,7 @@ impl NutmegWindow {
         let imp = self.imp();
 
         // Player selection handler - updates ContextModel
-        let view = &imp.view_players;
+        let view = imp.player_list.tree_view();
         let selection = view.selection();
         let context_model = imp.context_model.clone();
 
@@ -357,131 +261,6 @@ impl NutmegWindow {
             }
         });
     }
-
-    fn update_details(&self, player_obj: Option<PlayerObject>) {
-        let imp = self.imp();
-
-        if let Some(player_obj) = player_obj {
-            let p = player_obj.player();
-            imp.details_panel.set_visible(true);
-            imp.details_name
-                .set_label(&format!("{} {}", p.FirstName, p.LastName));
-            imp.details_id.set_label(&p.PlayerID.to_string());
-
-            // Category
-            let cat_str = match p.PlayerCategoryId {
-                Some(1) => gettext("Keeper"),
-                Some(2) => gettext("Right Back"),
-                Some(3) => gettext("Central Defender"),
-                Some(4) => gettext("Winger"),
-                Some(5) => gettext("Inner Midfielder"),
-                Some(6) => gettext("Forward"),
-                _ => gettext("Unknown/Unset"),
-            };
-            imp.details_category.set_label(&cat_str);
-
-            // Level
-            imp.details_form.set_label(&p.PlayerForm.to_string());
-
-            let stamina = p
-                .PlayerSkills
-                .as_ref()
-                .map(|s| s.StaminaSkill.to_string())
-                .unwrap_or_else(|| "-".to_string());
-            imp.details_stamina.set_label(&stamina);
-
-            imp.details_tsi.set_label(&p.TSI.to_string());
-            imp.details_injury.set_label(
-                &p.InjuryLevel
-                    .map(|v| v.to_string())
-                    .unwrap_or("-".to_string()),
-            );
-
-            // Skills
-            let skills = p.PlayerSkills.as_ref();
-            imp.details_skill_keeper.set_label(
-                &skills
-                    .map(|s| s.KeeperSkill.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-            );
-            imp.details_skill_defender.set_label(
-                &skills
-                    .map(|s| s.DefenderSkill.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-            );
-            imp.details_skill_playmaker.set_label(
-                &skills
-                    .map(|s| s.PlaymakerSkill.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-            );
-            imp.details_skill_winger.set_label(
-                &skills
-                    .map(|s| s.WingerSkill.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-            );
-            imp.details_skill_passing.set_label(
-                &skills
-                    .map(|s| s.PassingSkill.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-            );
-            imp.details_skill_scorer.set_label(
-                &skills
-                    .map(|s| s.ScorerSkill.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-            );
-            imp.details_skill_set_pieces.set_label(
-                &skills
-                    .map(|s| s.SetPiecesSkill.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-            );
-
-            // Career / Club
-            imp.details_career_goals.set_label(
-                &p.CareerGoals
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-            );
-            imp.details_league_goals.set_label(
-                &p.LeagueGoals
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-            );
-            imp.details_loyalty.set_label(&p.Loyalty.to_string());
-
-            let mother_club_text = if p.MotherClubBonus {
-                gettext("Yes")
-            } else {
-                gettext("No")
-            };
-            imp.details_mother_club.set_label(&mother_club_text);
-
-            // Last Match
-            imp.details_last_match_date
-                .set_label(p.LastMatch.as_ref().map(|m| m.Date.as_str()).unwrap_or("-"));
-            imp.details_played_minutes.set_label(
-                &p.LastMatch
-                    .as_ref()
-                    .map(|m| m.PlayedMinutes.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-            );
-            imp.details_position_code.set_label(
-                &p.LastMatch
-                    .as_ref()
-                    .map(|m| m.PositionCode.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-            );
-
-            let rating_str = p
-                .LastMatch
-                .as_ref()
-                .and_then(|m| m.Rating)
-                .map(|r| r.to_string())
-                .unwrap_or_else(|| "-".to_string());
-            imp.details_rating.set_label(&rating_str);
-        } else {
-            imp.details_panel.set_visible(false);
-        }
-    }
 }
 
 // Helper function to load images from URLs
@@ -494,3 +273,5 @@ async fn load_image_from_url(url: &str) -> Result<gdk::Texture, Box<dyn std::err
     let pixbuf = Pixbuf::from_stream(&stream, gio::Cancellable::NONE)?;
     Ok(gdk::Texture::for_pixbuf(&pixbuf))
 }
+
+
