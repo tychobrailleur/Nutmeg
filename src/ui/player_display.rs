@@ -1,8 +1,28 @@
+/* player_display.rs
+ *
+ * Copyright 2026 Sébastien Le Callonnec
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 use crate::chpp::model::Player;
 use gettextrs::gettext;
 use num_format::{Buffer, SystemLocale};
 
-// Wraps the Player object for display purposes.
+// Wraps the Player object for display purposes (Decorator pattern)
 
 pub struct PlayerDisplay {
     pub name: String,
@@ -45,14 +65,15 @@ impl PlayerDisplay {
         buf_salary.write_formatted(&p.Salary, locale);
         let salary = format!("{} €", buf_salary.as_str());
 
-        let specialty = match p.Speciality {
+        let specialty = match p.Specialty {
+            Some(0) => gettext("No specialty"),
             Some(1) => gettext("Technical"),
             Some(2) => gettext("Quick"),
             Some(3) => gettext("Powerful"),
             Some(4) => gettext("Unpredictable"),
-            Some(5) => gettext("Head"),
+            Some(5) => gettext("Head specialist"),
             Some(6) => gettext("Resilient"),
-            Some(7) => gettext("Support"),
+            Some(8) => gettext("Support"),
             _ => "".to_string(),
         };
 
@@ -80,7 +101,7 @@ impl PlayerDisplay {
             .unwrap_or_else(|| "-".to_string());
 
         let injured = match p.InjuryLevel {
-            Some(i) if i == 0 => "🩹".to_string(),
+            Some(0) => "🩹".to_string(),
             Some(i) if i > 0 => format!("🚑 {}w", i),
             _ => "".to_string(),
         };
@@ -182,6 +203,7 @@ mod tests {
             LastName: "Doe".to_string(),
             NickName: None,
             PlayerNumber: Some(10),
+            GenderID: Some(1),
             Age: 20,
             AgeDays: Some(10),
             TSI: 10000,
@@ -203,7 +225,7 @@ mod tests {
             CareerGoals: None,
             CareerHattricks: None,
             CareerAssists: None,
-            Speciality: Some(2), // Quick
+            Specialty: Some(2), // Quick
             TransferListed: false,
             NationalTeamID: None,
             CountryID: None,
@@ -211,7 +233,7 @@ mod tests {
             CapsU20: None,
             Cards: Some(1),
             InjuryLevel: Some(1),
-            Sticker: None,
+            AvatarBlob: None,
             Flag: Some("🏳️".to_string()),
             PlayerSkills: Some(PlayerSkills {
                 StaminaSkill: 7,
@@ -229,6 +251,7 @@ mod tests {
             NativeCountryID: None,
             NativeLeagueID: None,
             NativeLeagueName: None,
+            NativeCountryFlag: None,
             MatchesCurrentTeam: None,
             GoalsCurrentTeam: None,
             AssistsCurrentTeam: None,
@@ -266,7 +289,7 @@ mod tests {
         assert_eq!(display.injured, "🚑 1w");
         assert_eq!(display.cards, "🟨");
         assert_eq!(display.stamina, "7");
-        assert_eq!(display.last_pos, "100");
+        assert_eq!(display.last_pos, "Keeper");
     }
 
     #[test]

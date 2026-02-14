@@ -476,7 +476,7 @@ mod tests {
     fn test_endpoint_info_team_details() {
         let endpoint = ChppEndpoints::TEAM_DETAILS;
         assert_eq!(endpoint.name, "teamdetails");
-        assert_eq!(endpoint.version, "3.7");
+        assert_eq!(endpoint.version, "3.8");
         assert!(endpoint.documentation_url.contains("teamdetails"));
         assert!(endpoint.documentation_url.starts_with("https://"));
     }
@@ -493,7 +493,7 @@ mod tests {
     fn test_endpoint_info_players() {
         let endpoint = ChppEndpoints::PLAYERS;
         assert_eq!(endpoint.name, "players");
-        assert_eq!(endpoint.version, "2.4");
+        assert_eq!(endpoint.version, "2.7");
         assert!(endpoint.documentation_url.contains("players"));
     }
 
@@ -501,7 +501,7 @@ mod tests {
     fn test_endpoint_info_player_details() {
         let endpoint = ChppEndpoints::PLAYER_DETAILS;
         assert_eq!(endpoint.name, "playerdetails");
-        assert_eq!(endpoint.version, "2.4");
+        assert_eq!(endpoint.version, "3.2");
         assert!(endpoint.documentation_url.contains("playerdetails"));
     }
 

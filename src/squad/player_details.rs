@@ -3,6 +3,7 @@ use gettextrs::gettext;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, gio, glib, CompositeTemplate};
+use log::debug;
 
 // Shows the details of a specific player in the squad view.
 
@@ -16,6 +17,10 @@ mod imp {
         pub details_name: TemplateChild<gtk::Label>,
         #[template_child]
         pub details_id: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_flag: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_gender: TemplateChild<gtk::Label>,
         #[template_child]
         pub details_avatar: TemplateChild<gtk::Image>,
 
@@ -34,6 +39,8 @@ mod imp {
         pub details_injury: TemplateChild<gtk::Label>,
         #[template_child]
         pub label_injury_title: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub details_specialty: TemplateChild<gtk::Label>,
 
         // Skills
         #[template_child]
@@ -116,9 +123,25 @@ impl SquadPlayerDetails {
                 .set_label(&format!("{} {}", p.FirstName, p.LastName));
             imp.details_id.set_label(&p.PlayerID.to_string());
 
+            // Flag: Prefer NativeCountryFlag, fallback to Flag (current country)
+            let flag = p.NativeCountryFlag.as_ref().or(p.Flag.as_ref());
+            if let Some(f) = flag {
+                imp.details_flag.set_label(f);
+                imp.details_flag.set_visible(true);
+            } else {
+                imp.details_flag.set_visible(false);
+            }
+
+            // Gender
+            let gender_emoji = match p.GenderID {
+                Some(2) => "♀️", // Female
+                _ => "♂️",       // Male (default)
+            };
+            imp.details_gender.set_label(gender_emoji);
+
             // Avatar
             if let Some(blob) = &p.AvatarBlob {
-                println!(
+                debug!(
                     "Player {} has avatar blob of size {}",
                     p.PlayerID,
                     blob.len()
@@ -187,6 +210,20 @@ impl SquadPlayerDetails {
                 imp.label_injury_title.set_visible(false);
             }
 
+            // Specialty
+            let specialty_str = match p.Specialty {
+                Some(0) => gettext("No specialty"),
+                Some(1) => gettext("Technical"),
+                Some(2) => gettext("Quick"),
+                Some(3) => gettext("Powerful"),
+                Some(4) => gettext("Unpredictable"),
+                Some(5) => gettext("Head specialist"),
+                Some(6) => gettext("Resilient"),
+                Some(8) => gettext("Support"),
+                _ => "".to_string(),
+            };
+            imp.details_specialty.set_label(&specialty_str);
+
             // Skills
             let skills = p.PlayerSkills.as_ref();
             imp.details_skill_keeper.set_label(
@@ -239,7 +276,7 @@ impl SquadPlayerDetails {
             imp.details_loyalty.set_label(&p.Loyalty.to_string());
 
             // Mother Club
-            println!(
+            debug!(
                 "MotherClub: {:?}, Bonus: {}",
                 p.MotherClub, p.MotherClubBonus
             );
@@ -254,14 +291,12 @@ impl SquadPlayerDetails {
                 } else {
                     imp.details_mother_club.set_visible(false);
                 }
+            } else if p.MotherClubBonus {
+                imp.details_mother_club.set_label(&gettext("Home Grown"));
+                imp.details_mother_club.set_sensitive(false); // No link
+                imp.details_mother_club.set_visible(true);
             } else {
-                if p.MotherClubBonus {
-                    imp.details_mother_club.set_label(&gettext("Home Grown"));
-                    imp.details_mother_club.set_sensitive(false); // No link
-                    imp.details_mother_club.set_visible(true);
-                } else {
-                    imp.details_mother_club.set_visible(false);
-                }
+                imp.details_mother_club.set_visible(false);
             }
 
             // Last Match
@@ -290,5 +325,11 @@ impl SquadPlayerDetails {
         } else {
             self.set_visible(false);
         }
+    }
+}
+
+impl Default for SquadPlayerDetails {
+    fn default() -> Self {
+        Self::new()
     }
 }

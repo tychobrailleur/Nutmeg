@@ -354,7 +354,7 @@ pub struct Player {
     pub CareerHattricks: Option<u32>,
 
     pub CareerAssists: Option<u32>,
-    pub Speciality: Option<u32>,
+    pub Specialty: Option<u32>, // 0 No specialty, 1 Technical, 2  Quick, 3  Powerful, 4  Unpredictable, 5  Head specialist, 6  resilient, 8  support
     #[serde(
         deserialize_with = "deserialize_bool",
         serialize_with = "serialize_bool"
@@ -366,7 +366,6 @@ pub struct Player {
     pub CapsU20: Option<u32>,
     pub Cards: Option<u32>,
     pub InjuryLevel: Option<i32>, // -1 = No injury, 0 = Bruised, >0 = Weeks
-    pub Sticker: Option<String>,
     #[serde(skip)]
     pub AvatarBlob: Option<Vec<u8>>,
     #[serde(skip)]
@@ -379,6 +378,8 @@ pub struct Player {
     pub NativeCountryID: Option<u32>,
     pub NativeLeagueID: Option<u32>,
     pub NativeLeagueName: Option<String>,
+    #[serde(skip)]
+    pub NativeCountryFlag: Option<String>,
     pub MatchesCurrentTeam: Option<u32>,
     pub GoalsCurrentTeam: Option<u32>,
     pub AssistsCurrentTeam: Option<u32>,
@@ -431,8 +432,11 @@ impl Player {
                 if o.CareerHattricks.is_none() && self.CareerHattricks.is_some() {
                     o.CareerHattricks = self.CareerHattricks;
                 }
-                if o.Speciality.is_none() && self.Speciality.is_some() {
-                    o.Speciality = self.Speciality;
+                if o.CareerHattricks.is_none() && self.CareerHattricks.is_some() {
+                    o.CareerHattricks = self.CareerHattricks;
+                }
+                if o.Specialty.is_none() && self.Specialty.is_some() {
+                    o.Specialty = self.Specialty;
                 }
                 if o.NationalTeamID.is_none() && self.NationalTeamID.is_some() {
                     o.NationalTeamID = self.NationalTeamID;
@@ -456,9 +460,6 @@ impl Player {
                 }
                 if o.InjuryLevel.is_none() && self.InjuryLevel.is_some() {
                     o.InjuryLevel = self.InjuryLevel;
-                }
-                if o.Sticker.is_none() && self.Sticker.is_some() {
-                    o.Sticker = self.Sticker.clone();
                 }
                 if o.LastMatch.is_none() && self.LastMatch.is_some() {
                     o.LastMatch = self.LastMatch.clone();
@@ -495,6 +496,9 @@ impl Player {
                 }
                 if o.GenderID.is_none() && self.GenderID.is_some() {
                     o.GenderID = self.GenderID;
+                }
+                if o.NativeCountryFlag.is_none() && self.NativeCountryFlag.is_some() {
+                    o.NativeCountryFlag = self.NativeCountryFlag.clone();
                 }
 
                 o
@@ -612,7 +616,6 @@ pub struct PlayerDetailsData {
     pub Player: Player,
 }
 
-#[allow(non_snake_case)]
 #[allow(non_snake_case)]
 #[derive(Deserialize, Serialize, Debug)]
 pub struct WorldCountry {
@@ -967,7 +970,7 @@ mod tests {
                         <FriendliesGoals>0</FriendliesGoals>
                         <CareerGoals>0</CareerGoals>
                         <CareerHattricks>0</CareerHattricks>
-                        <Speciality>0</Speciality>
+                        <Specialty>0</Specialty>
                         <TransferListed>False</TransferListed>
                         <NationalTeamID>0</NationalTeamID>
                         <CountryID>1</CountryID>
@@ -975,7 +978,6 @@ mod tests {
                         <CapsU20>0</CapsU20>
                         <Cards>0</Cards>
                         <InjuryLevel>-1</InjuryLevel>
-                        <Sticker></Sticker>
                     </Player>
                     <Player>
                         <PlayerID>40002</PlayerID>
@@ -1303,7 +1305,7 @@ mod tests {
             FriendliesGoals: Some(1),
             CareerGoals: Some(50),
             CareerHattricks: Some(2),
-            Speciality: Some(1),
+            Specialty: Some(1),
             TransferListed: false,
             NationalTeamID: Some(100),
             CountryID: Some(10),
@@ -1311,7 +1313,6 @@ mod tests {
             CapsU20: Some(10),
             Cards: Some(1),
             InjuryLevel: Some(-1),
-            Sticker: Some("Basic sticker".to_string()),
             Flag: None,
             PlayerSkills: None,
             LastMatch: None,
@@ -1325,6 +1326,9 @@ mod tests {
             GoalsCurrentTeam: None,
             AssistsCurrentTeam: None,
             CareerAssists: None,
+            GenderID: Some(1),
+            NativeCountryFlag: None,
+            AvatarBlob: None,
         };
 
         // Create detailed player with most fields but some missing
@@ -1354,7 +1358,7 @@ mod tests {
             FriendliesGoals: Some(2),
             CareerGoals: Some(55),
             CareerHattricks: None, // Missing in detailed
-            Speciality: Some(1),
+            Specialty: Some(1),
             TransferListed: false,
             NationalTeamID: Some(100),
             CountryID: Some(10),
@@ -1362,7 +1366,6 @@ mod tests {
             CapsU20: None, // Missing in detailed
             Cards: Some(1),
             InjuryLevel: Some(0),
-            Sticker: None, // Missing in detailed
             Flag: None,
             PlayerSkills: Some(crate::chpp::model::PlayerSkills {
                 StaminaSkill: 7,
@@ -1385,6 +1388,9 @@ mod tests {
             GoalsCurrentTeam: None,
             AssistsCurrentTeam: None,
             CareerAssists: None,
+            GenderID: Some(1),
+            NativeCountryFlag: None,
+            AvatarBlob: None,
         };
 
         let merged = basic.merge_player_data(Some(detailed));
@@ -1402,7 +1408,6 @@ mod tests {
         assert_eq!(merged.CupGoals, Some(2)); // From basic
         assert_eq!(merged.CareerHattricks, Some(2)); // From basic
         assert_eq!(merged.CapsU20, Some(10)); // From basic
-        assert_eq!(merged.Sticker, Some("Basic sticker".to_string())); // From basic
     }
 
     #[test]
@@ -1435,7 +1440,7 @@ mod tests {
             FriendliesGoals: Some(1),
             CareerGoals: Some(50),
             CareerHattricks: Some(2),
-            Speciality: Some(1),
+            Specialty: Some(1),
             TransferListed: false,
             NationalTeamID: Some(100),
             CountryID: Some(10),
@@ -1443,7 +1448,6 @@ mod tests {
             CapsU20: Some(10),
             Cards: Some(1),
             InjuryLevel: Some(-1),
-            Sticker: Some("Basic sticker".to_string()),
             Flag: None,
             PlayerSkills: None,
             LastMatch: None,
@@ -1457,6 +1461,9 @@ mod tests {
             GoalsCurrentTeam: None,
             AssistsCurrentTeam: None,
             CareerAssists: None,
+            GenderID: Some(1),
+            NativeCountryFlag: None,
+            AvatarBlob: None,
         };
 
         let merged = basic.merge_player_data(None);
@@ -1469,3 +1476,57 @@ mod tests {
         assert!(merged.PlayerSkills.is_none());
     }
 }
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Layer {
+    #[serde(rename = "x")]
+    pub x: i32,
+    #[serde(rename = "y")]
+    pub y: i32,
+    #[serde(rename = "Image")]
+    pub image: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Avatar {
+    #[serde(rename = "BackgroundImage")]
+    pub background_image: String,
+    #[serde(rename = "Layer", default)]
+    pub layers: Vec<Layer>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct AvatarPlayer {
+    #[serde(rename = "PlayerID")]
+    pub player_id: u32,
+    #[serde(rename = "Avatar")]
+    pub avatar: Avatar,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+pub struct AvatarsPlayers {
+    #[serde(rename = "Player", default)]
+    pub players: Vec<AvatarPlayer>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct AvatarsTeam {
+    #[serde(rename = "TeamId")]
+    pub team_id: u32,
+    #[serde(rename = "Players", default)]
+    pub players: AvatarsPlayers,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct AvatarsData {
+    #[serde(rename = "FileName")]
+    pub file_name: String,
+    #[serde(rename = "Version")]
+    pub version: String,
+    #[serde(rename = "UserID")]
+    pub user_id: u32,
+    #[serde(rename = "Team")]
+    pub team: AvatarsTeam,
+}
+

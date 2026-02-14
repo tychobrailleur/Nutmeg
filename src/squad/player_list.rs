@@ -98,6 +98,12 @@ impl SquadPlayerList {
     }
 }
 
+impl Default for SquadPlayerList {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 use crate::ui::player_display::PlayerDisplay;
 use crate::ui::player_object::PlayerObject;
 use num_format::SystemLocale;
@@ -130,9 +136,11 @@ pub fn create_player_model(players: &[crate::chpp::model::Player]) -> gtk::ListS
 
     for p in players {
         let obj = PlayerObject::new(p.clone());
-        let display = PlayerDisplay::new(&p, &locale);
+        let display = PlayerDisplay::new(p, &locale);
 
         let bg = if p.MotherClubBonus {
+            // FIXME: still haven't figured out to use the CSS class
+            // rather than hardcoding the colour.
             Some("rgba(64, 224, 208, 0.3)")
         } else {
             None

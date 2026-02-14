@@ -24,15 +24,22 @@ use crate::chpp::{create_oauth_context, retry_with_default_config, ChppClient, E
 use crate::db::download_entries::{create_download_entry, update_entry_status, NewDownloadEntry};
 use crate::db::manager::DbManager;
 use crate::db::schema::downloads;
-use crate::db::teams::{save_players, save_team, save_world_details};
+use crate::db::teams::{save_avatars, save_players, save_team, save_world_details};
+use crate::service::avatar::AvatarService;
 use crate::service::secret::{GnomeSecretService, SecretStorageService};
 use chrono::Utc;
 use diesel::prelude::*;
-use log::{debug, info};
+use log::{debug, info, warn};
 use oauth_1a::{OAuthData, SigningKey};
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+
+use crate::chpp::model::{
+    AvatarsData, ChppErrorResponse, HattrickData, Player, PlayerDetailsData, PlayersData,
+    WorldDetails,
+};
 
 pub trait DataSyncService {
     fn perform_initial_sync(
@@ -102,7 +109,7 @@ impl DataSyncService for SyncService {
                 consumer_secret,
                 on_progress,
             )
-            .await
+                .await
         })
     }
 
@@ -132,7 +139,7 @@ impl DataSyncService for SyncService {
                     consumer_secret,
                     on_progress,
                 )
-                .await
+                    .await
                 {
                     Ok(_) => Ok(true),
                     Err(Error::Io(s)) if s.contains("Missing credentials") => Ok(false),
@@ -171,8 +178,8 @@ impl SyncService {
 
             Ok(id)
         })
-        .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))?
+            .await
+            .map_err(|e| Error::Io(format!("Join error: {}", e)))?
     }
 
     async fn complete_download_record(
@@ -191,8 +198,8 @@ impl SyncService {
 
             Ok::<(), Error>(())
         })
-        .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+            .await
+            .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
         Ok(())
     }
 
@@ -228,8 +235,8 @@ impl SyncService {
             create_download_entry(&mut conn, entry)
                 .map_err(|e| Error::Db(format!("Failed to create download entry: {}", e)))
         })
-        .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))?
+            .await
+            .map_err(|e| Error::Io(format!("Join error: {}", e)))?
     }
 
     /// Update download entry status (success or error)
@@ -252,8 +259,8 @@ impl SyncService {
 
             Ok::<(), Error>(())
         })
-        .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))?
+            .await
+            .map_err(|e| Error::Io(format!("Join error: {}", e)))?
     }
 
     async fn fetch_and_save_user_data<F>(
@@ -273,7 +280,7 @@ impl SyncService {
             ChppEndpoints::TEAM_DETAILS.version,
             None,
         )
-        .await?;
+            .await?;
 
         // Get user / team details
         let (data, key) = get_auth();
@@ -289,7 +296,7 @@ impl SyncService {
                     "error",
                     Some(e.to_string()),
                 )
-                .await?;
+                    .await?;
                 return Err(e);
             }
         };
@@ -321,8 +328,8 @@ impl SyncService {
             }
             Ok::<(), Error>(())
         })
-        .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+            .await
+            .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
 
         Ok(team_id)
     }
@@ -345,7 +352,7 @@ impl SyncService {
             ChppEndpoints::WORLD_DETAILS.version,
             None,
         )
-        .await?;
+            .await?;
 
         let (data, key) = get_auth();
         let world_details = match client.world_details(data, key).await {
@@ -360,7 +367,7 @@ impl SyncService {
                     "error",
                     Some(e.to_string()),
                 )
-                .await?;
+                    .await?;
                 return Err(e);
             }
         };
@@ -377,8 +384,8 @@ impl SyncService {
             let mut conn = db.get_connection()?;
             save_world_details(&mut conn, &wd, download_id)
         })
-        .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+            .await
+            .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
 
         Ok(())
     }
@@ -391,7 +398,7 @@ impl SyncService {
         download_id: i32,
     ) -> Result<(), Error>
     where
-        // Send is for concurrency, F safe to be sent to another thread, Sync means muliple threads can safely access
+    // Send is for concurrency, F safe to be sent to another thread, Sync means muliple threads can safely access
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
         // Log download entry for players
@@ -402,7 +409,7 @@ impl SyncService {
             ChppEndpoints::PLAYERS.version,
             None,
         )
-        .await?;
+            .await?;
 
         // Get Players for the team
         let (data, key) = get_auth();
@@ -418,7 +425,7 @@ impl SyncService {
                     "error",
                     Some(e.to_string()),
                 )
-                .await?;
+                    .await?;
                 return Err(e);
             }
         };
@@ -431,13 +438,35 @@ impl SyncService {
         };
 
         // Fetch detailed player data for each player and merge with basic data
-        let merged_players = {
+        let (players_list, avatars_list) = {
             info!(
                 "Fetching detailed player data for {} players",
                 player_list.players.len()
             );
 
+            // Fetch avatars for the team
+            let (data, key) = get_auth();
+            let avatar_map = match client.avatars(data, key, Some(team_id)).await {
+                Ok(avatars) => {
+                    info!(
+                        "Fetched {} player avatars for team {}",
+                        avatars.team.players.players.len(),
+                        team_id
+                    );
+                    let mut map = HashMap::new();
+                    for avatar_player in avatars.team.players.players {
+                        map.insert(avatar_player.player_id, avatar_player.avatar.layers);
+                    }
+                    map
+                }
+                Err(e) => {
+                    warn!("Failed to fetch avatars for team {}: {}", team_id, e);
+                    HashMap::new()
+                }
+            };
+
             let mut merged_players = Vec::new();
+            let mut avatars_to_save = Vec::new();
             for basic_player in &player_list.players {
                 info!("Fetching details for player ID: {}", basic_player.PlayerID);
 
@@ -452,13 +481,13 @@ impl SyncService {
                     ChppEndpoints::PLAYER_DETAILS.version,
                     None,
                 )
-                .await?;
+                    .await?;
 
                 // Use retry utility for player details fetching
                 let result = retry_with_default_config(&operation_name, get_auth, |data, key| {
                     client.player_details(data, key, player_id)
                 })
-                .await;
+                    .await;
 
                 // Update entry status based on result
                 match &result {
@@ -473,7 +502,7 @@ impl SyncService {
                             "error",
                             Some(e.to_string()),
                         )
-                        .await?;
+                            .await?;
                     }
                 }
 
@@ -484,20 +513,6 @@ impl SyncService {
                             "Successfully fetched detailed data for player {}",
                             player_id
                         );
-                        if detailed_player.MotherClub.is_some() {
-                            debug!("Detailed player {} has MotherClub", player_id);
-                        } else {
-                            debug!("Detailed player {} has NO MotherClub", player_id);
-                        }
-                        if detailed_player.Sticker.is_some() {
-                            debug!(
-                                "Detailed player {} has Sticker: {:?}",
-                                player_id, detailed_player.Sticker
-                            );
-                        } else {
-                            debug!("Detailed player {} has NO Sticker", player_id);
-                        }
-
                         basic_player.merge_player_data(Some(detailed_player))
                     }
                     Err(e) => {
@@ -510,48 +525,29 @@ impl SyncService {
                     }
                 };
 
-                // Download Avatar if Sticker is present
-                if let Some(sticker_url) = &merged.Sticker {
-                    // Hattrick URLs are protocol-relative
-                    let url = if sticker_url.starts_with("//") {
-                        format!("https:{}", sticker_url)
-                    } else {
-                        sticker_url.clone()
-                    };
-
-                    info!("Downloading avatar for player {} from {}", player_id, url);
-                    match reqwest::get(&url).await {
-                        Ok(response) => match response.bytes().await {
-                            Ok(bytes) => {
-                                merged.AvatarBlob = Some(bytes.to_vec());
-                            }
-                            Err(e) => {
-                                log::warn!(
-                                    "Failed to get avatar bytes for player {}: {}",
-                                    player_id,
-                                    e
-                                );
-                            }
-                        },
-                        Err(e) => {
-                            log::warn!("Failed to download avatar for player {}: {}", player_id, e);
-                        }
+                if let Some(layers) = avatar_map.get(&player_id) {
+                    if let Some(avatar_blob) =
+                        AvatarService::fetch_and_composite_avatar(player_id, layers).await
+                    {
+                        merged.AvatarBlob = Some(avatar_blob.clone());
+                        avatars_to_save.push((player_id, avatar_blob));
                     }
                 }
 
                 merged_players.push(merged);
             }
-            merged_players
+            (merged_players, avatars_to_save)
         };
 
         // Save players
         let db = db_manager.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = db.get_connection()?;
-            save_players(&mut conn, &merged_players, team_id, download_id)
+            save_players(&mut conn, &players_list, team_id, download_id)?;
+            save_avatars(&mut conn, &avatars_list, download_id)
         })
-        .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+            .await
+            .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
 
         Ok(())
     }
@@ -605,7 +601,7 @@ impl SyncService {
             &get_auth,
             download_id,
         )
-        .await?;
+            .await?;
 
         on_progress(0.5, "Fetching user data...");
         let team_id = Self::fetch_and_save_user_data(
@@ -614,7 +610,7 @@ impl SyncService {
             &get_auth,
             download_id,
         )
-        .await?;
+            .await?;
 
         on_progress(0.6, "Fetching players...");
         Self::fetch_and_save_players(
@@ -624,7 +620,7 @@ impl SyncService {
             team_id,
             download_id,
         )
-        .await?;
+            .await?;
 
         on_progress(0.9, "Finalizing download...");
         Self::complete_download_record(db_manager.clone(), download_id).await?;
@@ -742,6 +738,7 @@ mod tests {
                         PlayerList: None,
                         PossibleToChallengeMidweek: None,
                         PossibleToChallengeWeekend: None,
+                        GenderID: Some(1),
                     }],
                 },
             })
@@ -784,10 +781,16 @@ mod tests {
                     YouthTeamName: None,
                     NumberOfVisits: None,
                     //               TrophyList: None,
+                    GenderID: Some(1),
                     PlayerList: Some(PlayerList {
                         players: vec![Player {
                             PlayerID: 1000,
                             FirstName: "Test".to_string(),
+                            LastMatch: None,
+                            AvatarBlob: None,
+                            GenderID: Some(1),
+                            Flag: None,
+                            NativeCountryFlag: None,
                             LastName: "Player".to_string(),
                             NickName: None,
                             PlayerNumber: Some(10),
@@ -811,7 +814,7 @@ mod tests {
                             FriendliesGoals: Some(0),
                             CareerGoals: Some(0),
                             CareerHattricks: Some(0),
-                            Speciality: Some(0),
+                            Specialty: Some(0),
                             TransferListed: false,
                             NationalTeamID: None,
                             CountryID: Some(10),
@@ -819,11 +822,6 @@ mod tests {
                             CapsU20: Some(0),
                             Cards: Some(0),
                             InjuryLevel: Some(-1),
-                            Sticker: None,
-                            Flag: None,
-                            PlayerSkills: None,
-                            LastMatch: None,
-                            ArrivalDate: None,
                             PlayerCategoryId: None,
                             MotherClub: None,
                             NativeCountryID: None,
@@ -833,6 +831,8 @@ mod tests {
                             GoalsCurrentTeam: None,
                             AssistsCurrentTeam: None,
                             CareerAssists: None,
+                            ArrivalDate: None,
+                            PlayerSkills: None,
                         }],
                     }),
                     PossibleToChallengeMidweek: None,
@@ -851,6 +851,11 @@ mod tests {
                 PlayerID: 1001,
                 FirstName: "John".to_string(),
                 LastName: "Doe".to_string(),
+                LastMatch: None,
+                AvatarBlob: None,
+                GenderID: Some(1),
+                Flag: None,
+                NativeCountryFlag: None,
                 NickName: None,
                 PlayerNumber: Some(10),
                 Age: 20,
@@ -873,7 +878,7 @@ mod tests {
                 FriendliesGoals: Some(0),
                 CareerGoals: Some(0),
                 CareerHattricks: Some(0),
-                Speciality: Some(0),
+                Specialty: Some(0),
                 TransferListed: false,
                 NationalTeamID: Some(0),
                 CountryID: Some(10),
@@ -881,11 +886,6 @@ mod tests {
                 CapsU20: Some(0),
                 Cards: Some(0),
                 InjuryLevel: Some(-1),
-                Sticker: Some("".to_string()),
-                Flag: None,
-                PlayerSkills: None,
-                LastMatch: None,
-                ArrivalDate: None,
                 PlayerCategoryId: None,
                 MotherClub: None,
                 NativeCountryID: None,
@@ -895,6 +895,27 @@ mod tests {
                 GoalsCurrentTeam: None,
                 AssistsCurrentTeam: None,
                 CareerAssists: None,
+                PlayerSkills: None,
+                ArrivalDate: None,
+            })
+        }
+
+        async fn avatars(
+            &self,
+            _data: OAuthData,
+            _key: SigningKey,
+            _team_id: Option<u32>,
+        ) -> Result<AvatarsData, Error> {
+            Ok(AvatarsData {
+                file_name: "avatars".to_string(),
+                version: "1.0".to_string(),
+                user_id: 123,
+                team: AvatarsTeam {
+                    team_id: 123,
+                    players: AvatarsPlayers {
+                        players: vec![],
+                    },
+                },
             })
         }
     }

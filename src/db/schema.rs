@@ -1,6 +1,14 @@
 // @generated automatically by Diesel CLI. (Cleaned up manually)
 
 diesel::table! {
+    avatars (player_id, download_id) {
+        player_id -> Integer,
+        download_id -> Integer,
+        image -> Binary,
+    }
+}
+
+diesel::table! {
     countries (id, download_id) {
         id -> Integer,
         download_id -> Integer,
@@ -117,7 +125,6 @@ diesel::table! {
         friendlies_goals -> Nullable<Integer>,
         career_goals -> Nullable<Integer>,
         career_hattricks -> Nullable<Integer>,
-        speciality -> Nullable<Integer>,
         transfer_listed -> Bool,
         national_team_id -> Nullable<Integer>,
         country_id -> Integer,
@@ -125,8 +132,7 @@ diesel::table! {
         caps_u20 -> Nullable<Integer>,
         cards -> Nullable<Integer>,
         injury_level -> Nullable<Integer>,
-        avatar -> Nullable<Binary>,
-        sticker -> Nullable<Text>,
+        specialty -> Nullable<Integer>,
         stamina_skill -> Nullable<Integer>,
         keeper_skill -> Nullable<Integer>,
         playmaker_skill -> Nullable<Integer>,
@@ -237,6 +243,7 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(avatars -> downloads (download_id));
 diesel::joinable!(countries -> downloads (download_id));
 diesel::joinable!(currencies -> downloads (download_id));
 diesel::joinable!(download_entries -> downloads (download_id));
@@ -251,6 +258,7 @@ diesel::joinable!(cups -> downloads (download_id));
 diesel::joinable!(languages -> downloads (download_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    avatars,
     countries,
     currencies,
     cups,

@@ -25,6 +25,7 @@ chrono = "0.4"
 oo7 = "0.3"
 gdk-pixbuf = "0.21"
 num-format = { version = "0.4.4", features = ["with-system-locale"] }
+image = "0.24"
 
 [dependencies.adw]
 package = "libadwaita"

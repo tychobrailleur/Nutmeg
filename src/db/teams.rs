@@ -23,7 +23,8 @@ use crate::chpp::model::{
     Country, Cup, Currency, Language, League, Region, SupporterTier, Team, User, WorldDetails,
 };
 use crate::db::schema::{
-    countries, cups, currencies, downloads, languages, leagues, players, regions, teams, users,
+    avatars, countries, cups, currencies, downloads, languages, leagues, players, regions, teams,
+    users,
 };
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
@@ -213,6 +214,14 @@ struct TeamEntity {
 }
 
 #[derive(Queryable, Insertable)]
+#[diesel(table_name = avatars)]
+pub struct AvatarEntity {
+    pub player_id: i32,
+    pub download_id: i32,
+    pub image: Vec<u8>,
+}
+
+#[derive(Queryable, Insertable)]
 #[diesel(table_name = players)]
 struct PlayerEntity {
     id: i32,
@@ -241,7 +250,6 @@ struct PlayerEntity {
     friendlies_goals: Option<i32>,
     career_goals: Option<i32>,
     career_hattricks: Option<i32>,
-    speciality: Option<i32>,
     transfer_listed: bool,
     national_team_id: Option<i32>,
     country_id: i32,
@@ -249,8 +257,7 @@ struct PlayerEntity {
     caps_u20: Option<i32>,
     cards: Option<i32>,
     injury_level: Option<i32>,
-    avatar: Option<Vec<u8>>,
-    sticker: Option<String>,
+    specialty: Option<i32>,
     stamina_skill: Option<i32>,
     keeper_skill: Option<i32>,
     playmaker_skill: Option<i32>,
@@ -400,16 +407,14 @@ pub fn save_players(
             friendlies_goals: player.FriendliesGoals.map(|v| v as i32),
             career_goals: player.CareerGoals.map(|v| v as i32),
             career_hattricks: player.CareerHattricks.map(|v| v as i32),
-            speciality: player.Speciality.map(|v| v as i32),
             transfer_listed: player.TransferListed,
             national_team_id: player.NationalTeamID.map(|v| v as i32),
             country_id: player.CountryID.unwrap_or(0) as i32,
             caps: player.Caps.map(|v| v as i32),
             caps_u20: player.CapsU20.map(|v| v as i32),
             cards: player.Cards.map(|v| v as i32),
-            injury_level: player.InjuryLevel.map(|v| v as i32),
-            avatar: player.AvatarBlob.clone(),
-            sticker: player.Sticker.clone(),
+            injury_level: player.InjuryLevel.map(|v| v),
+            specialty: player.Specialty.map(|v| v as i32),
             // Skills
             stamina_skill: player.PlayerSkills.as_ref().map(|s| s.StaminaSkill as i32),
             keeper_skill: player.PlayerSkills.as_ref().map(|s| s.KeeperSkill as i32),
@@ -458,6 +463,28 @@ pub fn save_players(
             .do_nothing()
             .execute(conn)
             .map_err(|e| Error::Io(format!("Database error saving player: {}", e)))?;
+    }
+    Ok(())
+}
+
+pub fn save_avatars(
+    conn: &mut SqliteConnection,
+    avatars_list: &[(u32, Vec<u8>)],
+    download_id: i32,
+) -> Result<(), Error> {
+    for (player_id, image) in avatars_list {
+        let entity = AvatarEntity {
+            player_id: *player_id as i32,
+            download_id,
+            image: image.clone(),
+        };
+
+        diesel::insert_into(avatars::table)
+            .values(&entity)
+            .on_conflict((avatars::player_id, avatars::download_id))
+            .do_nothing()
+            .execute(conn)
+            .map_err(|e| Error::Io(format!("Database error saving avatar: {}", e)))?;
     }
     Ok(())
 }
@@ -609,7 +636,7 @@ fn save_league(
         short_name: league.ShortName.clone(),
         continent: league.Continent.clone(),
         season: league.Season.map(|v| v as i32),
-        season_offset: league.SeasonOffset.map(|v| v as i32),
+        season_offset: league.SeasonOffset.map(|v| v),
         match_round: league.MatchRound.map(|v| v as i32),
         zone_name: league.ZoneName.clone(),
         english_name: league.EnglishName.clone(),
@@ -954,20 +981,36 @@ pub fn get_players_for_team(
     }
     let download_id_filter = latest_download.unwrap();
 
-    let results: Vec<(PlayerEntity, Option<String>)> = players::table
+    // Fetch all countries for this download to map flags
+    let country_list = countries::table
+        .filter(countries::download_id.eq(download_id_filter))
+        .select((countries::id, countries::flag.nullable()))
+        .load::<(i32, Option<String>)>(conn)
+        .map_err(|e| Error::Db(format!("Failed to load countries: {}", e)))?;
+
+    let country_map: std::collections::HashMap<i32, String> = country_list
+        .into_iter()
+        .filter_map(|(id, flag)| flag.map(|f| (id, f)))
+        .collect();
+
+    let results: Vec<(PlayerEntity, Option<AvatarEntity>)> = players::table
         .left_join(
-            countries::table.on(players::country_id
-                .eq(countries::id)
-                .and(countries::download_id.eq(download_id_filter))),
+            avatars::table.on(avatars::player_id
+                .eq(players::id)
+                .and(avatars::download_id.eq(players::download_id))),
         )
         .filter(players::team_id.eq(team_id_in as i32))
         .filter(players::download_id.eq(download_id_filter))
-        .select((players::all_columns, countries::flag.nullable()))
-        .load::<(PlayerEntity, Option<String>)>(conn)
+        .load::<(PlayerEntity, Option<AvatarEntity>)>(conn)
         .map_err(|e| Error::Db(format!("Failed to load players: {}", e)))?;
 
     let mut players = Vec::new();
-    for (entity, flag) in results {
+    for (entity, avatar_entity) in results {
+        let flag = country_map.get(&entity.country_id).cloned();
+        let native_flag = entity
+            .native_country_id
+            .and_then(|id| country_map.get(&id).cloned());
+
         players.push(crate::chpp::model::Player {
             PlayerID: entity.id as u32,
             FirstName: entity.first_name,
@@ -997,7 +1040,8 @@ pub fn get_players_for_team(
             FriendliesGoals: entity.friendlies_goals.map(|v| v as u32),
             CareerGoals: entity.career_goals.map(|v| v as u32),
             CareerHattricks: entity.career_hattricks.map(|v| v as u32),
-            Speciality: entity.speciality.map(|v| v as u32),
+            CareerAssists: entity.career_assists.map(|v| v as u32),
+            Specialty: entity.specialty.map(|v| v as u32),
             TransferListed: entity.transfer_listed,
             NationalTeamID: entity.national_team_id.map(|v| v as u32),
             GenderID: Some(entity.gender_id as u32),
@@ -1006,9 +1050,9 @@ pub fn get_players_for_team(
             CapsU20: entity.caps_u20.map(|v| v as u32),
             Cards: entity.cards.map(|v| v as u32),
             InjuryLevel: entity.injury_level.map(|v| v as i32),
-            Sticker: entity.sticker,
-            AvatarBlob: entity.avatar,
+            AvatarBlob: avatar_entity.map(|a| a.image),
             Flag: flag,
+            NativeCountryFlag: native_flag,
             ReferencePlayerID: None,
             PlayerSkills: if entity.stamina_skill.is_some() {
                 Some(crate::chpp::model::PlayerSkills {
@@ -1054,7 +1098,6 @@ pub fn get_players_for_team(
             MatchesCurrentTeam: entity.matches_current_team.map(|v| v as u32),
             GoalsCurrentTeam: entity.goals_current_team.map(|v| v as u32),
             AssistsCurrentTeam: entity.assists_current_team.map(|v| v as u32),
-            CareerAssists: entity.career_assists.map(|v| v as u32),
         });
     }
 

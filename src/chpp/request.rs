@@ -27,7 +27,8 @@ use std::collections::BTreeMap;
 use crate::chpp::error::Error;
 use crate::chpp::metadata::ChppEndpoints;
 use crate::chpp::model::{
-    ChppErrorResponse, HattrickData, Player, PlayerDetailsData, PlayersData, WorldDetails,
+    AvatarsData, ChppErrorResponse, HattrickData, Player, PlayerDetailsData, PlayersData,
+    WorldDetails,
 };
 use crate::chpp::{CHPP_URL, NUTMEG_USER_AGENT};
 
@@ -39,6 +40,64 @@ pub async fn chpp_request<T: DeserializeOwned>(
     extra_params: Option<&Vec<(&str, &str)>>,
     mut data: OAuthData,
     key: SigningKey,
+) -> Result<T, Error> {
+    use crate::chpp::retry::{should_retry, RetryConfig};
+
+    let config = RetryConfig::default();
+    let mut backoff_ms = config.initial_backoff_ms;
+
+    for attempt in 0..=config.max_retries {
+        let result = perform_single_request::<T>(file, version, extra_params, &mut data, &key).await;
+
+        match result {
+            Ok(data) => return Ok(data),
+            Err(e) => {
+                if attempt == config.max_retries {
+                    log::error!(
+                        "CHPP request to {} v{} failed after {} retries: {}",
+                        file,
+                        version,
+                        config.max_retries,
+                        e
+                    );
+                    return Err(e);
+                }
+
+                if should_retry(&e) {
+                    log::warn!(
+                        "CHPP request to {} v{} attempt {}/{} failed: {}. Retrying in {}ms...",
+                        file,
+                        version,
+                        attempt + 1,
+                        config.max_retries + 1,
+                        e,
+                        backoff_ms
+                    );
+
+                    tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
+                    backoff_ms = std::cmp::min(backoff_ms * 2, config.max_backoff_ms);
+                } else {
+                    log::error!(
+                        "CHPP request to {} v{} encountered non-retryable error: {}",
+                        file,
+                        version,
+                        e
+                    );
+                    return Err(e);
+                }
+            }
+        }
+    }
+
+    unreachable!()
+}
+
+async fn perform_single_request<T: DeserializeOwned>(
+    file: &str,
+    version: &str,
+    extra_params: Option<&Vec<(&str, &str)>>,
+    data: &mut OAuthData,
+    key: &SigningKey,
 ) -> Result<T, Error> {
     let chpp_str_url = CHPP_URL.replace(":file", file).replace(":version", version);
     let chpp_url = Url::parse(chpp_str_url.as_str())
@@ -213,4 +272,27 @@ pub async fn player_details_request(
     )
     .await?;
     Ok(response.Player)
+}
+
+pub async fn avatars_request(
+    data: OAuthData,
+    key: SigningKey,
+    team_id: Option<u32>,
+) -> Result<AvatarsData, Error> {
+    let mut params = Vec::new();
+    let tid_str;
+    if let Some(tid) = team_id {
+        tid_str = tid.to_string();
+        params.push(("actionType", "players"));
+        params.push(("teamId", tid_str.as_str()));
+    }
+
+    chpp_request::<AvatarsData>(
+        ChppEndpoints::AVATARS.name,
+        ChppEndpoints::AVATARS.version,
+        Some(&params),
+        data,
+        key,
+    )
+    .await
 }

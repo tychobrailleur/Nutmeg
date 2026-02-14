@@ -15,7 +15,7 @@
         <property name="spacing">12</property>
         <child>
             <object class="GtkImage" id="details_avatar">
-                <property name="pixel-size">64</property>
+                <property name="pixel-size">96</property>
                 <property name="icon-name">avatar-default-symbolic</property> <!-- Fallback -->
             </object>
         </child>
@@ -24,10 +24,26 @@
             <property name="orientation">vertical</property>
             <property name="valign">center</property>
             <child>
-              <object class="GtkLabel" id="details_name">
-                <property name="css-classes">title-2</property>
-                <property name="halign">start</property>
-                <property name="wrap">true</property>
+              <object class="GtkBox">
+                <property name="orientation">horizontal</property>
+                <property name="spacing">6</property>
+                <child>
+                  <object class="GtkLabel" id="details_name">
+                    <property name="css-classes">title-2</property>
+                    <property name="halign">start</property>
+                    <property name="wrap">true</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="details_flag">
+                    <property name="label"></property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="details_gender">
+                    <property name="label"></property>
+                  </object>
+                </child>
               </object>
             </child>
             <child>
@@ -159,6 +175,26 @@
                 <layout>
                   <property name="column">1</property>
                   <property name="row">3</property>
+                </layout>
+              </object>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="label" translatable="yes">Specialty:</property>
+                <property name="halign">start</property>
+                <layout>
+                  <property name="column">0</property>
+                  <property name="row">4</property>
+                </layout>
+              </object>
+            </child>
+            <child>
+              <object class="GtkLabel" id="details_specialty">
+                <property name="label">-</property>
+                <property name="halign">start</property>
+                <layout>
+                  <property name="column">1</property>
+                  <property name="row">4</property>
                 </layout>
               </object>
             </child>
