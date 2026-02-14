@@ -163,7 +163,7 @@ impl NutmegApplication {
                 .version(VERSION)
                 .authors(vec!["Sébastien Le Callonnec"])
                 //     .license_type(gtk::LicenseType::Gpl3)
-                .translator_credits(&gettext("translator-credits"))
+                .translator_credits(gettext("translator-credits"))
                 .copyright("© 2026 Sébastien Le Callonnec")
                 .build();
 

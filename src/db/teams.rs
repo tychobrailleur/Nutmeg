@@ -91,7 +91,7 @@ pub fn get_flag_emoji(country_code: Option<&str>) -> Option<String> {
     // So to get regional indicator corresponding to the uppercase letter,
     // we shift the codepoint by 127462-65 = 127397.
     for c in code.to_uppercase().chars() {
-        if c < 'A' || c > 'Z' {
+        if !c.is_ascii_uppercase() {
             return None;
         }
         let u = c as u32 + 127_397;
@@ -346,16 +346,17 @@ pub fn save_world_details(
 
         // Save Country
         if let Some(country_id) = world_league.Country.CountryID {
-            let currency = match &world_league.Country.CurrencyName {
-                Some(_) => Some(Currency {
+            let currency = world_league
+                .Country
+                .CurrencyName
+                .as_ref()
+                .map(|_| Currency {
                     CurrencyID: country_id, // See above
                     // placeholders, just need ID
                     CurrencyName: "".to_string(),
                     Rate: None,
                     Symbol: None,
-                }),
-                None => None,
-            };
+                });
             let country_model = Country {
                 CountryID: country_id,
                 CountryName: world_league.Country.CountryName.clone().unwrap(),
@@ -413,7 +414,7 @@ pub fn save_players(
             caps: player.Caps.map(|v| v as i32),
             caps_u20: player.CapsU20.map(|v| v as i32),
             cards: player.Cards.map(|v| v as i32),
-            injury_level: player.InjuryLevel.map(|v| v),
+            injury_level: player.InjuryLevel,
             specialty: player.Specialty.map(|v| v as i32),
             // Skills
             stamina_skill: player.PlayerSkills.as_ref().map(|s| s.StaminaSkill as i32),
@@ -636,7 +637,7 @@ fn save_league(
         short_name: league.ShortName.clone(),
         continent: league.Continent.clone(),
         season: league.Season.map(|v| v as i32),
-        season_offset: league.SeasonOffset.map(|v| v),
+        season_offset: league.SeasonOffset,
         match_round: league.MatchRound.map(|v| v as i32),
         zone_name: league.ZoneName.clone(),
         english_name: league.EnglishName.clone(),
@@ -1049,7 +1050,7 @@ pub fn get_players_for_team(
             Caps: entity.caps.map(|v| v as u32),
             CapsU20: entity.caps_u20.map(|v| v as u32),
             Cards: entity.cards.map(|v| v as u32),
-            InjuryLevel: entity.injury_level.map(|v| v as i32),
+            InjuryLevel: entity.injury_level,
             AvatarBlob: avatar_entity.map(|a| a.image),
             Flag: flag,
             NativeCountryFlag: native_flag,

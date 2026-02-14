@@ -36,11 +36,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::chpp::model::{
-    AvatarsData, ChppErrorResponse, HattrickData, Player, PlayerDetailsData, PlayersData,
-    WorldDetails,
-};
-
 pub trait DataSyncService {
     fn perform_initial_sync(
         &self,
@@ -109,7 +104,7 @@ impl DataSyncService for SyncService {
                 consumer_secret,
                 on_progress,
             )
-                .await
+            .await
         })
     }
 
@@ -139,7 +134,7 @@ impl DataSyncService for SyncService {
                     consumer_secret,
                     on_progress,
                 )
-                    .await
+                .await
                 {
                     Ok(_) => Ok(true),
                     Err(Error::Io(s)) if s.contains("Missing credentials") => Ok(false),
@@ -178,8 +173,8 @@ impl SyncService {
 
             Ok(id)
         })
-            .await
-            .map_err(|e| Error::Io(format!("Join error: {}", e)))?
+        .await
+        .map_err(|e| Error::Io(format!("Join error: {}", e)))?
     }
 
     async fn complete_download_record(
@@ -198,8 +193,8 @@ impl SyncService {
 
             Ok::<(), Error>(())
         })
-            .await
-            .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+        .await
+        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
         Ok(())
     }
 
@@ -235,8 +230,8 @@ impl SyncService {
             create_download_entry(&mut conn, entry)
                 .map_err(|e| Error::Db(format!("Failed to create download entry: {}", e)))
         })
-            .await
-            .map_err(|e| Error::Io(format!("Join error: {}", e)))?
+        .await
+        .map_err(|e| Error::Io(format!("Join error: {}", e)))?
     }
 
     /// Update download entry status (success or error)
@@ -259,8 +254,8 @@ impl SyncService {
 
             Ok::<(), Error>(())
         })
-            .await
-            .map_err(|e| Error::Io(format!("Join error: {}", e)))?
+        .await
+        .map_err(|e| Error::Io(format!("Join error: {}", e)))?
     }
 
     async fn fetch_and_save_user_data<F>(
@@ -280,7 +275,7 @@ impl SyncService {
             ChppEndpoints::TEAM_DETAILS.version,
             None,
         )
-            .await?;
+        .await?;
 
         // Get user / team details
         let (data, key) = get_auth();
@@ -296,7 +291,7 @@ impl SyncService {
                     "error",
                     Some(e.to_string()),
                 )
-                    .await?;
+                .await?;
                 return Err(e);
             }
         };
@@ -328,8 +323,8 @@ impl SyncService {
             }
             Ok::<(), Error>(())
         })
-            .await
-            .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+        .await
+        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
 
         Ok(team_id)
     }
@@ -352,7 +347,7 @@ impl SyncService {
             ChppEndpoints::WORLD_DETAILS.version,
             None,
         )
-            .await?;
+        .await?;
 
         let (data, key) = get_auth();
         let world_details = match client.world_details(data, key).await {
@@ -367,7 +362,7 @@ impl SyncService {
                     "error",
                     Some(e.to_string()),
                 )
-                    .await?;
+                .await?;
                 return Err(e);
             }
         };
@@ -384,8 +379,8 @@ impl SyncService {
             let mut conn = db.get_connection()?;
             save_world_details(&mut conn, &wd, download_id)
         })
-            .await
-            .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+        .await
+        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
 
         Ok(())
     }
@@ -398,7 +393,7 @@ impl SyncService {
         download_id: i32,
     ) -> Result<(), Error>
     where
-    // Send is for concurrency, F safe to be sent to another thread, Sync means muliple threads can safely access
+        // Send is for concurrency, F safe to be sent to another thread, Sync means muliple threads can safely access
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
         // Log download entry for players
@@ -409,7 +404,7 @@ impl SyncService {
             ChppEndpoints::PLAYERS.version,
             None,
         )
-            .await?;
+        .await?;
 
         // Get Players for the team
         let (data, key) = get_auth();
@@ -425,7 +420,7 @@ impl SyncService {
                     "error",
                     Some(e.to_string()),
                 )
-                    .await?;
+                .await?;
                 return Err(e);
             }
         };
@@ -481,13 +476,13 @@ impl SyncService {
                     ChppEndpoints::PLAYER_DETAILS.version,
                     None,
                 )
-                    .await?;
+                .await?;
 
                 // Use retry utility for player details fetching
                 let result = retry_with_default_config(&operation_name, get_auth, |data, key| {
                     client.player_details(data, key, player_id)
                 })
-                    .await;
+                .await;
 
                 // Update entry status based on result
                 match &result {
@@ -502,7 +497,7 @@ impl SyncService {
                             "error",
                             Some(e.to_string()),
                         )
-                            .await?;
+                        .await?;
                     }
                 }
 
@@ -546,8 +541,8 @@ impl SyncService {
             save_players(&mut conn, &players_list, team_id, download_id)?;
             save_avatars(&mut conn, &avatars_list, download_id)
         })
-            .await
-            .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+        .await
+        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
 
         Ok(())
     }
@@ -601,7 +596,7 @@ impl SyncService {
             &get_auth,
             download_id,
         )
-            .await?;
+        .await?;
 
         on_progress(0.5, "Fetching user data...");
         let team_id = Self::fetch_and_save_user_data(
@@ -610,7 +605,7 @@ impl SyncService {
             &get_auth,
             download_id,
         )
-            .await?;
+        .await?;
 
         on_progress(0.6, "Fetching players...");
         Self::fetch_and_save_players(
@@ -620,7 +615,7 @@ impl SyncService {
             team_id,
             download_id,
         )
-            .await?;
+        .await?;
 
         on_progress(0.9, "Finalizing download...");
         Self::complete_download_record(db_manager.clone(), download_id).await?;
@@ -912,9 +907,7 @@ mod tests {
                 user_id: 123,
                 team: AvatarsTeam {
                     team_id: 123,
-                    players: AvatarsPlayers {
-                        players: vec![],
-                    },
+                    players: AvatarsPlayers { players: vec![] },
                 },
             })
         }

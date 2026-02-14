@@ -22,7 +22,6 @@ use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{glib, Button, Entry, Label, ProgressBar, Stack};
 use log::{debug, error, info};
-use open;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -121,7 +120,7 @@ impl SetupWindow {
             glib::MainContext::default().spawn_local(async move {
                 // Call AuthService
                 let res = tokio::task::spawn_blocking(move || {
-                    let service = HattrickAuthService::default();
+                    let service = HattrickAuthService;
                     service.get_authorization_url()
                 })
                 .await;
@@ -133,6 +132,7 @@ impl SetupWindow {
                         data.0 = Some(rt);
                         data.1 = Some(rs);
 
+                        // Open the browser at the Auth URL in Hattrick
                         if let Err(e) = open::that(url) {
                             eprintln!("Failed to open browser: {}", e);
                         }
@@ -182,7 +182,7 @@ impl SetupWindow {
 
                 // Exchange Code
                 let verify_res = tokio::task::spawn_blocking(move || {
-                    let service = HattrickAuthService::default();
+                    let service = HattrickAuthService;
                     service.verify_user(&code_clone, &rt, &rs)
                 })
                 .await;

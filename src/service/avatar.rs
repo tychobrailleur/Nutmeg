@@ -12,7 +12,7 @@
 
 use crate::chpp::model::Layer;
 // use image::{DynamicImage, GenericImage, ImageBuffer, Rgba};
-use image::{DynamicImage, GenericImageView, ImageFormat};
+use image::{DynamicImage, ImageFormat};
 use log::{debug, error, warn};
 use std::io::Cursor;
 

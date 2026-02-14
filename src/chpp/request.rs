@@ -47,7 +47,8 @@ pub async fn chpp_request<T: DeserializeOwned>(
     let mut backoff_ms = config.initial_backoff_ms;
 
     for attempt in 0..=config.max_retries {
-        let result = perform_single_request::<T>(file, version, extra_params, &mut data, &key).await;
+        let result =
+            perform_single_request::<T>(file, version, extra_params, &mut data, &key).await;
 
         match result {
             Ok(data) => return Ok(data),
@@ -121,7 +122,7 @@ async fn perform_single_request<T: DeserializeOwned>(
             }
         }
     }
-    let send_url = Url::parse(&send_url_builder.to_string())
+    let send_url = Url::parse(send_url_builder.as_ref())
         .map_err(|e| Error::Network(format!("Invalid send URL: {}", e)))?;
 
     data.regen_nonce();
@@ -136,7 +137,7 @@ async fn perform_single_request<T: DeserializeOwned>(
         "Signable request: {}",
         std::str::from_utf8(&req.to_bytes()).unwrap_or("Invalid UTF-8")
     );
-    let authorization = data.authorization(req, AuthorizationType::Request, &key);
+    let authorization = data.authorization(req, AuthorizationType::Request, key);
     debug!("---\nAuthorization: {}", authorization);
 
     let client = reqwest::Client::new();

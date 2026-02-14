@@ -21,8 +21,7 @@
 */
 
 use crate::db::manager::DbManager;
-use crate::db::teams::{get_flag_emoji, get_teams_summary};
-use crate::service::context::ContextService;
+use crate::db::teams::get_teams_summary;
 use crate::service::sync::DataSyncService;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
@@ -187,7 +186,7 @@ impl NutmegWindow {
 
                         let team_data = team_obj.team_data();
 
-                        // Set label with markup (name + gray ID)
+                        // Set label with markup (name + grey ID)
                         let markup = format!(
                             "{} <span foreground='gray'>({})</span>",
                             glib::markup_escape_text(&team_data.name),

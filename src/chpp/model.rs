@@ -1529,4 +1529,3 @@ pub struct AvatarsData {
     #[serde(rename = "Team")]
     pub team: AvatarsTeam,
 }
-
