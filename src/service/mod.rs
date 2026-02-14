@@ -20,6 +20,5 @@
 
 pub mod auth;
 pub mod avatar;
-pub mod context;
 pub mod secret;
 pub mod sync;

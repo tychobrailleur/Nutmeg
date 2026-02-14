@@ -71,48 +71,7 @@ mod imp {
             };
 
             if is_first_run {
-                info!("First run detected (no users in DB)");
-                // Show Setup Window immediately to keep app alive
-                let setup = crate::setup_window::SetupWindow::new(&*application);
-                setup.present();
-
-                // Try to sync with stored credentials
-                let app_clone = application.clone();
-                let setup_clone = setup.clone();
-
-                glib::MainContext::default().spawn_local(async move {
-                    let db = std::sync::Arc::new(crate::db::manager::DbManager::new());
-                    let sync = crate::service::sync::SyncService::new(db);
-                    let key = crate::config::consumer_key();
-                    let secret = crate::config::consumer_secret();
-
-                    match sync
-                        .perform_sync_with_stored_secrets(
-                            key,
-                            secret,
-                            Box::new(|p, m| {
-                                log::debug!("Background sync: {:.0}% - {}", p * 100.0, m)
-                            }),
-                        )
-                        .await
-                    {
-                        Ok(true) => {
-                            info!("Successfully synced with stored credentials");
-                            // Synced successfully, open main window and close setup
-                            let window = crate::window::NutmegWindow::new(&app_clone);
-                            window.present();
-                            setup_clone.close();
-                        }
-                        Ok(false) => {
-                            info!("No stored credentials found, staying on setup screen");
-                            // No secrets, setup is already shown
-                        }
-                        Err(e) => {
-                            error!("Failed to sync with stored secrets: {}", e);
-                            // Setup is already shown
-                        }
-                    }
-                });
+                application.do_first_run();
             } else {
                 info!("Existing user found, opening main window");
                 // Show Main Window
@@ -141,6 +100,51 @@ impl NutmegApplication {
             .property("flags", flags)
             .property("resource-base-path", "/org/gnome/Nutmeg")
             .build()
+    }
+
+    fn do_first_run(&self) {
+        info!("First run detected (no users in DB)");
+        // Show Setup Window immediately to keep app alive
+        let setup = crate::setup_window::SetupWindow::new(self);
+        setup.present();
+
+        // Try to sync with stored credentials
+        let app_clone = self.clone();
+        let setup_clone = setup.clone();
+
+        glib::MainContext::default().spawn_local(async move {
+            let db = std::sync::Arc::new(crate::db::manager::DbManager::new());
+            let sync = crate::service::sync::SyncService::new(db);
+            let key = crate::config::consumer_key();
+            let secret = crate::config::consumer_secret();
+
+            match sync
+                .perform_sync_with_stored_secrets(
+                    key,
+                    secret,
+                    Box::new(|p, m| {
+                        log::debug!("Background sync: {:.0}% - {}", p * 100.0, m)
+                    }),
+                )
+                .await
+            {
+                Ok(true) => {
+                    info!("Successfully synced with stored credentials");
+                    // Synced successfully, open main window and close setup
+                    let window = crate::window::NutmegWindow::new(&app_clone);
+                    window.present();
+                    setup_clone.close();
+                }
+                Ok(false) => {
+                    info!("No stored credentials found, staying on setup screen");
+                    // No secrets, setup is already shown
+                }
+                Err(e) => {
+                    error!("Failed to sync with stored secrets: {}", e);
+                    // Setup is already shown
+                }
+            }
+        });
     }
 
     fn setup_gactions(&self) {
