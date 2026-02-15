@@ -63,10 +63,13 @@ impl PlayerDisplay {
 
         let mut buf_salary = Buffer::default();
         buf_salary.write_formatted(&p.Salary, locale);
+        // FIXME: this should use the currency symbol of the country the team is in.
+        // FIXME: Also, depending on locale, symbol may be before or after.
+        // FIXME: Amount in SEK, should be converted to local currency using currencies table.
         let salary = format!("{} €", buf_salary.as_str());
 
         let specialty = match p.Specialty {
-            Some(0) => gettext("No specialty"),
+            Some(0) => gettext(""),
             Some(1) => gettext("Technical"),
             Some(2) => gettext("Quick"),
             Some(3) => gettext("Powerful"),

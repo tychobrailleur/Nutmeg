@@ -66,7 +66,7 @@ mod imp {
         #[template_child]
         pub details_loyalty: TemplateChild<gtk::Label>,
         #[template_child]
-        pub details_mother_club: TemplateChild<gtk::LinkButton>,
+        pub details_mother_club: TemplateChild<gtk::Label>,
 
         // Last Match
         #[template_child]
@@ -282,18 +282,18 @@ impl SquadPlayerDetails {
             );
             if let Some(mother_club) = &p.MotherClub {
                 if !p.MotherClubBonus {
-                    imp.details_mother_club.set_label(&mother_club.TeamName);
-                    imp.details_mother_club.set_uri(&format!(
-                        "https://www.hattrick.org/Club/?TeamID={}",
-                        mother_club.TeamID
-                    ));
+                    let markup = format!(
+                        "<a href=\"https://www.hattrick.org/Club/?TeamID={}\">{}</a>",
+                        mother_club.TeamID,
+                        glib::markup_escape_text(&mother_club.TeamName)
+                    );
+                    imp.details_mother_club.set_markup(&markup);
                     imp.details_mother_club.set_visible(true);
                 } else {
                     imp.details_mother_club.set_visible(false);
                 }
             } else if p.MotherClubBonus {
-                imp.details_mother_club.set_label(&gettext("Home Grown"));
-                imp.details_mother_club.set_sensitive(false); // No link
+                imp.details_mother_club.set_text(&gettext("Home Grown"));
                 imp.details_mother_club.set_visible(true);
             } else {
                 imp.details_mother_club.set_visible(false);

@@ -122,9 +122,7 @@ impl NutmegApplication {
                 .perform_sync_with_stored_secrets(
                     key,
                     secret,
-                    Box::new(|p, m| {
-                        log::debug!("Background sync: {:.0}% - {}", p * 100.0, m)
-                    }),
+                    Box::new(|p, m| log::debug!("Background sync: {:.0}% - {}", p * 100.0, m)),
                 )
                 .await
             {

@@ -32,6 +32,8 @@
                     <property name="css-classes">title-2</property>
                     <property name="halign">start</property>
                     <property name="wrap">true</property>
+                    <property name="ellipsize">end</property>
+                    <property name="max-width-chars">15</property>
                   </object>
                 </child>
                 <child>
@@ -462,9 +464,14 @@
               </object>
             </child>
             <child>
-              <object class="GtkLinkButton" id="details_mother_club">
+              <object class="GtkLabel" id="details_mother_club">
                 <property name="label">-</property>
                 <property name="halign">start</property>
+                <property name="wrap">true</property>
+                <property name="ellipsize">end</property>
+                <property name="max-width-chars">15</property>
+                <property name="use-markup">true</property>
+                <property name="xalign">0</property>
                 <layout>
                   <property name="column">1</property>
                   <property name="row">3</property>

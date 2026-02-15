@@ -57,12 +57,17 @@
             <child>
               <object class="GtkPaned" id="squad_view">
                 <property name="vexpand">true</property>
-                <property name="position">550</property>
+                <property name="resize-start-child">true</property>
+                <property name="resize-end-child">false</property>
+                <property name="shrink-end-child">false</property>
                 <property name="start-child">
                   <object class="SquadPlayerList" id="player_list"/>
                 </property>
                 <property name="end-child">
                   <object class="GtkScrolledWindow">
+                    <property name="width-request">550</property>
+                    <property name="min-content-width">550</property>
+                    <property name="propagate-natural-width">false</property>
                     <property name="hscrollbar-policy">never</property>
                     <property name="child">
                       <object class="SquadPlayerDetails" id="player_details"/>
