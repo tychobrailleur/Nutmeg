@@ -21,12 +21,12 @@
 */
 
 use crate::db::manager::DbManager;
-use crate::db::teams::get_teams_summary;
-use crate::service::sync::DataSyncService;
+// use crate::db::teams::get_teams_summary; // Moved to controller
+// use crate::service::sync::DataSyncService; // Moved to controller
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, gio, glib, CompositeTemplate, TemplateChild};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 
 use crate::ui::context_object::ContextObject;
 use crate::ui::player_object::PlayerObject;
@@ -34,6 +34,8 @@ use crate::ui::team_object::TeamObject;
 
 use crate::squad::player_details::SquadPlayerDetails;
 use crate::squad::player_list::SquadPlayerList;
+// use crate::ui::oauth_dialog::OAuthDialog; // Not needed anymore
+
 
 mod imp {
     use super::*;
@@ -128,108 +130,9 @@ impl NutmegWindow {
     }
 
     // Loads the teams associated with the user to populate the main dropdown.
-    fn load_teams(&self) {
-        let imp = self.imp();
-        let db = DbManager::new();
-        if let Ok(mut conn) = db.get_connection() {
-            match get_teams_summary(&mut conn) {
-                Ok(teams) => {
-                    info!("Loaded {} teams", teams.len());
-
-                    // Create list store for teams
-                    let model = gio::ListStore::new::<TeamObject>();
-                    for (id, name, logo_url) in teams {
-                        model.append(&TeamObject::new(id, name, logo_url));
-                    }
-
-                    // Create factory for team items
-                    let factory = gtk::SignalListItemFactory::new();
-
-                    // Setup: create the widget structure
-                    factory.connect_setup(|_, item| {
-                        let item = item.downcast_ref::<gtk::ListItem>().unwrap();
-                        let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-                        hbox.set_margin_start(4);
-                        hbox.set_margin_end(4);
-                        hbox.set_margin_top(4);
-                        hbox.set_margin_bottom(4);
-
-                        // Logo placeholder (32x32)
-                        let logo = gtk::Image::new();
-                        logo.set_pixel_size(32);
-                        hbox.append(&logo);
-
-                        // Team name + ID label
-                        let label = gtk::Label::new(None);
-                        label.set_xalign(0.0);
-                        hbox.append(&label);
-
-                        item.set_child(Some(&hbox));
-                    });
-
-                    // Bind: populate the widgets with data
-                    factory.connect_bind(|_, item| {
-                        let item = item.downcast_ref::<gtk::ListItem>().unwrap();
-                        let team_obj = item.item().and_downcast::<TeamObject>().unwrap();
-                        let hbox = item.child().and_downcast::<gtk::Box>().unwrap();
-
-                        let logo = hbox
-                            .first_child()
-                            .unwrap()
-                            .downcast::<gtk::Image>()
-                            .unwrap();
-                        let label = logo
-                            .next_sibling()
-                            .unwrap()
-                            .downcast::<gtk::Label>()
-                            .unwrap();
-
-                        let team_data = team_obj.team_data();
-
-                        // Set label with markup (name + grey ID)
-                        let markup = format!(
-                            "{} <span foreground='gray'>({})</span>",
-                            glib::markup_escape_text(&team_data.name),
-                            team_data.id
-                        );
-                        label.set_markup(&markup);
-
-                        // Load logo if URL is available
-                        if let Some(mut url) = team_data.logo_url {
-                            // Hattrick URLs are protocol-relative, add https:
-                            if url.starts_with("//") {
-                                url = format!("https:{}", url);
-                            }
-
-                            let logo_clone = logo.clone();
-                            glib::MainContext::default().spawn_local(async move {
-                                match load_image_from_url(&url).await {
-                                    Ok(texture) => {
-                                        logo_clone.set_paintable(Some(&texture));
-                                    }
-                                    Err(e) => {
-                                        debug!("Failed to load team logo from {}: {}", url, e);
-                                    }
-                                }
-                            });
-                        }
-                    });
-
-                    // Set model and factory on dropdown
-                    imp.combo_teams.set_model(Some(&model));
-                    imp.combo_teams.set_factory(Some(&factory));
-
-                    // Select first team if available
-                    // Property binding will automatically load players
-                    if model.n_items() > 0 {
-                        imp.combo_teams.set_selected(0);
-                    }
-                }
-                Err(e) => error!("Failed to load teams: {}", e),
-            }
-        } else {
-            error!("Failed to get DB connection");
-        }
+    pub fn load_teams(&self) {
+        use crate::ui::controllers::teams::TeamController;
+        TeamController::load_teams(&self.imp().combo_teams);
     }
 
     fn setup_bindings(&self) {
@@ -277,92 +180,61 @@ impl NutmegWindow {
             }
         });
 
-        // Sync Handler
-        let window_weak = self.downgrade();
-        imp.team_sync.connect_clicked(move |_| {
-            let window = match window_weak.upgrade() {
-                Some(w) => w,
-                None => return,
-            };
+            // Sync Handler
+            let window_weak = self.downgrade();
+            imp.team_sync.connect_clicked(move |_| {
+                let window = match window_weak.upgrade() {
+                    Some(w) => w,
+                    None => return,
+                };
 
-            let imp = window.imp();
+                let imp = window.imp();
 
-            // Disable button
-            imp.team_sync.set_sensitive(false);
+                // Disable button
+                imp.team_sync.set_sensitive(false);
 
-            // Show status bar
-            imp.sync_revealer.set_reveal_child(true);
-            imp.sync_progress_bar.set_fraction(0.0);
-            imp.sync_status_label.set_label("Starting sync...");
+                // Show status bar
+                imp.sync_revealer.set_reveal_child(true);
+                imp.sync_progress_bar.set_fraction(0.0);
+                imp.sync_status_label.set_label("Starting sync...");
 
-            // Channel for progress updates
-            let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<(f64, String)>();
+                // Channel for progress updates
+                let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<(f64, String)>();
 
-            // Handle progress updates on main thread
-            let progress_bar = imp.sync_progress_bar.clone();
-            let status_label = imp.sync_status_label.clone();
+                // Handle progress updates on main thread
+                let progress_bar = imp.sync_progress_bar.clone();
+                let status_label = imp.sync_status_label.clone();
 
-            glib::MainContext::default().spawn_local(async move {
-                while let Some((p, msg)) = receiver.recv().await {
-                    progress_bar.set_fraction(p);
-                    status_label.set_label(&msg);
-                }
-            });
-
-            // Keep weak ref to update UI later
-            let window_weak_completion = window.downgrade();
-
-            glib::MainContext::default().spawn_local(async move {
-                let db = std::sync::Arc::new(DbManager::new());
-                let sync = crate::service::sync::SyncService::new(db);
-                let key = crate::config::consumer_key();
-                let secret = crate::config::consumer_secret();
-
-                // Progress callback
-                let progress_cb = Box::new(move |p: f64, msg: &str| {
-                    let _ = sender.send((p, msg.to_string()));
+                glib::MainContext::default().spawn_local(async move {
+                    while let Some((p, msg)) = receiver.recv().await {
+                        progress_bar.set_fraction(p);
+                        status_label.set_label(&msg);
+                    }
                 });
 
-                match sync
-                    .perform_sync_with_stored_secrets(key, secret, progress_cb)
-                    .await
-                {
-                    Ok(true) => {
-                        info!("Sync completed successfully");
+                // Keep weak ref to update UI later
+                let window_weak_completion = window.downgrade();
+
+                glib::MainContext::default().spawn_local(async move {
+                    // Delegate to SyncController
+                    use crate::ui::controllers::sync::SyncController;
+                    SyncController::perform_sync(window_weak_completion.clone(), sender).await;
+
+                    // UI Cleanup
+                    if let Some(win) = window_weak_completion.upgrade() {
+                        let imp = win.imp();
+
+                        // Delay hiding the status bar slightly so user sees result
+                        glib::timeout_future_seconds(2).await;
+
+                        imp.sync_revealer.set_reveal_child(false);
+                        imp.team_sync.set_sensitive(true);
+
+                        // Refresh teams if successful
+                        win.load_teams();
                     }
-                    Ok(false) => {
-                        error!("Sync failed: No credentials found");
-                    }
-                    Err(e) => {
-                        error!("Sync failed: {}", e);
-                    }
-                }
-
-                // UI Cleanup
-                if let Some(win) = window_weak_completion.upgrade() {
-                    let imp = win.imp();
-
-                    // Delay hiding the status bar slightly so user sees 100%
-                    glib::timeout_future_seconds(2).await;
-
-                    imp.sync_revealer.set_reveal_child(false);
-                    imp.team_sync.set_sensitive(true);
-
-                    // Refresh teams
-                    win.load_teams();
-                }
+                });
             });
-        });
+        }
     }
-}
 
-// Helper function to load images from URLs
-async fn load_image_from_url(url: &str) -> Result<gdk::Texture, Box<dyn std::error::Error>> {
-    use gdk_pixbuf::Pixbuf;
-    let response = reqwest::get(url).await?;
-    let bytes = response.bytes().await?;
-    let gbytes = glib::Bytes::from(&bytes[..]);
-    let stream = gio::MemoryInputStream::from_bytes(&gbytes);
-    let pixbuf = Pixbuf::from_stream(&stream, gio::Cancellable::NONE)?;
-    Ok(gdk::Texture::for_pixbuf(&pixbuf))
-}

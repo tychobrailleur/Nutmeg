@@ -493,7 +493,7 @@ mod tests {
     fn test_endpoint_info_players() {
         let endpoint = ChppEndpoints::PLAYERS;
         assert_eq!(endpoint.name, "players");
-        assert_eq!(endpoint.version, "2.7");
+        assert_eq!(endpoint.version, "2.8");
         assert!(endpoint.documentation_url.contains("players"));
     }
 

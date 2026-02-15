@@ -26,6 +26,7 @@ mod service;
 mod setup_window;
 mod squad;
 mod ui;
+mod utils;
 mod window;
 
 use self::application::NutmegApplication;
