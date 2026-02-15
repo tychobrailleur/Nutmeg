@@ -26,11 +26,14 @@ use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 // Inspired by Shortwave
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
 pub type SqlitePool = Pool<ConnectionManager<SqliteConnection>>;
+
+static DB_POOL: OnceLock<SqlitePool> = OnceLock::new();
 
 #[derive(Clone, Debug)]
 pub struct DbManager {
@@ -39,18 +42,24 @@ pub struct DbManager {
 
 impl DbManager {
     pub fn new() -> Self {
-        let db_path = Self::get_db_path();
-        let database_url = db_path.to_string_lossy().to_string();
-        let manager = ConnectionManager::<SqliteConnection>::new(database_url);
-        let pool = r2d2::Pool::builder()
-            .build(manager)
-            .expect("Failed to create pool.");
+        let pool = DB_POOL.get_or_init(|| {
+            let db_path = Self::get_db_path();
+            let database_url = db_path.to_string_lossy().to_string();
+            let manager = ConnectionManager::<SqliteConnection>::new(database_url);
+            let pool = r2d2::Pool::builder()
+                .build(manager)
+                .expect("Failed to create pool.");
 
-        let db_manager = Self { pool };
-        db_manager
-            .run_migrations()
-            .expect("Failed to run migrations on startup");
-        db_manager
+            // Run migrations on first initialization
+            let db_manager = Self { pool: pool.clone() };
+            db_manager
+                .run_migrations()
+                .expect("Failed to run migrations on startup");
+
+            pool
+        });
+
+        Self { pool: pool.clone() }
     }
 
     // Constructor for testing with in-memory DB or custom path

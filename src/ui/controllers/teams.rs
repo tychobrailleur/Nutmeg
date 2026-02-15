@@ -1,15 +1,14 @@
-use gtk::prelude::*;
-use gtk::{gio, glib};
-use log::{error, info, debug};
 use crate::db::manager::DbManager;
 use crate::db::teams::get_teams_summary;
 use crate::ui::team_object::TeamObject;
 use crate::utils::image::load_image_from_url;
+use gtk::prelude::*;
+use gtk::{gio, glib};
+use log::{debug, error, info};
 
 pub struct TeamController;
 
 impl TeamController {
-    
     pub fn load_teams(dropdown: &gtk::DropDown) {
         let db = DbManager::new();
         if let Ok(mut conn) = db.get_connection() {
@@ -65,8 +64,16 @@ impl TeamController {
             let team_obj = item.item().and_downcast::<TeamObject>().unwrap();
             let hbox = item.child().and_downcast::<gtk::Box>().unwrap();
 
-            let logo = hbox.first_child().unwrap().downcast::<gtk::Image>().unwrap();
-            let label = logo.next_sibling().unwrap().downcast::<gtk::Label>().unwrap();
+            let logo = hbox
+                .first_child()
+                .unwrap()
+                .downcast::<gtk::Image>()
+                .unwrap();
+            let label = logo
+                .next_sibling()
+                .unwrap()
+                .downcast::<gtk::Label>()
+                .unwrap();
 
             let team_data = team_obj.team_data();
 
@@ -77,7 +84,7 @@ impl TeamController {
             );
             label.set_markup(&markup);
 
-             if let Some(mut url) = team_data.logo_url {
+            if let Some(mut url) = team_data.logo_url {
                 if url.starts_with("//") {
                     url = format!("https:{}", url);
                 }

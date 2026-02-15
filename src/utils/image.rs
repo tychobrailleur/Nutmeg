@@ -20,7 +20,7 @@ mod tests {
 
     #[test]
     fn test_valid_url_handling() {
-        // We can't easily test network calls, but we can test that our dependencies 
+        // We can't easily test network calls, but we can test that our dependencies
         // and types are what we expect in a basic way.
         let url = "https://example.com/image.png";
         assert!(url.starts_with("https://"));

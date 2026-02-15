@@ -36,7 +36,6 @@ use crate::squad::player_details::SquadPlayerDetails;
 use crate::squad::player_list::SquadPlayerList;
 // use crate::ui::oauth_dialog::OAuthDialog; // Not needed anymore
 
-
 mod imp {
     use super::*;
 
@@ -180,61 +179,60 @@ impl NutmegWindow {
             }
         });
 
-            // Sync Handler
-            let window_weak = self.downgrade();
-            imp.team_sync.connect_clicked(move |_| {
-                let window = match window_weak.upgrade() {
-                    Some(w) => w,
-                    None => return,
-                };
+        // Sync Handler
+        let window_weak = self.downgrade();
+        imp.team_sync.connect_clicked(move |_| {
+            let window = match window_weak.upgrade() {
+                Some(w) => w,
+                None => return,
+            };
 
-                let imp = window.imp();
+            let imp = window.imp();
 
-                // Disable button
-                imp.team_sync.set_sensitive(false);
+            // Disable button
+            imp.team_sync.set_sensitive(false);
 
-                // Show status bar
-                imp.sync_revealer.set_reveal_child(true);
-                imp.sync_progress_bar.set_fraction(0.0);
-                imp.sync_status_label.set_label("Starting sync...");
+            // Show status bar
+            imp.sync_revealer.set_reveal_child(true);
+            imp.sync_progress_bar.set_fraction(0.0);
+            imp.sync_status_label.set_label("Starting sync...");
 
-                // Channel for progress updates
-                let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<(f64, String)>();
+            // Channel for progress updates
+            let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<(f64, String)>();
 
-                // Handle progress updates on main thread
-                let progress_bar = imp.sync_progress_bar.clone();
-                let status_label = imp.sync_status_label.clone();
+            // Handle progress updates on main thread
+            let progress_bar = imp.sync_progress_bar.clone();
+            let status_label = imp.sync_status_label.clone();
 
-                glib::MainContext::default().spawn_local(async move {
-                    while let Some((p, msg)) = receiver.recv().await {
-                        progress_bar.set_fraction(p);
-                        status_label.set_label(&msg);
-                    }
-                });
-
-                // Keep weak ref to update UI later
-                let window_weak_completion = window.downgrade();
-
-                glib::MainContext::default().spawn_local(async move {
-                    // Delegate to SyncController
-                    use crate::ui::controllers::sync::SyncController;
-                    SyncController::perform_sync(window_weak_completion.clone(), sender).await;
-
-                    // UI Cleanup
-                    if let Some(win) = window_weak_completion.upgrade() {
-                        let imp = win.imp();
-
-                        // Delay hiding the status bar slightly so user sees result
-                        glib::timeout_future_seconds(2).await;
-
-                        imp.sync_revealer.set_reveal_child(false);
-                        imp.team_sync.set_sensitive(true);
-
-                        // Refresh teams if successful
-                        win.load_teams();
-                    }
-                });
+            glib::MainContext::default().spawn_local(async move {
+                while let Some((p, msg)) = receiver.recv().await {
+                    progress_bar.set_fraction(p);
+                    status_label.set_label(&msg);
+                }
             });
-        }
-    }
 
+            // Keep weak ref to update UI later
+            let window_weak_completion = window.downgrade();
+
+            glib::MainContext::default().spawn_local(async move {
+                // Delegate to SyncController
+                use crate::ui::controllers::sync::SyncController;
+                SyncController::perform_sync(window_weak_completion.clone(), sender).await;
+
+                // UI Cleanup
+                if let Some(win) = window_weak_completion.upgrade() {
+                    let imp = win.imp();
+
+                    // Delay hiding the status bar slightly so user sees result
+                    glib::timeout_future_seconds(2).await;
+
+                    imp.sync_revealer.set_reveal_child(false);
+                    imp.team_sync.set_sensitive(true);
+
+                    // Refresh teams if successful
+                    win.load_teams();
+                }
+            });
+        });
+    }
+}
