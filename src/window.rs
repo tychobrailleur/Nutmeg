@@ -161,7 +161,8 @@ impl NutmegWindow {
                 match SeriesController::load_series_data(team_id).await {
                     Ok((league_data, matches_data)) => {
                         if let Some(window) = window_weak.upgrade() {
-                            window.imp()
+                            window
+                                .imp()
                                 .series_page
                                 .set_data(Some(&league_data), Some(&matches_data));
                         }

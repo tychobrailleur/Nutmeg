@@ -372,26 +372,28 @@ mod tests {
 
         // Mock League Data
         let league_data = LeagueDetailsData {
-            LeagueLevelUnit: LeagueLevelUnitData {
-                LeagueLevelUnitID: 100,
-                LeagueLevelUnitName: "Test League".to_string(),
-                LeagueLevel: 5,
-                MaxNumberOfTeams: Some(8),
-                CurrentMatchRound: Some(1),
-                Teams: vec![crate::chpp::model::LeagueTeam {
-                    TeamID: 1,
-                    TeamName: "Team A".to_string(),
-                    Position: 1,
-                    PositionChange: 0,
-                    Matches: 1,
-                    GoalsFor: 2,
-                    GoalsAgainst: 0,
-                    Points: 3,
-                    Won: 1,
-                    Draws: 0,
-                    Lost: 0,
-                }],
-            },
+            LeagueID: 0,
+            LeagueName: "Test League".to_string(),
+            LeagueLevel: 5,
+            MaxLevel: Some(8),
+            LeagueLevelUnitID: 100,
+            LeagueLevelUnitName: "Test League Unit".to_string(),
+            CurrentMatchRound: Some(1),
+            Rank: None,
+            Teams: vec![crate::chpp::model::LeagueTeam {
+                UserId: None,
+                TeamID: "1".to_string(),
+                TeamName: "Team A".to_string(),
+                Position: 1,
+                PositionChange: 0,
+                Matches: 1,
+                GoalsFor: 2,
+                GoalsAgainst: 0,
+                Points: 3,
+                Won: 1,
+                Draws: 0,
+                Lost: 0,
+            }],
         };
 
         save_league_details(&mut conn, 1, &league_data).expect("Failed to save league details");
@@ -400,9 +402,9 @@ mod tests {
         let fetched_league = get_latest_league_details(&mut conn, 100)
             .expect("Failed to fetch league")
             .unwrap();
-        assert_eq!(fetched_league.LeagueLevelUnit.LeagueLevelUnitID, 100);
-        assert_eq!(fetched_league.LeagueLevelUnit.Teams.len(), 1);
-        assert_eq!(fetched_league.LeagueLevelUnit.Teams[0].TeamName, "Team A");
+        assert_eq!(fetched_league.LeagueLevelUnitID, 100);
+        assert_eq!(fetched_league.Teams.len(), 1);
+        assert_eq!(fetched_league.Teams[0].TeamName, "Team A");
 
         // Mock Match Data
         let match_data = MatchesData {
@@ -410,26 +412,33 @@ mod tests {
                 TeamID: "1".to_string(),
                 TeamName: "Team A".to_string(),
                 ShortTeamName: None,
-                LeagueLevelUnitID: None,
-            },
-            MatchList: crate::chpp::model::MatchesListWrapper {
-                Matches: vec![crate::chpp::model::MatchDetails {
-                    MatchID: 500,
-                    HomeTeam: crate::chpp::model::MatchTeam {
-                        TeamID: 1,
-                        TeamName: "Team A".to_string(),
-                        Goals: Some(2),
-                    },
-                    AwayTeam: crate::chpp::model::MatchTeam {
-                        TeamID: 2,
-                        TeamName: "Team B".to_string(),
-                        Goals: Some(1),
-                    },
-                    MatchDate: "2026-02-15 14:00:00".to_string(),
-                    MatchType: 1,
-                    Status: "FINISHED".to_string(),
-                    MatchContextId: None,
-                }],
+                League: None,
+                LeagueLevelUnit: None,
+                MatchList: crate::chpp::model::MatchesListWrapper {
+                    Matches: vec![crate::chpp::model::MatchDetails {
+                        MatchID: 500,
+                        HomeTeam: crate::chpp::model::MatchHomeTeam {
+                            HomeTeamID: "1".to_string(),
+                            HomeTeamName: "Team A".to_string(),
+                            HomeTeamNameShortName: None,
+                        },
+                        AwayTeam: crate::chpp::model::MatchAwayTeam {
+                            AwayTeamID: "2".to_string(),
+                            AwayTeamName: "Team B".to_string(),
+                            AwayTeamNameShortName: None,
+                        },
+                        MatchDate: "2026-02-15 14:00:00".to_string(),
+                        SourceSystem: None,
+                        MatchType: 1,
+                        Status: "FINISHED".to_string(),
+                        MatchContextId: None,
+                        CupLevel: None,
+                        CupLevelIndex: None,
+                        HomeGoals: Some(2),
+                        AwayGoals: Some(1),
+                        OrdersGiven: None,
+                    }],
+                },
             },
         };
 
@@ -439,10 +448,12 @@ mod tests {
         let fetched_matches = get_latest_matches(&mut conn, 1)
             .expect("Failed to fetch matches")
             .unwrap();
-        assert_eq!(fetched_matches.MatchList.Matches.len(), 1);
-        assert_eq!(fetched_matches.MatchList.Matches[0].MatchID, 500);
+        assert_eq!(fetched_matches.Team.MatchList.Matches.len(), 1);
+        assert_eq!(fetched_matches.Team.MatchList.Matches[0].MatchID, 500);
         assert_eq!(
-            fetched_matches.MatchList.Matches[0].HomeTeam.TeamName,
+            fetched_matches.Team.MatchList.Matches[0]
+                .HomeTeam
+                .HomeTeamName,
             "Team A"
         );
     }

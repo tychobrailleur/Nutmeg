@@ -1040,14 +1040,15 @@ mod tests {
         ) -> Result<LeagueDetailsData, Error> {
             // Return dummy league details
             Ok(LeagueDetailsData {
-                LeagueLevelUnit: LeagueLevelUnitData {
-                    LeagueLevelUnitID: 100,
-                    LeagueLevelUnitName: "Test League".to_string(),
-                    LeagueLevel: 5,
-                    MaxNumberOfTeams: Some(8),
-                    CurrentMatchRound: Some(1),
-                    Teams: vec![],
-                },
+                LeagueID: 0,
+                LeagueName: "Test League".to_string(),
+                LeagueLevel: 5,
+                MaxLevel: Some(8),
+                LeagueLevelUnitID: 100,
+                LeagueLevelUnitName: "Test League Unit".to_string(),
+                CurrentMatchRound: Some(1),
+                Rank: None,
+                Teams: vec![],
             })
         }
 
@@ -1063,9 +1064,10 @@ mod tests {
                     TeamID: "54321".to_string(),
                     TeamName: "Test Team".to_string(),
                     ShortTeamName: None,
-                    LeagueLevelUnitID: None,
+                    League: None,
+                    LeagueLevelUnit: None,
+                    MatchList: MatchesListWrapper { Matches: vec![] },
                 },
-                MatchList: MatchesListWrapper { Matches: vec![] },
             })
         }
     }

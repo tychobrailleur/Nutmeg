@@ -417,25 +417,55 @@ pub fn save_players(
             injury_level: player.InjuryLevel,
             specialty: player.Specialty.map(|v| v as i32),
             // Skills
-            stamina_skill: player.PlayerSkills.as_ref().map(|skills| skills.StaminaSkill as i32),
-            keeper_skill: player.PlayerSkills.as_ref().map(|skills| skills.KeeperSkill as i32),
+            stamina_skill: player
+                .PlayerSkills
+                .as_ref()
+                .map(|skills| skills.StaminaSkill as i32),
+            keeper_skill: player
+                .PlayerSkills
+                .as_ref()
+                .map(|skills| skills.KeeperSkill as i32),
             playmaker_skill: player
                 .PlayerSkills
                 .as_ref()
                 .map(|skills| skills.PlaymakerSkill as i32),
-            scorer_skill: player.PlayerSkills.as_ref().map(|skills| skills.ScorerSkill as i32),
-            passing_skill: player.PlayerSkills.as_ref().map(|skills| skills.PassingSkill as i32),
-            winger_skill: player.PlayerSkills.as_ref().map(|skills| skills.WingerSkill as i32),
-            defender_skill: player.PlayerSkills.as_ref().map(|skills| skills.DefenderSkill as i32),
+            scorer_skill: player
+                .PlayerSkills
+                .as_ref()
+                .map(|skills| skills.ScorerSkill as i32),
+            passing_skill: player
+                .PlayerSkills
+                .as_ref()
+                .map(|skills| skills.PassingSkill as i32),
+            winger_skill: player
+                .PlayerSkills
+                .as_ref()
+                .map(|skills| skills.WingerSkill as i32),
+            defender_skill: player
+                .PlayerSkills
+                .as_ref()
+                .map(|skills| skills.DefenderSkill as i32),
             set_pieces_skill: player
                 .PlayerSkills
                 .as_ref()
                 .map(|skills| skills.SetPiecesSkill as i32),
             // Last Match
-            last_match_date: player.LastMatch.as_ref().map(|match_data| match_data.Date.clone()),
-            last_match_id: player.LastMatch.as_ref().map(|match_data| match_data.MatchId as i32),
-            last_match_position_code: player.LastMatch.as_ref().map(|match_data| match_data.PositionCode as i32),
-            last_match_played_minutes: player.LastMatch.as_ref().map(|match_data| match_data.PlayedMinutes as i32),
+            last_match_date: player
+                .LastMatch
+                .as_ref()
+                .map(|match_data| match_data.Date.clone()),
+            last_match_id: player
+                .LastMatch
+                .as_ref()
+                .map(|match_data| match_data.MatchId as i32),
+            last_match_position_code: player
+                .LastMatch
+                .as_ref()
+                .map(|match_data| match_data.PositionCode as i32),
+            last_match_played_minutes: player
+                .LastMatch
+                .as_ref()
+                .map(|match_data| match_data.PlayedMinutes as i32),
             last_match_rating: player
                 .LastMatch
                 .as_ref()
@@ -446,8 +476,14 @@ pub fn save_players(
                 .and_then(|match_data| match_data.RatingEndOfMatch.map(|v| v as i32)),
             arrival_date: player.ArrivalDate.clone(),
             player_category_id: player.PlayerCategoryId.map(|v| v as i32),
-            mother_club_team_id: player.MotherClub.as_ref().map(|mother_club| mother_club.TeamID as i32),
-            mother_club_team_name: player.MotherClub.as_ref().map(|mother_club| mother_club.TeamName.clone()),
+            mother_club_team_id: player
+                .MotherClub
+                .as_ref()
+                .map(|mother_club| mother_club.TeamID as i32),
+            mother_club_team_name: player
+                .MotherClub
+                .as_ref()
+                .map(|mother_club| mother_club.TeamName.clone()),
             native_country_id: player.NativeCountryID.map(|v| v as i32),
             native_league_id: player.NativeLeagueID.map(|v| v as i32),
             native_league_name: player.NativeLeagueName.clone(),
@@ -692,8 +728,6 @@ pub fn save_team(
 ) -> Result<(), Error> {
     save_user(conn, user, download_id)?;
 
-
-
     if let Some(cup) = &team.Cup {
         save_cup(conn, cup, download_id)?;
     }
@@ -719,8 +753,14 @@ pub fn save_team(
         arena_name: team.Arena.as_ref().map(|arena| arena.ArenaName.clone()),
         league_id: team.League.as_ref().map(|league| league.LeagueID as i32),
         league_name: team.League.as_ref().map(|league| league.LeagueName.clone()),
-        country_id: team.Country.as_ref().map(|country| country.CountryID as i32),
-        country_name: team.Country.as_ref().map(|country| country.CountryName.clone()),
+        country_id: team
+            .Country
+            .as_ref()
+            .map(|country| country.CountryID as i32),
+        country_name: team
+            .Country
+            .as_ref()
+            .map(|country| country.CountryName.clone()),
         region_id: team.Region.as_ref().map(|region| region.RegionID as i32),
         region_name: team.Region.as_ref().map(|region| region.RegionName.clone()),
         homepage: team.HomePage.clone(),
@@ -729,13 +769,19 @@ pub fn save_team(
         logo_url: team.LogoURL.clone(),
         trainer_id: team.Trainer.as_ref().map(|trainer| trainer.PlayerID as i32),
         cup_still_in: team.Cup.as_ref().and_then(|cup| cup.StillInCup),
-        cup_id: team.Cup.as_ref().and_then(|cup| cup.CupID.map(|v| v as i32)),
+        cup_id: team
+            .Cup
+            .as_ref()
+            .and_then(|cup| cup.CupID.map(|v| v as i32)),
         cup_name: team.Cup.as_ref().and_then(|cup| cup.CupName.clone()),
         cup_league_level: team
             .Cup
             .as_ref()
             .and_then(|cup| cup.CupLeagueLevel.map(|v| v as i32)),
-        cup_level: team.Cup.as_ref().and_then(|cup| cup.CupLevel.map(|v| v as i32)),
+        cup_level: team
+            .Cup
+            .as_ref()
+            .and_then(|cup| cup.CupLevel.map(|v| v as i32)),
         cup_level_index: team
             .Cup
             .as_ref()
@@ -748,10 +794,22 @@ pub fn save_team(
             .Cup
             .as_ref()
             .and_then(|cup| cup.MatchRoundsLeft.map(|v| v as i32)),
-        power_rating_global: team.PowerRating.as_ref().map(|power| power.GlobalRanking as i32),
-        power_rating_league: team.PowerRating.as_ref().map(|power| power.LeagueRanking as i32),
-        power_rating_region: team.PowerRating.as_ref().map(|power| power.RegionRanking as i32),
-        power_rating_indiv: team.PowerRating.as_ref().map(|power| power.PowerRating as i32),
+        power_rating_global: team
+            .PowerRating
+            .as_ref()
+            .map(|power| power.GlobalRanking as i32),
+        power_rating_league: team
+            .PowerRating
+            .as_ref()
+            .map(|power| power.LeagueRanking as i32),
+        power_rating_region: team
+            .PowerRating
+            .as_ref()
+            .map(|power| power.RegionRanking as i32),
+        power_rating_indiv: team
+            .PowerRating
+            .as_ref()
+            .map(|power| power.PowerRating as i32),
         friendly_team_id: team.FriendlyTeamID.map(|v| v as i32),
         league_level_unit_id: team
             .LeagueLevelUnit
@@ -761,15 +819,30 @@ pub fn save_team(
             .LeagueLevelUnit
             .as_ref()
             .map(|unit| unit.LeagueLevelUnitName.clone()),
-        league_level: team.LeagueLevelUnit.as_ref().map(|unit| unit.LeagueLevel as i32),
+        league_level: team
+            .LeagueLevelUnit
+            .as_ref()
+            .map(|unit| unit.LeagueLevel as i32),
         number_of_victories: team.NumberOfVictories.map(|v| v as i32),
         number_of_undefeated: team.NumberOfUndefeated.map(|v| v as i32),
         number_of_visits: team.NumberOfVisits.map(|v| v as i32),
         team_rank: team.TeamRank.map(|v| v as i32),
-        fanclub_id: team.Fanclub.as_ref().map(|fanclub| fanclub.FanclubID as i32),
-        fanclub_name: team.Fanclub.as_ref().map(|fanclub| fanclub.FanclubName.clone()),
-        fanclub_size: team.Fanclub.as_ref().map(|fanclub| fanclub.FanclubSize as i32),
-        color_background: team.TeamColors.as_ref().map(|colors| colors.BackgroundColor.clone()),
+        fanclub_id: team
+            .Fanclub
+            .as_ref()
+            .map(|fanclub| fanclub.FanclubID as i32),
+        fanclub_name: team
+            .Fanclub
+            .as_ref()
+            .map(|fanclub| fanclub.FanclubName.clone()),
+        fanclub_size: team
+            .Fanclub
+            .as_ref()
+            .map(|fanclub| fanclub.FanclubSize as i32),
+        color_background: team
+            .TeamColors
+            .as_ref()
+            .map(|colors| colors.BackgroundColor.clone()),
         color_primary: team.TeamColors.as_ref().map(|colors| colors.Color.clone()),
         is_bot: team.BotStatus.as_ref().map(|bot| bot.IsBot),
         bot_since: team.BotStatus.as_ref().and_then(|bot| bot.BotSince.clone()),
