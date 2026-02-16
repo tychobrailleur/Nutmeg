@@ -1,0 +1,449 @@
+/* series.rs
+ *
+ * Copyright 2026 Sébastien Le Callonnec
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+use diesel::prelude::*;
+use diesel::sqlite::SqliteConnection;
+
+use crate::chpp::error::Error;
+use crate::chpp::model::{LeagueDetailsData, MatchesData};
+use crate::db::schema::{league_unit_teams, league_units, matches};
+
+#[derive(Queryable, Identifiable, Debug)]
+#[diesel(table_name = league_units)]
+pub struct LeagueUnit {
+    pub id: i32,
+    pub download_id: i32,
+    pub unit_id: i32,
+    pub unit_name: String,
+    pub league_level: i32,
+    pub max_number_of_teams: Option<i32>,
+    pub current_match_round: Option<i32>,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = league_units)]
+pub struct NewLeagueUnit<'a> {
+    pub download_id: i32,
+    pub unit_id: i32,
+    pub unit_name: &'a str,
+    pub league_level: i32,
+    pub max_number_of_teams: Option<i32>,
+    pub current_match_round: Option<i32>,
+}
+
+#[derive(Queryable, Identifiable, Associations, Debug)]
+#[diesel(belongs_to(LeagueUnit))]
+#[diesel(table_name = league_unit_teams)]
+pub struct LeagueUnitTeam {
+    pub id: i32,
+    pub download_id: i32,
+    pub league_unit_id: i32,
+    pub team_id: i32,
+    pub team_name: String,
+    pub position: i32,
+    pub points: i32,
+    pub matches_played: i32,
+    pub goals_for: i32,
+    pub goals_against: i32,
+    pub won: i32,
+    pub draws: i32,
+    pub lost: i32,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = league_unit_teams)]
+pub struct NewLeagueUnitTeam<'a> {
+    pub download_id: i32,
+    pub league_unit_id: i32,
+    pub team_id: i32,
+    pub team_name: &'a str,
+    pub position: i32,
+    pub points: i32,
+    pub matches_played: i32,
+    pub goals_for: i32,
+    pub goals_against: i32,
+    pub won: i32,
+    pub draws: i32,
+    pub lost: i32,
+}
+
+#[derive(Queryable, Identifiable, Debug)]
+#[diesel(table_name = matches)]
+pub struct Match {
+    pub id: i32,
+    pub download_id: i32,
+    pub match_id: i32,
+    pub home_team_id: i32,
+    pub home_team_name: String,
+    pub away_team_id: i32,
+    pub away_team_name: String,
+    pub match_date: String,
+    pub match_type: i32,
+    pub status: String,
+    pub home_goals: Option<i32>,
+    pub away_goals: Option<i32>,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = matches)]
+pub struct NewMatch<'a> {
+    pub download_id: i32,
+    pub match_id: i32,
+    pub home_team_id: i32,
+    pub home_team_name: &'a str,
+    pub away_team_id: i32,
+    pub away_team_name: &'a str,
+    pub match_date: &'a str,
+    pub match_type: i32,
+    pub status: &'a str,
+    pub home_goals: Option<i32>,
+    pub away_goals: Option<i32>,
+}
+
+pub fn save_league_details(
+    conn: &mut SqliteConnection,
+    download_id: i32,
+    data: &LeagueDetailsData,
+) -> Result<(), Error> {
+    use crate::db::schema::league_units;
+
+    let new_unit = NewLeagueUnit {
+        download_id,
+        unit_id: data.LeagueLevelUnitID as i32,
+        unit_name: &data.LeagueLevelUnitName,
+        league_level: data.LeagueLevel as i32,
+        max_number_of_teams: data.MaxLevel.map(|v| v as i32),
+        current_match_round: data.CurrentMatchRound.map(|v| v as i32),
+    };
+
+    diesel::insert_into(league_units::table)
+        .values(&new_unit)
+        .execute(conn)
+        .map_err(|e| Error::Io(format!("Failed to insert league unit: {}", e)))?;
+
+    // Get the ID of the inserted unit
+    let inserted_unit: LeagueUnit = league_units::table
+        .order(league_units::id.desc())
+        .first(conn)
+        .map_err(|e| Error::Io(format!("Failed to get inserted league unit: {}", e)))?;
+
+    save_league_teams(conn, download_id, inserted_unit.id, data)?;
+
+    Ok(())
+}
+
+fn save_league_teams(
+    conn: &mut SqliteConnection,
+    download_id: i32,
+    league_unit_id: i32,
+    data: &LeagueDetailsData,
+) -> Result<(), Error> {
+    use crate::db::schema::league_unit_teams;
+
+    let records: Vec<NewLeagueUnitTeam> = data
+        .Teams
+        .iter()
+        .map(|team| NewLeagueUnitTeam {
+            download_id,
+            league_unit_id,
+            team_id: team.TeamID.parse::<i32>().unwrap_or(0),
+            team_name: &team.TeamName,
+            position: team.Position as i32,
+            points: team.Points as i32,
+            matches_played: team.Matches as i32,
+            goals_for: team.GoalsFor as i32,
+            goals_against: team.GoalsAgainst as i32,
+            won: team.Won as i32,
+            draws: team.Draws as i32,
+            lost: team.Lost as i32,
+        })
+        .collect();
+
+    diesel::insert_into(league_unit_teams::table)
+        .values(&records)
+        .execute(conn)
+        .map_err(|e| Error::Io(format!("Failed to insert league teams: {}", e)))?;
+
+    Ok(())
+}
+
+pub fn save_matches(
+    conn: &mut SqliteConnection,
+    download_id: i32,
+    data: &MatchesData,
+) -> Result<(), Error> {
+    use crate::db::schema::matches;
+
+    let records: Vec<NewMatch> = data
+        .Team
+        .MatchList
+        .Matches
+        .iter()
+        .map(|match_data| NewMatch {
+            download_id,
+            match_id: match_data.MatchID as i32,
+            home_team_id: match_data.HomeTeam.HomeTeamID.parse::<i32>().unwrap_or(0),
+            home_team_name: &match_data.HomeTeam.HomeTeamName,
+            away_team_id: match_data.AwayTeam.AwayTeamID.parse::<i32>().unwrap_or(0),
+            away_team_name: &match_data.AwayTeam.AwayTeamName,
+            match_date: &match_data.MatchDate,
+            match_type: match_data.MatchType as i32,
+            status: &match_data.Status,
+            home_goals: match_data.HomeGoals.map(|v| v as i32),
+            away_goals: match_data.AwayGoals.map(|v| v as i32),
+        })
+        .collect();
+
+    diesel::insert_into(matches::table)
+        .values(&records)
+        .execute(conn)
+        .map_err(|e| Error::Io(format!("Failed to insert matches: {}", e)))?;
+
+    Ok(())
+}
+
+pub fn get_latest_league_details(
+    conn: &mut SqliteConnection,
+    league_unit_id: u32,
+) -> Result<Option<LeagueDetailsData>, Error> {
+    use crate::db::schema::{league_unit_teams, league_units};
+
+    // 1. Find the latest league_unit entry for this unit_id
+    let unit_opt: Option<LeagueUnit> = league_units::table
+        .filter(league_units::unit_id.eq(league_unit_id as i32))
+        .order(league_units::download_id.desc())
+        .first(conn)
+        .optional()
+        .map_err(|e| Error::Io(format!("Failed to get league unit: {}", e)))?;
+
+    if let Some(unit) = unit_opt {
+        // 2. Fetch the teams
+        let db_teams: Vec<LeagueUnitTeam> = league_unit_teams::table
+            .filter(league_unit_teams::league_unit_id.eq(unit.id))
+            .order(league_unit_teams::position.asc())
+            .load(conn)
+            .map_err(|e| Error::Io(format!("Failed to get league teams: {}", e)))?;
+
+        // 3. Convert back to CHPP model (LeagueDetailsData)
+        let teams: Vec<crate::chpp::model::LeagueTeam> = db_teams
+            .into_iter()
+            .map(|unit_team| crate::chpp::model::LeagueTeam {
+                UserId: None, // Not persisted
+                TeamID: unit_team.team_id.to_string(),
+                TeamName: unit_team.team_name,
+                Position: unit_team.position as u32,
+                PositionChange: 0, // Not persisted
+                Matches: unit_team.matches_played as u32,
+                GoalsFor: unit_team.goals_for as u32,
+                GoalsAgainst: unit_team.goals_against as u32,
+                Points: unit_team.points as u32,
+                Won: unit_team.won as u32,
+                Draws: unit_team.draws as u32,
+                Lost: unit_team.lost as u32,
+            })
+            .collect();
+
+        // Populate LeagueDetailsData with flat structure
+        Ok(Some(LeagueDetailsData {
+            LeagueID: 0,               // Not persisted
+            LeagueName: String::new(), // Not persisted
+            LeagueLevel: unit.league_level as u32,
+            MaxLevel: None, // Not persisted
+            LeagueLevelUnitID: unit.unit_id as u32,
+            LeagueLevelUnitName: unit.unit_name,
+            CurrentMatchRound: unit.current_match_round.map(|v| v as u32),
+            Rank: None, // Not persisted
+            Teams: teams,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn get_latest_matches(
+    conn: &mut SqliteConnection,
+    team_id: u32,
+) -> Result<Option<MatchesData>, Error> {
+    use crate::db::schema::matches;
+
+    // We retrieve the latest matches download for the specified team.
+    // This assumes that the `matches` endpoint was called for this team specifically.
+    // We look for the most recent download_id in the matches table where the team participated.
+
+    let latest_download_id_opt: Option<i32> = matches::table
+        .filter(
+            matches::home_team_id
+                .eq(team_id as i32)
+                .or(matches::away_team_id.eq(team_id as i32)),
+        )
+        .select(matches::download_id)
+        .order(matches::download_id.desc())
+        .first::<i32>(conn)
+        .optional()
+        .map_err(|e| Error::Io(format!("Failed to find latest matches download: {}", e)))?;
+
+    if let Some(download_id) = latest_download_id_opt {
+        let db_matches: Vec<Match> = matches::table
+            .filter(matches::download_id.eq(download_id))
+            .order(matches::match_date.asc()) // CHPP returns sorted by date usually
+            .load(conn)
+            .map_err(|e| Error::Io(format!("Failed to load matches: {}", e)))?;
+
+        let matches_list: Vec<crate::chpp::model::MatchDetails> = db_matches
+            .into_iter()
+            .map(|match_entity| crate::chpp::model::MatchDetails {
+                MatchID: match_entity.match_id as u32,
+                HomeTeam: crate::chpp::model::MatchHomeTeam {
+                    HomeTeamID: match_entity.home_team_id.to_string(),
+                    HomeTeamName: match_entity.home_team_name,
+                    HomeTeamNameShortName: None,
+                },
+                AwayTeam: crate::chpp::model::MatchAwayTeam {
+                    AwayTeamID: match_entity.away_team_id.to_string(),
+                    AwayTeamName: match_entity.away_team_name,
+                    AwayTeamNameShortName: None,
+                },
+                MatchDate: match_entity.match_date,
+                SourceSystem: None,
+                MatchType: match_entity.match_type as u32,
+                MatchContextId: None,
+                CupLevel: None,
+                CupLevelIndex: None,
+                HomeGoals: match_entity.home_goals.map(|v| v as u32),
+                AwayGoals: match_entity.away_goals.map(|v| v as u32),
+                OrdersGiven: None,
+                Status: match_entity.status,
+            })
+            .collect();
+
+        // Reconstruct MatchesData with Team wrapper
+        Ok(Some(MatchesData {
+            Team: crate::chpp::model::MatchesTeamWrapper {
+                TeamID: team_id.to_string(),
+                TeamName: "Unknown".to_string(),
+                ShortTeamName: None,
+                League: None,
+                LeagueLevelUnit: None,
+                MatchList: crate::chpp::model::MatchesListWrapper {
+                    Matches: matches_list,
+                },
+            },
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::download_entries::NewDownload;
+    use crate::db::schema::downloads;
+    use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+    use serial_test::serial;
+
+    pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
+
+    fn establish_connection() -> SqliteConnection {
+        let mut conn =
+            SqliteConnection::establish(":memory:").expect("Error connecting to :memory: database");
+        conn.run_pending_migrations(MIGRATIONS)
+            .expect("Error running migrations");
+        conn
+    }
+
+    #[test]
+    #[serial]
+    fn test_series_persistence() {
+        let mut conn = establish_connection();
+
+        // Create a download record
+        diesel::insert_into(downloads::table)
+            .values(NewDownload {
+                timestamp: "2026-02-15T12:00:00Z".to_string(),
+                status: "completed".to_string(),
+            })
+            .execute(&mut conn)
+            .expect("Failed to create download");
+
+        // Mock League Data
+        let league_data = LeagueDetailsData {
+            LeagueLevelUnit: LeagueLevelUnitData {
+                LeagueLevelUnitID: 100,
+                LeagueLevelUnitName: "Test League".to_string(),
+                LeagueLevel: 5,
+                MaxNumberOfTeams: Some(8),
+                CurrentMatchRound: Some(1),
+                Teams: vec![crate::chpp::model::LeagueTeam {
+                    TeamID: 1,
+                    TeamName: "Team A".to_string(),
+                    Position: 1,
+                    PositionChange: 0,
+                    Matches: 1,
+                    GoalsFor: 2,
+                    GoalsAgainst: 0,
+                    Points: 3,
+                    Won: 1,
+                    Draws: 0,
+                    Lost: 0,
+                }],
+            },
+        };
+
+        save_league_details(&mut conn, 1, &league_data).expect("Failed to save league details");
+
+        // Verify League Data
+        let fetched_league = get_latest_league_details(&mut conn, 100)
+            .expect("Failed to fetch league")
+            .unwrap();
+        assert_eq!(fetched_league.LeagueLevelUnit.LeagueLevelUnitID, 100);
+        assert_eq!(fetched_league.LeagueLevelUnit.Teams.len(), 1);
+        assert_eq!(fetched_league.LeagueLevelUnit.Teams[0].TeamName, "Team A");
+
+        // Mock Match Data
+        let match_data = MatchesData {
+            Team: crate::chpp::model::MatchesTeamWrapper {
+                TeamID: "1".to_string(),
+                TeamName: "Team A".to_string(),
+                ShortTeamName: None,
+                LeagueLevelUnitID: None,
+            },
+            MatchList: crate::chpp::model::MatchesListWrapper {
+                Matches: vec![crate::chpp::model::MatchDetails {
+                    MatchID: 500,
+                    HomeTeam: crate::chpp::model::MatchTeam {
+                        TeamID: 1,
+                        TeamName: "Team A".to_string(),
+                        Goals: Some(2),
+                    },
+                    AwayTeam: crate::chpp::model::MatchTeam {
+                        TeamID: 2,
+                        TeamName: "Team B".to_string(),
+                        Goals: Some(1),
+                    },
+                    MatchDate: "2026-02-15 14:00:00".to_string(),
+                    MatchType: 1,
+                    Status: "FINISHED".to_string(),
+                    MatchContextId: None,
+                }],
+            },
+        };
+
+        save_matches(&mut conn, 1, &match_data).expect("Failed to save matches");
+
+        // Verify Match Data
+        let fetched_matches = get_latest_matches(&mut conn, 1)
+            .expect("Failed to fetch matches")
+            .unwrap();
+        assert_eq!(fetched_matches.MatchList.Matches.len(), 1);
+        assert_eq!(fetched_matches.MatchList.Matches[0].MatchID, 500);
+        assert_eq!(
+            fetched_matches.MatchList.Matches[0].HomeTeam.TeamName,
+            "Team A"
+        );
+    }
+}

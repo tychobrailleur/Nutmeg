@@ -95,6 +95,17 @@
                  <property name="use-underline">True</property>
                </object>
             </child>
+            <child>
+              <object class="SeriesPage" id="series_page">
+                 <property name="visible">True</property>
+              </object>
+            </child>
+             <child type="tab">
+               <object class="GtkLabel">
+                 <property name="label" translatable="yes">_Series</property>
+                 <property name="use-underline">True</property>
+               </object>
+            </child>
           </object>
         </child>
         <child>
@@ -124,6 +135,17 @@
     </property>
   </template>
   <menu id="primary_menu">
+    <section>
+      <attribute name="label" translatable="yes">Developer Tools</attribute>
+      <item>
+        <attribute name="label" translatable="yes">Clear _Database...</attribute>
+        <attribute name="action">win.clear-database</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Delete _Secrets...</attribute>
+        <attribute name="action">win.delete-secrets</attribute>
+      </item>
+    </section>
     <section>
       <item>
         <attribute name="label" translatable="yes">_Preferences</attribute>

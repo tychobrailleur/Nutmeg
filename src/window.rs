@@ -20,13 +20,14 @@
 * SPDX-License-Identifier: GPL-3.0-or-later
 */
 
-use crate::db::manager::DbManager;
+// use crate::db::manager::DbManager;
 // use crate::db::teams::get_teams_summary; // Moved to controller
 // use crate::service::sync::DataSyncService; // Moved to controller
+use crate::service::secret::SecretStorageService;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, gio, glib, CompositeTemplate, TemplateChild};
-use log::{debug, error, info, warn};
+use log::info;
 
 use crate::ui::context_object::ContextObject;
 use crate::ui::player_object::PlayerObject;
@@ -34,6 +35,7 @@ use crate::ui::team_object::TeamObject;
 
 use crate::squad::player_details::SquadPlayerDetails;
 use crate::squad::player_list::SquadPlayerList;
+use crate::ui::series_page::SeriesPage;
 // use crate::ui::oauth_dialog::OAuthDialog; // Not needed anymore
 
 mod imp {
@@ -63,6 +65,12 @@ mod imp {
 
         #[template_child]
         pub sync_status_label: TemplateChild<gtk::Label>,
+
+        #[template_child]
+        pub notebook: TemplateChild<gtk::Notebook>,
+
+        #[template_child]
+        pub series_page: TemplateChild<SeriesPage>,
 
         pub context_object: ContextObject,
     }
@@ -96,6 +104,9 @@ mod imp {
 
             // Setup Signals
             obj.setup_signals();
+
+            // Setup window actions
+            obj.setup_actions();
 
             // Load CSS
             let provider = gtk::CssProvider::new();
@@ -134,6 +145,38 @@ impl NutmegWindow {
         TeamController::load_teams(&self.imp().combo_teams);
     }
 
+    pub fn load_current_team_series_data(&self) {
+        let imp = self.imp();
+        let model = &imp.context_object;
+        let team_obj: Option<TeamObject> = model.property("selected-team");
+
+        if let Some(team_object) = team_obj {
+            let team_data = team_object.team_data();
+            let team_id = team_data.id;
+            let window_weak = self.downgrade();
+
+            glib::MainContext::default().spawn_local(async move {
+                use crate::ui::controllers::series::SeriesController;
+
+                match SeriesController::load_series_data(team_id).await {
+                    Ok((league_data, matches_data)) => {
+                        if let Some(window) = window_weak.upgrade() {
+                            window.imp()
+                                .series_page
+                                .set_data(Some(&league_data), Some(&matches_data));
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to load series data: {}", e);
+                        // TODO: Show error in UI
+                    }
+                }
+            });
+        } else {
+            imp.series_page.set_data(None, None);
+        }
+    }
+
     fn setup_bindings(&self) {
         let imp = self.imp();
         let model = &imp.context_object;
@@ -143,6 +186,12 @@ impl NutmegWindow {
             .bind_property("selected-item", model, "selected-team")
             .sync_create()
             .build();
+
+        // Listen to selected-team changes to load series data
+        let window = self.clone();
+        model.connect_notify_local(Some("selected-team"), move |_, _| {
+            window.load_current_team_series_data();
+        });
 
         // Bind ContextObject players to TreeView model (inside PlayerList)
         model
@@ -234,5 +283,145 @@ impl NutmegWindow {
                 }
             });
         });
+
+        // Notebook page switch handler
+        let window_weak = self.downgrade();
+        imp.notebook.connect_switch_page(move |_, page, _| {
+            let window = match window_weak.upgrade() {
+                Some(w) => w,
+                None => return,
+            };
+
+            let series_page_widget = window.imp().series_page.upcast_ref::<gtk::Widget>();
+            if page == series_page_widget {
+                window.load_current_team_series_data();
+            }
+        });
+    }
+
+    fn setup_actions(&self) {
+        use gio::prelude::*;
+        use gtk::prelude::*;
+
+        let window_weak = self.downgrade();
+
+        // Action: clear-database
+        let clear_db_action = gio::ActionEntry::builder("clear-database")
+            .activate(move |window: &Self, _, _| {
+                let dialog = gtk::MessageDialog::builder()
+                    .transient_for(window)
+                    .modal(true)
+                    .message_type(gtk::MessageType::Warning)
+                    .buttons(gtk::ButtonsType::OkCancel)
+                    .text("Clear Database?")
+                    .secondary_text("This will permanently delete ALL synced data including teams, players, matches, and league information. This cannot be undone.")
+                    .build();
+
+                let window_weak = window.downgrade();
+                dialog.connect_response(move |dialog, response| {
+                    if response == gtk::ResponseType::Ok {
+                        if let Some(win) = window_weak.upgrade() {
+                            let db = crate::db::manager::DbManager::new();
+                            match db.clear_all_data() {
+                                Ok(()) => {
+                                    log::info!("Database cleared successfully");
+                                    // Reload teams to show empty state
+                                    win.load_teams();
+
+                                    let success_dialog = gtk::MessageDialog::builder()
+                                        .transient_for(&win)
+                                        .modal(true)
+                                        .message_type(gtk::MessageType::Info)
+                                        .buttons(gtk::ButtonsType::Ok)
+                                        .text("Database Cleared")
+                                        .secondary_text("All data has been removed from the database.")
+                                        .build();
+                                    success_dialog.connect_response(|dialog, _| {
+                                        dialog.close();
+                                    });
+                                    success_dialog.present();
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to clear database: {}", e);
+                                    let error_dialog = gtk::MessageDialog::builder()
+                                        .transient_for(&win)
+                                        .modal(true)
+                                        .message_type(gtk::MessageType::Error)
+                                        .buttons(gtk::ButtonsType::Ok)
+                                        .text("Failed to Clear Database")
+                                        .secondary_text(&format!("Error: {}", e))
+                                        .build();
+                                    error_dialog.connect_response(|dialog, _| {
+                                        dialog.close();
+                                    });
+                                    error_dialog.present();
+                                }
+                            }
+                        }
+                    }
+                    dialog.close();
+                });
+
+                dialog.present();
+            })
+            .build();
+
+        // Action: delete-secrets
+        let delete_secrets_action = gio::ActionEntry::builder("delete-secrets")
+            .activate(move |window: &Self, _, _| {
+                let dialog = gtk::MessageDialog::builder()
+                    .transient_for(window)
+                    .modal(true)
+                    .message_type(gtk::MessageType::Warning)
+                    .buttons(gtk::ButtonsType::OkCancel)
+                    .text("Delete OAuth Secrets?")
+                    .secondary_text("This will delete all stored OAuth tokens. You will need to re-authenticate the next time you sync.")
+                    .build();
+
+                let window_weak = window_weak.clone();
+                dialog.connect_response(move |dialog, response| {
+                    if response == gtk::ResponseType::Ok {
+                        if let Some(_win) = window_weak.upgrade() {
+                            let secret_service = crate::service::secret::GnomeSecretService::new();
+                            glib::MainContext::default().spawn_local(async move {
+                                match secret_service.clear_all_oauth_secrets().await {
+                                    Ok(()) => {
+                                        log::info!("OAuth secrets deleted successfully");
+                                        let success_dialog = gtk::MessageDialog::builder()
+                                            .message_type(gtk::MessageType::Info)
+                                            .buttons(gtk::ButtonsType::Ok)
+                                            .text("Secrets Deleted")
+                                            .secondary_text("All OAuth tokens have been removed. You will need to re-authenticate on next sync.")
+                                            .build();
+                                        success_dialog.connect_response(|dialog, _| {
+                                            dialog.close();
+                                        });
+                                        success_dialog.present();
+                                    }
+                                    Err(e) => {
+                                        log::error!("Failed to delete secrets: {}", e);
+                                        let error_dialog = gtk::MessageDialog::builder()
+                                            .message_type(gtk::MessageType::Error)
+                                            .buttons(gtk::ButtonsType::Ok)
+                                            .text("Failed to Delete Secrets")
+                                            .secondary_text(&format!("Error: {}", e))
+                                            .build();
+                                        error_dialog.connect_response(|dialog, _| {
+                                            dialog.close();
+                                        });
+                                        error_dialog.present();
+                                    }
+                                }
+                            });
+                        }
+                    }
+                    dialog.close();
+                });
+
+                dialog.present();
+            })
+            .build();
+
+        self.add_action_entries([clear_db_action, delete_secrets_action]);
     }
 }

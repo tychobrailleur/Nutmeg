@@ -67,6 +67,37 @@ pub fn create_download_entry(
     .get_result(conn)
 }
 
+#[derive(Insertable)]
+#[diesel(table_name = crate::db::schema::downloads)]
+pub struct NewDownload {
+    pub timestamp: String,
+    pub status: String,
+}
+
+/// Create a new download record
+pub fn create_download(
+    conn: &mut SqliteConnection,
+    timestamp: &str,
+    status: &str,
+) -> QueryResult<i32> {
+    use crate::db::schema::downloads;
+
+    let new_download = NewDownload {
+        timestamp: timestamp.to_string(),
+        status: status.to_string(),
+    };
+
+    diesel::insert_into(downloads::table)
+        .values(&new_download)
+        .execute(conn)?;
+
+    // Get the last inserted ID
+    diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>(
+        "last_insert_rowid()",
+    ))
+    .get_result(conn)
+}
+
 /// Update the status of a download entry (for retry tracking)
 pub fn update_entry_status(
     conn: &mut SqliteConnection,
@@ -95,12 +126,12 @@ pub fn update_entry_status(
 /// Get all entries for a specific download
 pub fn get_entries_for_download(
     conn: &mut SqliteConnection,
-    dl_id: i32,
+    target_download_id: i32,
 ) -> QueryResult<Vec<DownloadEntry>> {
     use crate::db::schema::download_entries::dsl::*;
 
     download_entries
-        .filter(download_id.eq(dl_id))
+        .filter(download_id.eq(target_download_id))
         .order(id.asc())
         .load::<DownloadEntry>(conn)
 }
@@ -111,13 +142,6 @@ mod tests {
     use crate::db::manager::DbManager;
     use crate::db::schema::downloads;
     use serial_test::serial;
-
-    #[derive(Insertable)]
-    #[diesel(table_name = downloads)]
-    struct NewDownload {
-        timestamp: String,
-        status: String,
-    }
 
     #[test]
     #[serial]

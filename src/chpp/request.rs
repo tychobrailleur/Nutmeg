@@ -27,8 +27,8 @@ use std::collections::BTreeMap;
 use crate::chpp::error::Error;
 use crate::chpp::metadata::ChppEndpoints;
 use crate::chpp::model::{
-    AvatarsData, ChppErrorResponse, HattrickData, Player, PlayerDetailsData, PlayersData,
-    WorldDetails,
+    AvatarsData, ChppErrorResponse, HattrickData, LeagueDetailsData, MatchesData, Player,
+    PlayerDetailsData, PlayersData, WorldDetails,
 };
 use crate::chpp::{CHPP_URL, NUTMEG_USER_AGENT};
 
@@ -183,6 +183,15 @@ async fn perform_single_request<T: DeserializeOwned>(
                 });
             }
 
+            // Special debug: save league details XML to file for inspection
+            if file.contains("leaguedetails") {
+                if let Err(e) = std::fs::write("/tmp/league_details_response.xml", &data_str) {
+                    log::error!("Failed to write league details XML to file: {}", e);
+                } else {
+                    log::info!("League details XML saved to /tmp/league_details_response.xml");
+                }
+            }
+
             let hattrick_data: T = from_str(data_str.as_str())
                 .map_err(|e| Error::Xml(format!("Failed to deserialize XML: {}", e)))?;
             Ok(hattrick_data)
@@ -291,6 +300,79 @@ pub async fn avatars_request(
     chpp_request::<AvatarsData>(
         ChppEndpoints::AVATARS.name,
         ChppEndpoints::AVATARS.version,
+        Some(&params),
+        data,
+        key,
+    )
+    .await
+}
+
+pub async fn league_details_request(
+    data: OAuthData,
+    key: SigningKey,
+    league_level_unit_id: u32,
+) -> Result<LeagueDetailsData, Error> {
+    let id_str = league_level_unit_id.to_string();
+    let params = vec![("leagueLevelUnitID", id_str.as_str())];
+
+    chpp_request::<LeagueDetailsData>(
+        ChppEndpoints::LEAGUE_DETAILS.name,
+        ChppEndpoints::LEAGUE_DETAILS.version,
+        Some(&params),
+        data,
+        key,
+    )
+    .await
+}
+
+pub async fn matches_request(
+    data: OAuthData,
+    key: SigningKey,
+    team_id: Option<u32>,
+) -> Result<MatchesData, Error> {
+    let mut params = Vec::new();
+    let tid_str;
+    if let Some(tid) = team_id {
+        tid_str = tid.to_string();
+        params.push(("teamID", tid_str.as_str()));
+    }
+
+    chpp_request::<MatchesData>(
+        ChppEndpoints::MATCHES.name,
+        ChppEndpoints::MATCHES.version,
+        Some(&params),
+        data,
+        key,
+    )
+    .await
+}
+
+pub async fn matches_archive_request(
+    data: OAuthData,
+    key: SigningKey,
+    team_id: Option<u32>,
+    first_match_date: Option<String>,
+    last_match_date: Option<String>,
+) -> Result<MatchesData, Error> {
+    let mut params = Vec::new();
+    let tid_str;
+    if let Some(tid) = team_id {
+        tid_str = tid.to_string();
+        params.push(("teamID", tid_str.as_str()));
+    }
+
+    // We need to keep strings alive if we borrow them
+    // But since function args are owned Option<String>, we can borrow from them
+    if let Some(ref fmd) = first_match_date {
+        params.push(("FirstMatchDate", fmd.as_str()));
+    }
+    if let Some(ref lmd) = last_match_date {
+        params.push(("LastMatchDate", lmd.as_str()));
+    }
+
+    chpp_request::<MatchesData>(
+        ChppEndpoints::MATCHES_ARCHIVE.name,
+        ChppEndpoints::MATCHES_ARCHIVE.version,
         Some(&params),
         data,
         key,

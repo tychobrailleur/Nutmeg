@@ -314,7 +314,7 @@ pub fn save_world_details(
             // Parse rate (handle comma as decimal separator)
             let rate = currency_rate_str.replace(',', ".").parse::<f64>().ok();
             let currency = Currency {
-                CurrencyID: country_id, // Using country ID as currency ID (TODO is it ok?)
+                CurrencyID: country_id, // Using country ID as currency ID (TODO is it ok?)  FIXME: this is not ok.
                 CurrencyName: currency_name.clone(),
                 Rate: rate,
                 Symbol: Some(currency_name.clone()), // Using name as symbol for now
@@ -417,37 +417,37 @@ pub fn save_players(
             injury_level: player.InjuryLevel,
             specialty: player.Specialty.map(|v| v as i32),
             // Skills
-            stamina_skill: player.PlayerSkills.as_ref().map(|s| s.StaminaSkill as i32),
-            keeper_skill: player.PlayerSkills.as_ref().map(|s| s.KeeperSkill as i32),
+            stamina_skill: player.PlayerSkills.as_ref().map(|skills| skills.StaminaSkill as i32),
+            keeper_skill: player.PlayerSkills.as_ref().map(|skills| skills.KeeperSkill as i32),
             playmaker_skill: player
                 .PlayerSkills
                 .as_ref()
-                .map(|s| s.PlaymakerSkill as i32),
-            scorer_skill: player.PlayerSkills.as_ref().map(|s| s.ScorerSkill as i32),
-            passing_skill: player.PlayerSkills.as_ref().map(|s| s.PassingSkill as i32),
-            winger_skill: player.PlayerSkills.as_ref().map(|s| s.WingerSkill as i32),
-            defender_skill: player.PlayerSkills.as_ref().map(|s| s.DefenderSkill as i32),
+                .map(|skills| skills.PlaymakerSkill as i32),
+            scorer_skill: player.PlayerSkills.as_ref().map(|skills| skills.ScorerSkill as i32),
+            passing_skill: player.PlayerSkills.as_ref().map(|skills| skills.PassingSkill as i32),
+            winger_skill: player.PlayerSkills.as_ref().map(|skills| skills.WingerSkill as i32),
+            defender_skill: player.PlayerSkills.as_ref().map(|skills| skills.DefenderSkill as i32),
             set_pieces_skill: player
                 .PlayerSkills
                 .as_ref()
-                .map(|s| s.SetPiecesSkill as i32),
+                .map(|skills| skills.SetPiecesSkill as i32),
             // Last Match
-            last_match_date: player.LastMatch.as_ref().map(|m| m.Date.clone()),
-            last_match_id: player.LastMatch.as_ref().map(|m| m.MatchId as i32),
-            last_match_position_code: player.LastMatch.as_ref().map(|m| m.PositionCode as i32),
-            last_match_played_minutes: player.LastMatch.as_ref().map(|m| m.PlayedMinutes as i32),
+            last_match_date: player.LastMatch.as_ref().map(|match_data| match_data.Date.clone()),
+            last_match_id: player.LastMatch.as_ref().map(|match_data| match_data.MatchId as i32),
+            last_match_position_code: player.LastMatch.as_ref().map(|match_data| match_data.PositionCode as i32),
+            last_match_played_minutes: player.LastMatch.as_ref().map(|match_data| match_data.PlayedMinutes as i32),
             last_match_rating: player
                 .LastMatch
                 .as_ref()
-                .and_then(|m| m.Rating.map(|v| v as i32)),
+                .and_then(|match_data| match_data.Rating.map(|v| v as i32)),
             last_match_rating_end_of_match: player
                 .LastMatch
                 .as_ref()
-                .and_then(|m| m.RatingEndOfMatch.map(|v| v as i32)),
+                .and_then(|match_data| match_data.RatingEndOfMatch.map(|v| v as i32)),
             arrival_date: player.ArrivalDate.clone(),
             player_category_id: player.PlayerCategoryId.map(|v| v as i32),
-            mother_club_team_id: player.MotherClub.as_ref().map(|m| m.TeamID as i32),
-            mother_club_team_name: player.MotherClub.as_ref().map(|m| m.TeamName.clone()),
+            mother_club_team_id: player.MotherClub.as_ref().map(|mother_club| mother_club.TeamID as i32),
+            mother_club_team_name: player.MotherClub.as_ref().map(|mother_club| mother_club.TeamName.clone()),
             native_country_id: player.NativeCountryID.map(|v| v as i32),
             native_league_id: player.NativeLeagueID.map(|v| v as i32),
             native_league_name: player.NativeLeagueName.clone(),
@@ -604,12 +604,12 @@ fn save_region(
     country_id_opt: Option<u32>,
     download_id: i32,
 ) -> Result<(), Error> {
-    if let Some(c_id) = country_id_opt {
+    if let Some(country_id) = country_id_opt {
         let entity = RegionEntity {
             id: region.RegionID as i32,
             download_id,
             name: region.RegionName.clone(),
-            country_id: c_id as i32,
+            country_id: country_id as i32,
         };
         diesel::insert_into(regions::table)
             .values(&entity)
@@ -692,22 +692,10 @@ pub fn save_team(
 ) -> Result<(), Error> {
     save_user(conn, user, download_id)?;
 
-    // if let Some(c) = &team.Country {
-    //     save_country(conn, c, download_id)?;
-    // }
 
-    // let country_id = team.Country.as_ref().map(|c| c.CountryID);
 
-    // if let Some(r) = &team.Region {
-    //     save_region(conn, r, country_id, download_id)?;
-    // }
-
-    // if let Some(l) = &team.League {
-    //     save_league(conn, l, country_id, download_id)?;
-    // }
-
-    if let Some(c) = &team.Cup {
-        save_cup(conn, c, download_id)?;
+    if let Some(cup) = &team.Cup {
+        save_cup(conn, cup, download_id)?;
     }
 
     let team_id_num = team
@@ -727,64 +715,64 @@ pub fn save_team(
         short_name: team.ShortTeamName.clone(),
         is_primary_club: team.IsPrimaryClub,
         founded_date: team.FoundedDate.clone(),
-        arena_id: team.Arena.as_ref().map(|a| a.ArenaID as i32),
-        arena_name: team.Arena.as_ref().map(|a| a.ArenaName.clone()),
-        league_id: team.League.as_ref().map(|l| l.LeagueID as i32),
-        league_name: team.League.as_ref().map(|l| l.LeagueName.clone()),
-        country_id: team.Country.as_ref().map(|c| c.CountryID as i32),
-        country_name: team.Country.as_ref().map(|c| c.CountryName.clone()),
-        region_id: team.Region.as_ref().map(|r| r.RegionID as i32),
-        region_name: team.Region.as_ref().map(|r| r.RegionName.clone()),
+        arena_id: team.Arena.as_ref().map(|arena| arena.ArenaID as i32),
+        arena_name: team.Arena.as_ref().map(|arena| arena.ArenaName.clone()),
+        league_id: team.League.as_ref().map(|league| league.LeagueID as i32),
+        league_name: team.League.as_ref().map(|league| league.LeagueName.clone()),
+        country_id: team.Country.as_ref().map(|country| country.CountryID as i32),
+        country_name: team.Country.as_ref().map(|country| country.CountryName.clone()),
+        region_id: team.Region.as_ref().map(|region| region.RegionID as i32),
+        region_name: team.Region.as_ref().map(|region| region.RegionName.clone()),
         homepage: team.HomePage.clone(),
         dress_uri: team.DressURI.clone(),
         dress_alternate_uri: team.DressAlternateURI.clone(),
         logo_url: team.LogoURL.clone(),
-        trainer_id: team.Trainer.as_ref().map(|t| t.PlayerID as i32),
-        cup_still_in: team.Cup.as_ref().and_then(|c| c.StillInCup),
-        cup_id: team.Cup.as_ref().and_then(|c| c.CupID.map(|v| v as i32)),
-        cup_name: team.Cup.as_ref().and_then(|c| c.CupName.clone()),
+        trainer_id: team.Trainer.as_ref().map(|trainer| trainer.PlayerID as i32),
+        cup_still_in: team.Cup.as_ref().and_then(|cup| cup.StillInCup),
+        cup_id: team.Cup.as_ref().and_then(|cup| cup.CupID.map(|v| v as i32)),
+        cup_name: team.Cup.as_ref().and_then(|cup| cup.CupName.clone()),
         cup_league_level: team
             .Cup
             .as_ref()
-            .and_then(|c| c.CupLeagueLevel.map(|v| v as i32)),
-        cup_level: team.Cup.as_ref().and_then(|c| c.CupLevel.map(|v| v as i32)),
+            .and_then(|cup| cup.CupLeagueLevel.map(|v| v as i32)),
+        cup_level: team.Cup.as_ref().and_then(|cup| cup.CupLevel.map(|v| v as i32)),
         cup_level_index: team
             .Cup
             .as_ref()
-            .and_then(|c| c.CupLevelIndex.map(|v| v as i32)),
+            .and_then(|cup| cup.CupLevelIndex.map(|v| v as i32)),
         cup_match_round: team
             .Cup
             .as_ref()
-            .and_then(|c| c.MatchRound.map(|v| v as i32)),
+            .and_then(|cup| cup.MatchRound.map(|v| v as i32)),
         cup_match_rounds_left: team
             .Cup
             .as_ref()
-            .and_then(|c| c.MatchRoundsLeft.map(|v| v as i32)),
-        power_rating_global: team.PowerRating.as_ref().map(|p| p.GlobalRanking as i32),
-        power_rating_league: team.PowerRating.as_ref().map(|p| p.LeagueRanking as i32),
-        power_rating_region: team.PowerRating.as_ref().map(|p| p.RegionRanking as i32),
-        power_rating_indiv: team.PowerRating.as_ref().map(|p| p.PowerRating as i32),
+            .and_then(|cup| cup.MatchRoundsLeft.map(|v| v as i32)),
+        power_rating_global: team.PowerRating.as_ref().map(|power| power.GlobalRanking as i32),
+        power_rating_league: team.PowerRating.as_ref().map(|power| power.LeagueRanking as i32),
+        power_rating_region: team.PowerRating.as_ref().map(|power| power.RegionRanking as i32),
+        power_rating_indiv: team.PowerRating.as_ref().map(|power| power.PowerRating as i32),
         friendly_team_id: team.FriendlyTeamID.map(|v| v as i32),
         league_level_unit_id: team
             .LeagueLevelUnit
             .as_ref()
-            .map(|l| l.LeagueLevelUnitID as i32),
+            .map(|unit| unit.LeagueLevelUnitID as i32),
         league_level_unit_name: team
             .LeagueLevelUnit
             .as_ref()
-            .map(|l| l.LeagueLevelUnitName.clone()),
-        league_level: team.LeagueLevelUnit.as_ref().map(|l| l.LeagueLevel as i32),
+            .map(|unit| unit.LeagueLevelUnitName.clone()),
+        league_level: team.LeagueLevelUnit.as_ref().map(|unit| unit.LeagueLevel as i32),
         number_of_victories: team.NumberOfVictories.map(|v| v as i32),
         number_of_undefeated: team.NumberOfUndefeated.map(|v| v as i32),
         number_of_visits: team.NumberOfVisits.map(|v| v as i32),
         team_rank: team.TeamRank.map(|v| v as i32),
-        fanclub_id: team.Fanclub.as_ref().map(|f| f.FanclubID as i32),
-        fanclub_name: team.Fanclub.as_ref().map(|f| f.FanclubName.clone()),
-        fanclub_size: team.Fanclub.as_ref().map(|f| f.FanclubSize as i32),
-        color_background: team.TeamColors.as_ref().map(|c| c.BackgroundColor.clone()),
-        color_primary: team.TeamColors.as_ref().map(|c| c.Color.clone()),
-        is_bot: team.BotStatus.as_ref().map(|b| b.IsBot),
-        bot_since: team.BotStatus.as_ref().and_then(|b| b.BotSince.clone()),
+        fanclub_id: team.Fanclub.as_ref().map(|fanclub| fanclub.FanclubID as i32),
+        fanclub_name: team.Fanclub.as_ref().map(|fanclub| fanclub.FanclubName.clone()),
+        fanclub_size: team.Fanclub.as_ref().map(|fanclub| fanclub.FanclubSize as i32),
+        color_background: team.TeamColors.as_ref().map(|colors| colors.BackgroundColor.clone()),
+        color_primary: team.TeamColors.as_ref().map(|colors| colors.Color.clone()),
+        is_bot: team.BotStatus.as_ref().map(|bot| bot.IsBot),
+        bot_since: team.BotStatus.as_ref().and_then(|bot| bot.BotSince.clone()),
         youth_team_id: team.YouthTeamID.map(|v| v as i32),
         youth_team_name: team.YouthTeamName.clone(),
         gender_id: team.GenderID.unwrap_or(1) as i32,
@@ -851,8 +839,8 @@ pub fn get_latest_country(
 
     if let Some(e) = entity {
         // Fetch currency if available
-        let currency = if let Some(c_id) = e.currency_id {
-            get_latest_currency(conn, c_id)?
+        let currency = if let Some(curr_id) = e.currency_id {
+            get_latest_currency(conn, curr_id)?
         } else {
             None
         };
@@ -991,7 +979,7 @@ pub fn get_players_for_team(
 
     let country_map: std::collections::HashMap<i32, String> = country_list
         .into_iter()
-        .filter_map(|(id, flag)| flag.map(|f| (id, f)))
+        .filter_map(|(id, flag)| flag.map(|flag_emoji| (id, flag_emoji)))
         .collect();
 
     let results: Vec<(PlayerEntity, Option<AvatarEntity>)> = players::table
@@ -1363,7 +1351,7 @@ mod tests {
         assert_eq!(Some("🇮🇪".to_string()), get_flag_emoji(Some("IE")));
         assert_eq!(Some("🇫🇷".to_string()), get_flag_emoji(Some("FR")));
         assert_eq!(Some("🇬🇱".to_string()), get_flag_emoji(Some("GL")));
-        // The way the flag displays below (for invalid pair) depends on the system (and probably the font?)
+        // Flag display for invalid pairs is system/font dependent
         assert_eq!(Some("🇧🇨".to_string()), get_flag_emoji(Some("BC")));
     }
 

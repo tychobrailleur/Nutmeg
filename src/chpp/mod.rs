@@ -29,10 +29,14 @@ pub mod client;
 pub mod error;
 pub mod metadata;
 pub mod model;
-mod oauth;
-mod request;
+pub mod oauth;
+pub mod request;
 pub mod retry;
 // mod tests_parsing;
+pub mod tests_series;
+
+#[cfg(test)]
+mod tests_teamid;
 
 pub use client::ChppClient;
 pub use error::Error;

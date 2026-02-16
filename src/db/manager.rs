@@ -107,6 +107,34 @@ impl DbManager {
             .map_err(|e| Error::Io(format!("Failed to count users: {}", e)))?;
         Ok(count > 0)
     }
+
+    /// Clear all data from the database (useful for debugging/reset)
+    /// This deletes all rows from all tables but preserves the schema
+    pub fn clear_all_data(&self) -> Result<(), Error> {
+        use crate::db::schema::*;
+        use diesel::prelude::*;
+
+        let mut conn = self.get_connection()?;
+
+        conn.transaction::<_, diesel::result::Error, _>(|conn| {
+            // Delete from tables with foreign key constraints first (children before parents)
+            diesel::delete(avatars::table).execute(conn)?;
+            diesel::delete(players::table).execute(conn)?;
+            diesel::delete(league_unit_teams::table).execute(conn)?;
+            diesel::delete(league_units::table).execute(conn)?;
+            diesel::delete(matches::table).execute(conn)?;
+            diesel::delete(teams::table).execute(conn)?;
+            diesel::delete(users::table).execute(conn)?;
+            diesel::delete(cups::table).execute(conn)?;
+            diesel::delete(regions::table).execute(conn)?;
+            diesel::delete(countries::table).execute(conn)?;
+            diesel::delete(currencies::table).execute(conn)?;
+            diesel::delete(downloads::table).execute(conn)?;
+
+            Ok(())
+        })
+        .map_err(|e| Error::Io(format!("Failed to clear database: {}", e)))
+    }
 }
 
 #[cfg(test)]

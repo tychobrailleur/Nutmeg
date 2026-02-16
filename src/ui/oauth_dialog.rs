@@ -1,5 +1,5 @@
 use gtk::prelude::*;
-use gtk::{Button, Entry, ResponseType};
+use gtk::{Entry, ResponseType};
 
 pub struct OAuthDialog {
     dialog: gtk::Dialog,

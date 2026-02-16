@@ -26,41 +26,295 @@ fn deserialize_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let s: String = Deserialize::deserialize(deserializer)?;
-    match s.trim().to_lowercase().as_str() {
-        "true" | "1" => Ok(true),
-        "false" | "0" | "" => Ok(false),
-        _ => Err(serde::de::Error::custom(format!(
-            "Expected True/False/1/0, got '{}'",
-            s
-        ))),
+    struct BoolVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for BoolVisitor {
+        type Value = bool;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a boolean, string (true/false/1/0), or integer (1/0)")
+        }
+
+        fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(value)
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            match value {
+                1 => Ok(true),
+                0 => Ok(false),
+                _ => Err(serde::de::Error::custom(format!(
+                    "Expected 1 or 0, got {}",
+                    value
+                ))),
+            }
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            match value.trim().to_lowercase().as_str() {
+                "true" | "1" => Ok(true),
+                "false" | "0" | "" => Ok(false),
+                _ => Err(serde::de::Error::custom(format!(
+                    "Expected True/False/1/0, got '{}'",
+                    value
+                ))),
+            }
+        }
     }
+
+    deserializer.deserialize_any(BoolVisitor)
 }
 
 fn deserialize_option_bool<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let s: Option<String> = Deserialize::deserialize(deserializer)?;
-    match s {
-        Some(s) => match s.trim().to_lowercase().as_str() {
-            "true" | "1" => Ok(Some(true)),
-            "false" | "0" | "" => Ok(Some(false)),
-            _ => Ok(None),
-        },
-        None => Ok(None),
+    struct OptionBoolVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for OptionBoolVisitor {
+        type Value = Option<bool>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a boolean, string, integer or null")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            deserializer.deserialize_any(self)
+        }
+
+        fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(Some(value))
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            match value {
+                1 => Ok(Some(true)),
+                0 => Ok(Some(false)),
+                _ => Ok(None),
+            }
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            match value.trim().to_lowercase().as_str() {
+                "true" | "1" => Ok(Some(true)),
+                "false" | "0" | "" => Ok(Some(false)),
+                _ => Ok(None),
+            }
+        }
+
+        fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+        where
+            M: serde::de::MapAccess<'de>,
+        {
+            while let Some(key) = map.next_key::<String>()? {
+                if key == "$value" || key == "value" {
+                    let value: String = map.next_value()?;
+                    if value.is_empty() {
+                        return Ok(None);
+                    }
+                    return match value.trim().to_lowercase().as_str() {
+                        "true" | "1" => Ok(Some(true)),
+                        "false" | "0" => Ok(Some(false)),
+                        _ => Ok(None),
+                    };
+                }
+                let _: serde::de::IgnoredAny = map.next_value()?;
+            }
+            Ok(None)
+        }
     }
+
+    deserializer.deserialize_option(OptionBoolVisitor)
 }
 
 fn deserialize_empty_tag_is_none<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let s: Option<String> = Option::deserialize(deserializer)?;
-    match s.as_deref() {
-        None | Some("") => Ok(None),
-        Some(v) => v.parse().map(Some).map_err(serde::de::Error::custom),
+    struct OptionU32Visitor;
+
+    impl<'de> serde::de::Visitor<'de> for OptionU32Visitor {
+        type Value = Option<u32>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("an integer, string, or null")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            deserializer.deserialize_any(self)
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            use std::convert::TryFrom;
+            u32::try_from(value)
+                .map(Some)
+                .map_err(serde::de::Error::custom)
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            use std::convert::TryFrom;
+            u32::try_from(value)
+                .map(Some)
+                .map_err(serde::de::Error::custom)
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            if value.is_empty() {
+                Ok(None)
+            } else {
+                value
+                    .parse::<u32>()
+                    .map(Some)
+                    .map_err(serde::de::Error::custom)
+            }
+        }
+
+        fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+        where
+            M: serde::de::MapAccess<'de>,
+        {
+            // Empty tags (e.g. <FriendlyTeamID />) or tags with attributes but no content
+            // might be deserialized as maps. If it's a map, we check if we can extract a value.
+            // For now, if we encounter a map, we assume it's an empty tag/object representation
+            // of "None", unless we find a specific "value" or "$value" key.
+            while let Some(key) = map.next_key::<String>()? {
+                if key == "$value" || key == "value" {
+                    let value: String = map.next_value()?;
+                    if value.is_empty() {
+                        return Ok(None);
+                    }
+                    return value
+                        .parse::<u32>()
+                        .map(Some)
+                        .map_err(serde::de::Error::custom);
+                }
+                // Ignore other keys (attributes)
+                let _: serde::de::IgnoredAny = map.next_value()?;
+            }
+            Ok(None)
+        }
     }
+
+    deserializer.deserialize_option(OptionU32Visitor)
+}
+
+// Deserialize TeamID - can be either an integer, string, or in some cases a nested structure
+fn deserialize_team_id<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, MapAccess, Visitor};
+
+    struct TeamIdVisitor;
+
+    impl<'de> Visitor<'de> for TeamIdVisitor {
+        type Value = String;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string, integer, or TeamID structure")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(value.to_string())
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(value.to_string())
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(value.to_string())
+        }
+
+        fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+        where
+            M: MapAccess<'de>,
+        {
+            // Sometimes XML deserializers present simple elements as maps
+            // Try to extract the value from the map
+            while let Some(key) = map.next_key::<String>()? {
+                if key == "$value" || key == "value" || key.is_empty() {
+                    let value: String = map.next_value()?;
+                    return Ok(value);
+                }
+                // Skip unknown keys
+                let _: serde::de::IgnoredAny = map.next_value()?;
+            }
+            Err(de::Error::custom("TeamID map structure not recognized"))
+        }
+    }
+
+    deserializer.deserialize_any(TeamIdVisitor)
 }
 
 fn deserialize_player_number<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
@@ -531,6 +785,7 @@ pub struct PlayerList {
 #[allow(non_snake_case)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Team {
+    #[serde(deserialize_with = "deserialize_team_id")]
     pub TeamID: String,
     pub TeamName: String,
     pub ShortTeamName: Option<String>,
@@ -582,10 +837,7 @@ pub struct Team {
     pub PossibleToChallengeMidweek: Option<bool>,
     #[serde(deserialize_with = "deserialize_option_bool", default)]
     pub PossibleToChallengeWeekend: Option<bool>,
-    // TODO: Verify if GenderID is actually returned by teamdetails.
-    // If not, we might need to infer it or keep it as Option.
-    // Assuming it might be there or we default to 1 in DB.
-    pub GenderID: Option<u32>,
+    pub GenderID: Option<u8>,
 }
 
 #[allow(non_snake_case)]
@@ -661,6 +913,123 @@ pub struct WorldLeagueList {
 #[derive(Deserialize, Serialize, Debug)]
 pub struct WorldDetails {
     pub LeagueList: WorldLeagueList,
+}
+
+// Hattrick made this very confusing:
+// league details is really league level unit details, which is really series details.
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename = "HattrickData")]
+pub struct LeagueDetailsData {
+    pub LeagueID: u32,
+    pub LeagueName: String,
+    pub LeagueLevel: u32,
+    pub MaxLevel: Option<u32>,
+    pub LeagueLevelUnitID: u32,
+    pub LeagueLevelUnitName: String,
+    pub CurrentMatchRound: Option<u32>,
+    pub Rank: Option<u32>, // Current ranking of this series
+    #[serde(rename = "Team", default)]
+    pub Teams: Vec<LeagueTeam>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct LeagueTeam {
+    pub UserId: Option<u32>,
+    #[serde(deserialize_with = "deserialize_team_id")]
+    pub TeamID: String,
+    pub TeamName: String,
+    pub Position: u32,
+    pub PositionChange: i32,
+    pub Matches: u32,
+    pub GoalsFor: u32,
+    pub GoalsAgainst: u32,
+    pub Points: u32,
+    pub Won: u32,
+    pub Draws: u32,
+    pub Lost: u32,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct MatchDetails {
+    pub MatchID: u32,
+    pub HomeTeam: MatchHomeTeam,
+    pub AwayTeam: MatchAwayTeam,
+    pub MatchDate: String,
+    pub SourceSystem: Option<String>, // hattrick, youth or htointegrated
+    pub MatchType: u32,
+    pub MatchContextId: Option<u32>, // either LeagueLevelUnitId (for League), CupId (Cup, Hattrick Masters, World Cup and U-20 World Cup),
+    // LadderId, TournamentId, or 0 for friendly, qualification, single matches and preparation matches.
+    pub CupLevel: Option<u32>,
+    pub CupLevelIndex: Option<u32>,
+    pub HomeGoals: Option<u32>,
+    pub AwayGoals: Option<u32>,
+    #[serde(deserialize_with = "deserialize_option_bool", default)]
+    pub OrdersGiven: Option<bool>,
+    pub Status: String, // Whether match is FINISHED, UPCOMING or ONGOING
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct MatchHomeTeam {
+    #[serde(deserialize_with = "deserialize_team_id")]
+    pub HomeTeamID: String,
+    pub HomeTeamName: String,
+    pub HomeTeamNameShortName: Option<String>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct MatchAwayTeam {
+    #[serde(deserialize_with = "deserialize_team_id")]
+    pub AwayTeamID: String,
+    pub AwayTeamName: String,
+    pub AwayTeamNameShortName: Option<String>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct MatchesTeamWrapper {
+    #[serde(deserialize_with = "deserialize_team_id")]
+    pub TeamID: String,
+    pub TeamName: String,
+    pub ShortTeamName: Option<String>,
+    pub League: Option<MatchLeagueInfo>,
+    pub LeagueLevelUnit: Option<MatchLeagueLevelUnitInfo>,
+    #[serde(rename = "MatchList", default)]
+    pub MatchList: MatchesListWrapper,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct MatchLeagueInfo {
+    pub LeagueID: u32,
+    pub LeagueName: String,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct MatchLeagueLevelUnitInfo {
+    pub LeagueLevelUnitID: u32,
+    pub LeagueLevelUnitName: String,
+    pub LeagueLevel: u32,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename = "HattrickData")]
+pub struct MatchesData {
+    #[serde(rename = "Team")]
+    pub Team: MatchesTeamWrapper,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+pub struct MatchesListWrapper {
+    #[serde(rename = "Match", default)]
+    pub Matches: Vec<MatchDetails>,
 }
 
 #[allow(non_snake_case)]

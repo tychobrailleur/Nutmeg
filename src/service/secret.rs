@@ -28,6 +28,16 @@ pub trait SecretStorageService: Send + Sync {
     async fn store_secret(&self, key: &str, value: &str) -> Result<(), SecretError>;
     async fn get_secret(&self, key: &str) -> Result<Option<String>, SecretError>;
     async fn delete_secret(&self, key: &str) -> Result<(), SecretError>;
+
+    /// Clear all OAuth-related secrets from storage
+    async fn clear_all_oauth_secrets(&self) -> Result<(), SecretError> {
+        // Delete all known OAuth keys (ignore errors if they don't exist)
+        let _ = self.delete_secret("oauth_consumer_key").await;
+        let _ = self.delete_secret("oauth_consumer_secret").await;
+        let _ = self.delete_secret("access_token").await;
+        let _ = self.delete_secret("access_token_secret").await;
+        Ok(())
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

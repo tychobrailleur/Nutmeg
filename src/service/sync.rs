@@ -24,6 +24,7 @@ use crate::chpp::{create_oauth_context, retry_with_default_config, ChppClient, E
 use crate::db::download_entries::{create_download_entry, update_entry_status, NewDownloadEntry};
 use crate::db::manager::DbManager;
 use crate::db::schema::downloads;
+use crate::db::series::{save_league_details, save_matches};
 use crate::db::teams::{save_avatars, save_players, save_team, save_world_details};
 use crate::service::avatar::AvatarService;
 use crate::service::secret::{GnomeSecretService, SecretStorageService};
@@ -235,6 +236,7 @@ impl SyncService {
     }
 
     /// Update download entry status (success or error)
+    // FIXME: This contravenes the append-only principle of the database.
     async fn update_download_entry(
         db_manager: Arc<DbManager>,
         entry_id: i32,
@@ -258,12 +260,13 @@ impl SyncService {
         .map_err(|e| Error::Io(format!("Join error: {}", e)))?
     }
 
+    /// Downloads user data, including Teams details.
     async fn fetch_and_save_user_data<F>(
         db_manager: Arc<DbManager>,
         client: Arc<dyn ChppClient>,
         get_auth: &F,
         download_id: i32,
-    ) -> Result<u32, Error>
+    ) -> Result<(u32, Option<u32>), Error>
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
@@ -298,7 +301,7 @@ impl SyncService {
 
         log::info!(
             "User: {} ({})",
-            hattrick_data.User.Name,
+            hattrick_data.User.UserID,
             hattrick_data.User.Loginname
         );
 
@@ -315,9 +318,10 @@ impl SyncService {
         log::info!("Processing teams, found {} team(s)", teams.len());
 
         let db = db_manager.clone();
+        let teams_clone = teams.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = db.get_connection()?;
-            for team in &teams {
+            for team in &teams_clone {
                 log::info!("Saving team: {} ({})", team.TeamName, team.TeamID);
                 save_team(&mut conn, team, &user, download_id)?;
             }
@@ -326,7 +330,113 @@ impl SyncService {
         .await
         .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
 
-        Ok(team_id)
+        // Get LeagueUnitID from the first team
+        let league_unit_id_opt = teams
+            .first()
+            .and_then(|t| t.LeagueLevelUnit.as_ref())
+            .map(|unit| unit.LeagueLevelUnitID);
+
+        match league_unit_id_opt {
+            Some(series) => log::info!("Team {} belongs to series {}", team_id, series),
+            None => log::warn!("No series found for team {}", team_id),
+        }
+
+        Ok((team_id, league_unit_id_opt))
+    }
+
+    async fn fetch_and_save_match_data<F>(
+        db_manager: Arc<DbManager>,
+        client: Arc<dyn ChppClient>,
+        get_auth: &F,
+        team_id: u32,
+        league_unit_id_opt: Option<u32>,
+        download_id: i32,
+    ) -> Result<(), Error>
+    where
+        F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
+    {
+        // FIXME: separate series details retrieval from match details retrieval, for separation of concerns.
+        // 1. Fetch League Details if we have a Unit ID
+        if let Some(unit_id) = league_unit_id_opt {
+            // Log download entry for league_details
+            let entry_id = Self::log_download_entry(
+                db_manager.clone(),
+                download_id,
+                ChppEndpoints::LEAGUE_DETAILS.name,
+                ChppEndpoints::LEAGUE_DETAILS.version,
+                Some(team_id as i32),
+            )
+            .await?;
+
+            let (data, key) = get_auth();
+            match client.league_details(data, key, unit_id).await {
+                Ok(league_details) => {
+                    Self::update_download_entry(db_manager.clone(), entry_id, "success", None)
+                        .await?;
+                    // Save League Details
+                    let db = db_manager.clone();
+                    let ld = league_details;
+                    tokio::task::spawn_blocking(move || {
+                        let mut conn = db.get_connection()?;
+                        save_league_details(&mut conn, download_id, &ld)
+                    })
+                    .await
+                    .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+                }
+                Err(e) => {
+                    Self::update_download_entry(
+                        db_manager.clone(),
+                        entry_id,
+                        "error",
+                        Some(e.to_string()),
+                    )
+                    .await?;
+                    log::warn!("Failed to fetch league details: {}", e);
+                    // We continue even if league details fail
+                }
+            }
+        }
+
+        // 2. Fetch Matches
+        // Log download entry for matches
+        let entry_id = Self::log_download_entry(
+            db_manager.clone(),
+            download_id,
+            ChppEndpoints::MATCHES.name,
+            ChppEndpoints::MATCHES.version,
+            Some(team_id as i32),
+        )
+        .await?;
+
+        let (data, key) = get_auth();
+        let upcoming_matches_res = client.matches(data, key, Some(team_id)).await;
+
+        match upcoming_matches_res {
+            Ok(matches_data) => {
+                Self::update_download_entry(db_manager.clone(), entry_id, "success", None).await?;
+
+                let db = db_manager.clone();
+                let md = matches_data;
+                tokio::task::spawn_blocking(move || {
+                    let mut conn = db.get_connection()?;
+                    save_matches(&mut conn, download_id, &md)
+                })
+                .await
+                .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+            }
+            Err(e) => {
+                Self::update_download_entry(
+                    db_manager.clone(),
+                    entry_id,
+                    "error",
+                    Some(e.to_string()),
+                )
+                .await?;
+                log::warn!("Failed to fetch matches: {}", e);
+            }
+        }
+
+        Ok(())
     }
 
     async fn fetch_and_save_world_details<F>(
@@ -339,7 +449,6 @@ impl SyncService {
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
         // Log download entry for world_details
-        // TODO: find a cleaner way to manage endpoint versions (maybe an enum or constants instead of hardcoded strings)
         let entry_id = Self::log_download_entry(
             db_manager.clone(),
             download_id,
@@ -599,7 +708,7 @@ impl SyncService {
         .await?;
 
         on_progress(0.5, "Fetching user data...");
-        let team_id = Self::fetch_and_save_user_data(
+        let (team_id, league_unit_id_opt) = Self::fetch_and_save_user_data(
             db_manager.clone(),
             client.clone(),
             &get_auth,
@@ -613,6 +722,17 @@ impl SyncService {
             client.clone(),
             &get_auth,
             team_id,
+            download_id,
+        )
+        .await?;
+
+        on_progress(0.8, "Fetching series and matches...");
+        Self::fetch_and_save_match_data(
+            db_manager.clone(),
+            client.clone(),
+            &get_auth,
+            team_id,
+            league_unit_id_opt,
             download_id,
         )
         .await?;
@@ -902,13 +1022,50 @@ mod tests {
             _team_id: Option<u32>,
         ) -> Result<AvatarsData, Error> {
             Ok(AvatarsData {
-                file_name: "avatars".to_string(),
+                file_name: "avatars.xml".to_string(),
                 version: "1.0".to_string(),
-                user_id: 123,
+                user_id: 12345,
                 team: AvatarsTeam {
-                    team_id: 123,
+                    team_id: 54321,
                     players: AvatarsPlayers { players: vec![] },
                 },
+            })
+        }
+
+        async fn league_details(
+            &self,
+            _data: OAuthData,
+            _key: SigningKey,
+            _league_level_unit_id: u32,
+        ) -> Result<LeagueDetailsData, Error> {
+            // Return dummy league details
+            Ok(LeagueDetailsData {
+                LeagueLevelUnit: LeagueLevelUnitData {
+                    LeagueLevelUnitID: 100,
+                    LeagueLevelUnitName: "Test League".to_string(),
+                    LeagueLevel: 5,
+                    MaxNumberOfTeams: Some(8),
+                    CurrentMatchRound: Some(1),
+                    Teams: vec![],
+                },
+            })
+        }
+
+        async fn matches(
+            &self,
+            _data: OAuthData,
+            _key: SigningKey,
+            _team_id: Option<u32>,
+        ) -> Result<MatchesData, Error> {
+            // Return dummy matches
+            Ok(MatchesData {
+                Team: MatchesTeamWrapper {
+                    TeamID: "54321".to_string(),
+                    TeamName: "Test Team".to_string(),
+                    ShortTeamName: None,
+                    LeagueLevelUnitID: None,
+                },
+                MatchList: MatchesListWrapper { Matches: vec![] },
             })
         }
     }

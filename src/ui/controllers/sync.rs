@@ -4,9 +4,9 @@ use crate::service::secret::{GnomeSecretService, SecretStorageService};
 use crate::service::sync::{DataSyncService, SyncService};
 use crate::ui::oauth_dialog::OAuthDialog;
 use crate::window::NutmegWindow;
+use gtk::glib;
 use gtk::prelude::*;
-use gtk::{gio, glib};
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use std::sync::Arc;
 
 pub struct SyncController;

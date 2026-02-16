@@ -1,7 +1,7 @@
 use gtk::gdk;
 use gtk::gio;
 use gtk::glib;
-use gtk::prelude::*;
+// use gtk::prelude::*;
 
 // Helper function to load images from URLs
 pub async fn load_image_from_url(url: &str) -> Result<gdk::Texture, Box<dyn std::error::Error>> {
@@ -16,7 +16,7 @@ pub async fn load_image_from_url(url: &str) -> Result<gdk::Texture, Box<dyn std:
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // use super::*;
 
     #[test]
     fn test_valid_url_handling() {

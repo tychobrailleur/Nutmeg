@@ -243,6 +243,53 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    league_units (id) {
+        id -> Integer,
+        download_id -> Integer,
+        unit_id -> Integer,
+        unit_name -> Text,
+        league_level -> Integer,
+        max_number_of_teams -> Nullable<Integer>,
+        current_match_round -> Nullable<Integer>,
+    }
+}
+
+diesel::table! {
+    league_unit_teams (id) {
+        id -> Integer,
+        download_id -> Integer,
+        league_unit_id -> Integer,
+        team_id -> Integer,
+        team_name -> Text,
+        position -> Integer,
+        points -> Integer,
+        matches_played -> Integer,
+        goals_for -> Integer,
+        goals_against -> Integer,
+        won -> Integer,
+        draws -> Integer,
+        lost -> Integer,
+    }
+}
+
+diesel::table! {
+    matches (id) {
+        id -> Integer,
+        download_id -> Integer,
+        match_id -> Integer,
+        home_team_id -> Integer,
+        home_team_name -> Text,
+        away_team_id -> Integer,
+        away_team_name -> Text,
+        match_date -> Text,
+        match_type -> Integer,
+        status -> Text,
+        home_goals -> Nullable<Integer>,
+        away_goals -> Nullable<Integer>,
+    }
+}
+
 diesel::joinable!(avatars -> downloads (download_id));
 diesel::joinable!(countries -> downloads (download_id));
 diesel::joinable!(currencies -> downloads (download_id));
@@ -252,10 +299,14 @@ diesel::joinable!(players -> downloads (download_id));
 diesel::joinable!(regions -> downloads (download_id));
 diesel::joinable!(teams -> downloads (download_id));
 diesel::joinable!(users -> downloads (download_id));
+diesel::joinable!(league_units -> downloads (download_id));
+diesel::joinable!(league_unit_teams -> downloads (download_id));
+diesel::joinable!(matches -> downloads (download_id));
 
 // Retain simple FKs where constraints still essentially exist or for join logic if IDs match
 diesel::joinable!(cups -> downloads (download_id));
 diesel::joinable!(languages -> downloads (download_id));
+diesel::joinable!(league_unit_teams -> league_units (league_unit_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     avatars,
@@ -266,6 +317,9 @@ diesel::allow_tables_to_appear_in_same_query!(
     downloads,
     languages,
     leagues,
+    league_units,
+    league_unit_teams,
+    matches,
     players,
     regions,
     teams,
