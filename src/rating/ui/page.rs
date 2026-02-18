@@ -1,7 +1,7 @@
 use crate::chpp::model::Player;
 use crate::rating::controller::RatingController;
 use crate::rating::model::Lineup;
-use crate::rating::optimiser::{Formation, LineupOptimiser, OptimisedLineup};
+use crate::rating::optimiser::{Formation, OptimisedLineup};
 use crate::rating::types::{
     Attitude, Behaviour, Location, PositionId, RatingSector, TacticType, Weather,
 };
@@ -111,6 +111,12 @@ glib::wrapper! {
     pub struct FormationOptimiserWidget(ObjectSubclass<imp::FormationOptimiserWidget>)
         @extends gtk::Widget, gtk::Box,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Orientable;
+}
+
+impl Default for FormationOptimiserWidget {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FormationOptimiserWidget {
@@ -273,7 +279,7 @@ impl FormationOptimiserWidget {
                 .build();
 
             let val = gtk::Label::builder()
-                .label(&format!("{:.2}", value))
+                .label(format!("{:.2}", value))
                 .halign(gtk::Align::End)
                 .build();
 

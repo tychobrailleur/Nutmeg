@@ -243,8 +243,9 @@ pub enum PlayerSkill {
 }
 
 /// Player specialty types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Specialty {
+    #[default]
     NoSpecialty,
     Technical,
     Quick,
@@ -255,29 +256,19 @@ pub enum Specialty {
     Support,
 }
 
-impl Default for Specialty {
-    fn default() -> Self {
-        Self::NoSpecialty
-    }
-}
-
 /// Weather conditions
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Weather {
+    #[default]
     Neutral,
     Rainy,
     Sunny,
 }
 
-impl Default for Weather {
-    fn default() -> Self {
-        Self::Neutral
-    }
-}
-
 /// Match tactic types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum TacticType {
+    #[default]
     Normal = 0,
     Pressing = 1,
     CounterAttacks = 2,
@@ -287,36 +278,20 @@ pub enum TacticType {
     LongShots = 8,
 }
 
-impl Default for TacticType {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
-
 /// Match attitude
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Attitude {
+    #[default]
     Normal = 0,
     PlayItCool = 1,       // PIC
     MatchOfTheSeason = 2, // MOTS
 }
 
-impl Default for Attitude {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
-
 /// Match location
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Location {
+    #[default]
     Away = 0,
     Home = 1,
     AwayDerby = 2,
-}
-
-impl Default for Location {
-    fn default() -> Self {
-        Self::Away
-    }
 }

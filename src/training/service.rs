@@ -174,7 +174,7 @@ impl TrainingService {
 
                     let gain = calculate_training_progress(
                         current_skill_level,
-                        step.skill.clone(),
+                        step.skill,
                         current_age as u8,
                         1.0,
                         0.15,
@@ -189,7 +189,7 @@ impl TrainingService {
                     progress_points.push(ProgressPoint {
                         week: current_week,
                         player_id: trainee.PlayerID,
-                        skill: step.skill.clone(),
+                        skill: step.skill,
                         level: current_skill_level,
                     });
                 }

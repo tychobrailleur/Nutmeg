@@ -31,7 +31,7 @@ pub fn get_overcrowding_penalty(count: usize, sector: Sector) -> f64 {
 /// Get the global contribution parameters map
 pub fn get_contribution_parameters() -> &'static ContributionMap {
     static PARAMS: OnceLock<ContributionMap> = OnceLock::new();
-    PARAMS.get_or_init(|| init_contribution_parameters())
+    PARAMS.get_or_init(init_contribution_parameters)
 }
 
 /// Initialize all contribution parameters
@@ -1076,13 +1076,13 @@ fn init_all_specialties(
     .collect();
 
     map.entry(rating_contribution)
-        .or_insert_with(HashMap::new)
+        .or_default()
         .entry(skill)
-        .or_insert_with(HashMap::new)
+        .or_default()
         .entry(sector)
-        .or_insert_with(HashMap::new)
+        .or_default()
         .entry(side_restriction)
-        .or_insert_with(HashMap::new)
+        .or_default()
         .insert(behaviour, specialty_map);
 }
 
@@ -1098,14 +1098,14 @@ fn init_one_specialty(
     value: f64,
 ) {
     map.entry(rating_contribution)
-        .or_insert_with(HashMap::new)
+        .or_default()
         .entry(skill)
-        .or_insert_with(HashMap::new)
+        .or_default()
         .entry(sector)
-        .or_insert_with(HashMap::new)
+        .or_default()
         .entry(side_restriction)
-        .or_insert_with(HashMap::new)
+        .or_default()
         .entry(behaviour)
-        .or_insert_with(HashMap::new)
+        .or_default()
         .insert(specialty, value);
 }

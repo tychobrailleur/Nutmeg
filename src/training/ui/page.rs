@@ -8,7 +8,6 @@ use std::cell::RefCell;
 
 mod imp {
     use super::*;
-    use gtk::subclass::prelude::*;
 
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(resource = "/org/gnome/Nutmeg/training/ui/page.ui")]
@@ -121,6 +120,12 @@ glib::wrapper! {
     pub struct TrainingPlannerPage(ObjectSubclass<imp::TrainingPlannerPage>)
         @extends gtk::Widget, gtk::Box,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Orientable;
+}
+
+impl Default for TrainingPlannerPage {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TrainingPlannerPage {

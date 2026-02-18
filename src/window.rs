@@ -275,11 +275,7 @@ impl NutmegWindow {
                 #[allow(deprecated)]
                 let obj_val = model.get_value(&iter, 18);
 
-                let player_obj = if let Ok(obj) = obj_val.get::<PlayerObject>() {
-                    Some(obj)
-                } else {
-                    None
-                };
+                let player_obj = obj_val.get::<PlayerObject>().ok();
 
                 // Get preferred position from column 11
                 #[allow(deprecated)]

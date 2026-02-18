@@ -55,7 +55,6 @@ pub fn calculate_training_progress(
 
     // Stamina reduction (training efficiency reduced by stamina share)
     // Actually, stamina share *replaces* skill training.
-    let effective_gain = weekly_gain * (1.0 - stamina_share);
 
-    effective_gain
+    weekly_gain * (1.0 - stamina_share)
 }
