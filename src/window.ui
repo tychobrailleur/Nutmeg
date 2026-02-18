@@ -42,6 +42,9 @@
             <child>
               <object class="GtkDropDown" id="combo_teams">
                 <property name="hexpand">true</property>
+                <property name="factory">
+                  <object class="GtkSignalListItemFactory"/>
+                </property>
               </object>
             </child>
             <child>
@@ -105,6 +108,17 @@
              <child type="tab">
                <object class="GtkLabel">
                  <property name="label" translatable="yes">_Series</property>
+                 <property name="use-underline">True</property>
+               </object>
+            </child>
+            <child>
+              <object class="TrainingPlannerPage" id="training_planner">
+                 <property name="visible">True</property>
+              </object>
+            </child>
+             <child type="tab">
+               <object class="GtkLabel">
+                 <property name="label" translatable="yes">_Training</property>
                  <property name="use-underline">True</property>
                </object>
             </child>

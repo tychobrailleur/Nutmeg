@@ -62,7 +62,7 @@ pub fn evaluate_all_positions(
 }
 
 /// Calculate rating for a specific position/behaviour combination
-fn calculate_position_rating(
+pub fn calculate_position_rating(
     model: &RatingPredictionModel,
     player: &Player,
     position: PositionId,

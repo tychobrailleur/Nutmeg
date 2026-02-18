@@ -18,7 +18,6 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-
 use std::env;
 
 pub static VERSION: &str = "0.1.0";

@@ -69,6 +69,34 @@ where
                 ))),
             }
         }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(false)
+        }
+
+        fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+        where
+            M: serde::de::MapAccess<'de>,
+        {
+            while let Some(key) = map.next_key::<String>()? {
+                if key == "$value" || key == "value" {
+                    let value: String = map.next_value()?;
+                    return match value.trim().to_lowercase().as_str() {
+                        "true" | "1" => Ok(true),
+                        "false" | "0" | "" => Ok(false),
+                        _ => Err(serde::de::Error::custom(format!(
+                            "Expected True/False/1/0, got '{}'",
+                            value
+                        ))),
+                    };
+                }
+                let _: serde::de::IgnoredAny = map.next_value()?;
+            }
+            Ok(false)
+        }
     }
 
     deserializer.deserialize_any(BoolVisitor)
@@ -569,7 +597,7 @@ pub struct LastMatch {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 // Player maps to Player in players and playerdetails
 pub struct Player {
     pub PlayerID: u32,

@@ -40,6 +40,22 @@ pub struct DbManager {
     pool: SqlitePool,
 }
 
+#[derive(Debug)]
+struct ConnectionOptions;
+
+impl r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error> for ConnectionOptions {
+    fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel::r2d2::Error> {
+        use diesel::connection::SimpleConnection;
+        conn.batch_execute(
+            "
+            PRAGMA busy_timeout = 5000;
+            PRAGMA foreign_keys = ON;
+            ",
+        )
+        .map_err(diesel::r2d2::Error::QueryError)
+    }
+}
+
 impl DbManager {
     pub fn new() -> Self {
         let pool = DB_POOL.get_or_init(|| {
@@ -47,8 +63,17 @@ impl DbManager {
             let database_url = db_path.to_string_lossy().to_string();
             let manager = ConnectionManager::<SqliteConnection>::new(database_url);
             let pool = r2d2::Pool::builder()
+                .connection_customizer(Box::new(ConnectionOptions))
                 .build(manager)
                 .expect("Failed to create pool.");
+
+            // Enable WAL mode (persistent setting, so only needed once)
+            if let Ok(mut conn) = pool.get() {
+                use diesel::connection::SimpleConnection;
+                if let Err(e) = conn.batch_execute("PRAGMA journal_mode = WAL;") {
+                    eprintln!("Failed to enable WAL mode: {}", e);
+                }
+            }
 
             // Run migrations on first initialization
             let db_manager = Self { pool: pool.clone() };
@@ -67,6 +92,7 @@ impl DbManager {
     pub fn from_url(database_url: &str) -> Self {
         let manager = ConnectionManager::<SqliteConnection>::new(database_url);
         let pool = r2d2::Pool::builder()
+            .connection_customizer(Box::new(ConnectionOptions))
             .build(manager)
             .expect("Failed to create pool.");
         Self { pool }

@@ -1,5 +1,5 @@
 use super::model::{Lineup, LineupPosition};
-use super::position_eval::evaluate_all_positions;
+use super::position_eval::{calculate_position_rating, evaluate_all_positions, PositionRating};
 use super::types::{Attitude, Behaviour, Location, PositionId, RatingSector, TacticType, Weather};
 use crate::chpp::model::Player;
 use crate::rating::RatingPredictionModel;
@@ -207,6 +207,7 @@ pub struct OptimisedLineup {
     pub formation: Formation,
     pub lineup: Lineup,
     pub sector_ratings: HashMap<RatingSector, f64>,
+    pub player_ratings: HashMap<PositionId, PositionRating>,
     pub hatstats: f64,
     pub captain: Option<Player>,
     pub set_pieces_taker: Option<Player>,
@@ -224,6 +225,8 @@ impl<'a> LineupOptimiser<'a> {
     }
 
     pub fn optimise(&self, formation: Formation) -> OptimisedLineup {
+        // ... (existing optimization loop)
+
         let slots = formation.get_slots();
         let mut best_lineup = self.create_initial_lineup(&slots);
         let mut best_hatstats = self.model.calc_hatstats(&best_lineup, 0);
@@ -235,15 +238,15 @@ impl<'a> LineupOptimiser<'a> {
 
         for _ in 0..max_iterations {
             let mut improved = false;
-            
+
             // Try to swap a player in lineup with a bench player
             if let Some(new_lineup) = self.try_swap_bench(&best_lineup, &slots) {
-                 let new_hatstats = self.model.calc_hatstats(&new_lineup, 0);
-                 if new_hatstats > best_hatstats {
-                     best_lineup = new_lineup;
-                     best_hatstats = new_hatstats;
-                     improved = true;
-                 }
+                let new_hatstats = self.model.calc_hatstats(&new_lineup, 0);
+                if new_hatstats > best_hatstats {
+                    best_lineup = new_lineup;
+                    best_hatstats = new_hatstats;
+                    improved = true;
+                }
             }
 
             // Try to swap two players within the lineup
@@ -257,7 +260,7 @@ impl<'a> LineupOptimiser<'a> {
                     }
                 }
             }
-            
+
             // Try changing behaviour of a player
             if !improved {
                 if let Some(new_lineup) = self.try_change_behaviour(&best_lineup) {
@@ -287,6 +290,20 @@ impl<'a> LineupOptimiser<'a> {
             sector_ratings.insert(sector, self.model.get_rating(&best_lineup, sector, 0));
         }
 
+        // Calculate individual player ratings
+        let mut player_ratings = HashMap::new();
+        for pos in &best_lineup.positions {
+            let rating = calculate_position_rating(
+                self.model,
+                &pos.player,
+                pos.role_id,
+                pos.behaviour,
+                &best_lineup,
+                0,
+            );
+            player_ratings.insert(pos.role_id, rating);
+        }
+
         let captain = self.select_captain(&best_lineup);
         let set_pieces_taker = self.select_set_pieces_taker(&best_lineup);
 
@@ -294,6 +311,7 @@ impl<'a> LineupOptimiser<'a> {
             formation,
             lineup: best_lineup,
             sector_ratings,
+            player_ratings,
             hatstats: best_hatstats,
             captain,
             set_pieces_taker,
@@ -380,7 +398,7 @@ impl<'a> LineupOptimiser<'a> {
         // This gives a much better starting point than random
         // Note: This is a simplified greedy approach, real optimal assignment is minimum cost maximum flow or similar
         // But for   Climbing initialization, this is sufficient
-        
+
         // Use a set to keep track of assigned players
         let mut assigned_players = HashSet::new();
         let mut positions = Vec::new();
@@ -399,7 +417,9 @@ impl<'a> LineupOptimiser<'a> {
 
         // 2. Assign other slots
         for &slot in slots {
-            if slot == PositionId::Keeper { continue; } // Already handled
+            if slot == PositionId::Keeper {
+                continue;
+            } // Already handled
 
             if let Some(player) = self.find_best_player_for_slot(slot, &assigned_players) {
                 positions.push(LineupPosition {
@@ -411,7 +431,7 @@ impl<'a> LineupOptimiser<'a> {
                 assigned_players.insert(player.PlayerID);
             }
         }
-        
+
         // If we ran out of players, fill with remaining players (should rarely happen in real game unless squad is tiny)
         // ... (Handling strict squad size constraints is optional for this iteration)
 
@@ -423,99 +443,130 @@ impl<'a> LineupOptimiser<'a> {
             location: Location::default(),
         }
     }
-    
-    fn find_best_player_for_slot(&self, slot: PositionId, assigned: &HashSet<u32>) -> Option<&Player> {
+
+    fn find_best_player_for_slot(
+        &self,
+        slot: PositionId,
+        assigned: &HashSet<u32>,
+    ) -> Option<&Player> {
         // Find best unassigned player for this slot
         // We use evaluate_all_positions logic but simplified/focused on this slot
-        
+
         let mut best_player = None;
         let mut max_rating = -1.0;
 
         // Dummy lineup for context (empty)
         let dummy_lineup = Lineup {
-             positions: vec![],
-             weather: Weather::default(),
-             tactic: TacticType::Normal,
-             attitude: Attitude::Normal,
-             location: Location::default(),
+            positions: vec![],
+            weather: Weather::default(),
+            tactic: TacticType::Normal,
+            attitude: Attitude::Normal,
+            location: Location::default(),
         };
 
         for player in self.players {
-            if assigned.contains(&player.PlayerID) { continue; }
-            if player.InjuryLevel.unwrap_or(0) >= 1 && player.InjuryLevel.unwrap_or(0) < 90 { continue; } // Skip injured
+            if assigned.contains(&player.PlayerID) {
+                continue;
+            }
+            if player.InjuryLevel.unwrap_or(0) >= 1 && player.InjuryLevel.unwrap_or(0) < 90 {
+                continue;
+            } // Skip injured
 
             // Evaluate player for this specific slot
             // Since evaluate_all_positions is heavy, we can call calculate_position_rating logic directly if exposed,
             // or just use evaluate_all_positions and filter.
             // For now, we reuse evaluate_all_positions as it's available.
             let eval = evaluate_all_positions(self.model, player, &dummy_lineup, 0);
-            
-            if let Some(pos_rating) = eval.positions.iter().find(|p| p.position == slot && p.behaviour == Behaviour::Normal) {
-                 if pos_rating.rating > max_rating {
-                     max_rating = pos_rating.rating;
-                     best_player = Some(player);
-                 }
+
+            if let Some(pos_rating) = eval
+                .positions
+                .iter()
+                .find(|p| p.position == slot && p.behaviour == Behaviour::Normal)
+            {
+                if pos_rating.rating > max_rating {
+                    max_rating = pos_rating.rating;
+                    best_player = Some(player);
+                }
             }
         }
-        
+
         best_player
     }
 
-    fn try_swap_bench(&self, lineup: &Lineup, slots: &[PositionId]) -> Option<Lineup> {
+    fn try_swap_bench(&self, lineup: &Lineup, _slots: &[PositionId]) -> Option<Lineup> {
         // Randomly pick a slot in lineup
-        if lineup.positions.is_empty() { return None; }
+        if lineup.positions.is_empty() {
+            return None;
+        }
         let idx = fastrand::usize(0..lineup.positions.len());
-        let current_pos = &lineup.positions[idx];
-        
+        let _current_pos = &lineup.positions[idx];
+
         // Find bench players
         let lineup_ids: HashSet<u32> = lineup.positions.iter().map(|p| p.player.PlayerID).collect();
-        let bench_players: Vec<&Player> = self.players.iter()
-            .filter(|p| !lineup_ids.contains(&p.PlayerID) && (p.InjuryLevel.unwrap_or(0) < 1 || p.InjuryLevel.unwrap_or(0) >= 90))
+        let bench_players: Vec<&Player> = self
+            .players
+            .iter()
+            .filter(|p| {
+                !lineup_ids.contains(&p.PlayerID)
+                    && (p.InjuryLevel.unwrap_or(0) < 1 || p.InjuryLevel.unwrap_or(0) >= 90)
+            })
             .collect();
-            
-        if bench_players.is_empty() { return None; }
-        
+
+        if bench_players.is_empty() {
+            return None;
+        }
+
         let bench_player = bench_players[fastrand::usize(0..bench_players.len())];
-        
+
         let mut new_lineup = lineup.clone();
         new_lineup.positions[idx].player = bench_player.clone();
-        
+
         Some(new_lineup)
     }
 
     fn try_swap_roles(&self, lineup: &Lineup) -> Option<Lineup> {
-        if lineup.positions.len() < 2 { return None; }
+        if lineup.positions.len() < 2 {
+            return None;
+        }
         let idx1 = fastrand::usize(0..lineup.positions.len());
         let mut idx2 = fastrand::usize(0..lineup.positions.len());
         while idx1 == idx2 {
-             idx2 = fastrand::usize(0..lineup.positions.len());
+            idx2 = fastrand::usize(0..lineup.positions.len());
         }
-        
+
         let mut new_lineup = lineup.clone();
-        
+
         // Swap players but KEEP roles/behaviours
         // This simulates: "What if Player A played in Pos B and Player B in Pos A?"
         let p1 = new_lineup.positions[idx1].player.clone();
         let p2 = new_lineup.positions[idx2].player.clone();
         new_lineup.positions[idx1].player = p2;
         new_lineup.positions[idx2].player = p1;
-        
+
         Some(new_lineup)
     }
-    
+
     fn try_change_behaviour(&self, lineup: &Lineup) -> Option<Lineup> {
-        if lineup.positions.is_empty() { return None; }
+        if lineup.positions.is_empty() {
+            return None;
+        }
         let idx = fastrand::usize(0..lineup.positions.len());
-        
-        // Random new behaviour
-        let behaviours = [Behaviour::Normal, Behaviour::Offensive, Behaviour::Defensive, Behaviour::TowardsMiddle, Behaviour::TowardsWing];
-        let new_behaviour = behaviours[fastrand::usize(0..behaviours.len())];
-        
-        if lineup.positions[idx].behaviour == new_behaviour { return None; }
-        
+        let current_pos = &lineup.positions[idx];
+
+        let valid_behaviours = current_pos.role_id.valid_behaviours();
+        if valid_behaviours.len() <= 1 {
+            return None; // No alternative behaviour
+        }
+
+        // Pick a random DIFFERENT behaviour
+        let mut new_behaviour = valid_behaviours[fastrand::usize(0..valid_behaviours.len())];
+        while new_behaviour == current_pos.behaviour {
+            new_behaviour = valid_behaviours[fastrand::usize(0..valid_behaviours.len())];
+        }
+
         let mut new_lineup = lineup.clone();
         new_lineup.positions[idx].behaviour = new_behaviour;
-        
+
         Some(new_lineup)
     }
 }
@@ -523,8 +574,8 @@ impl<'a> LineupOptimiser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rating::model::Team;
     use crate::chpp::model::{Player, PlayerSkills};
+    use crate::rating::model::Team;
 
     fn create_test_player(id: u32, skills: PlayerSkills) -> Player {
         Player {
@@ -594,11 +645,23 @@ mod tests {
         let team = Team::default();
         let model = RatingPredictionModel::new(team);
         let players = vec![
-            create_test_player(1, PlayerSkills { KeeperSkill: 20, ..PlayerSkills::default() }),
-            create_test_player(2, PlayerSkills { DefenderSkill: 15, ..PlayerSkills::default() }),
+            create_test_player(
+                1,
+                PlayerSkills {
+                    KeeperSkill: 20,
+                    ..PlayerSkills::default()
+                },
+            ),
+            create_test_player(
+                2,
+                PlayerSkills {
+                    DefenderSkill: 15,
+                    ..PlayerSkills::default()
+                },
+            ),
             // ... need 11 players for full test, but unit test can check partial logic
         ];
-        
+
         let optimiser = LineupOptimiser::new(&model, &players);
         // Optimization check would require more logic setup
     }

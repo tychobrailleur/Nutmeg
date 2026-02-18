@@ -10,6 +10,6 @@ pub mod weather;
 
 pub use model::RatingPredictionModel;
 pub use types::*;
-pub mod optimiser;
 pub mod controller;
+pub mod optimiser;
 pub mod ui;

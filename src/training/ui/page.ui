@@ -1,0 +1,159 @@
+<interface>
+  <template class="TrainingPlannerPage" parent="GtkBox">
+    <property name="orientation">horizontal</property>
+    <property name="spacing">12</property>
+    <property name="margin-top">12</property>
+    <property name="margin-bottom">12</property>
+    <property name="margin-start">12</property>
+    <property name="margin-end">12</property>
+
+    <!-- Sidebar -->
+    <child>
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <property name="spacing">6</property>
+        <property name="width-request">200</property>
+        
+        <child>
+            <object class="GtkLabel">
+                <property name="label">Saved Plans</property>
+                <property name="css-classes">heading</property>
+                <property name="halign">start</property>
+            </object>
+        </child>
+
+        <child>
+            <object class="GtkScrolledWindow">
+                <property name="vexpand">true</property>
+                <property name="hscrollbar-policy">never</property>
+                <child>
+                    <object class="GtkListBox" id="plans_list">
+                        <property name="selection-mode">single</property>
+                    </object>
+                </child>
+            </object>
+        </child>
+
+        <child>
+            <object class="GtkBox">
+                <property name="orientation">horizontal</property>
+                <property name="spacing">6</property>
+                <child>
+                    <object class="GtkButton" id="new_plan_button">
+                        <property name="label">New Plan</property>
+                        <property name="icon-name">list-add-symbolic</property>
+                        <property name="hexpand">true</property>
+                    </object>
+                </child>
+                <child>
+                    <object class="GtkButton" id="delete_plan_button">
+                        <property name="icon-name">user-trash-symbolic</property>
+                        <property name="tooltip-text">Delete current plan</property>
+                    </object>
+                </child>
+            </object>
+        </child>
+      </object>
+    </child>
+
+    <child>
+        <object class="GtkSeparator">
+            <property name="orientation">vertical</property>
+        </object>
+    </child>
+
+    <!-- Main Content -->
+    <child>
+        <object class="GtkBox">
+            <property name="orientation">vertical</property>
+            <property name="spacing">12</property>
+            <property name="hexpand">true</property>
+
+            <!-- Plan Header -->
+            <child>
+                <object class="GtkEntry" id="plan_name_entry">
+                    <property name="placeholder-text">Plan Name</property>
+                </object>
+            </child>
+
+            <!-- Steps Editor -->
+            <child>
+                <object class="GtkBox">
+                    <property name="orientation">horizontal</property>
+                    <property name="spacing">12</property>
+                    <child>
+                        <object class="GtkLabel">
+                            <property name="label">Training Cycle</property>
+                            <property name="css-classes">heading</property>
+                            <property name="halign">start</property>
+                        </object>
+                    </child>
+                    <child>
+                         <object class="GtkButton" id="add_step_button">
+                            <property name="label">Add Step</property>
+                            <property name="icon-name">list-add-symbolic</property>
+                            <property name="halign">end</property>
+                            <property name="hexpand">true</property>
+                        </object>
+                    </child>
+                </object>
+            </child>
+             <child>
+                <object class="GtkScrolledWindow">
+                    <property name="vexpand">true</property>
+                     <child>
+                        <object class="GtkBox" id="steps_container">
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">6</property>
+                        </object>
+                     </child>
+                </object>
+            </child>
+
+            <!-- Target Players -->
+            <child>
+                <object class="GtkLabel">
+                    <property name="label">Target Players</property>
+                    <property name="css-classes">heading</property>
+                    <property name="halign">start</property>
+                </object>
+            </child>
+            <child>
+                <object class="GtkScrolledWindow">
+                    <property name="vexpand">true</property>
+                    <child>
+                        <object class="GtkListBox" id="players_list">
+                            <property name="selection-mode">none</property>
+                        </object>
+                    </child>
+                </object>
+            </child>
+
+            <!-- Results/Projections Placeholder -->
+            <child>
+                <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">6</property>
+                    <child>
+                        <object class="GtkButton" id="simulate_button">
+                            <property name="label">Simulate Cycle</property>
+                            <property name="icon-name">media-playback-start-symbolic</property>
+                        </object>
+                    </child>
+                    <child>
+                        <object class="GtkLabel" id="results_label">
+                            <property name="label">Projections will appear here</property>
+                            <property name="css-classes">dim-label</property>
+                            <property name="wrap">true</property>
+                            <property name="selectable">true</property>
+                            <property name="xalign">0.0</property>
+                        </object>
+                    </child>
+                </object>
+            </child>
+
+        </object>
+    </child>
+
+  </template>
+</interface>
