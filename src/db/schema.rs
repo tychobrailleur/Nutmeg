@@ -302,6 +302,20 @@ diesel::joinable!(users -> downloads (download_id));
 diesel::joinable!(league_units -> downloads (download_id));
 diesel::joinable!(league_unit_teams -> downloads (download_id));
 diesel::joinable!(matches -> downloads (download_id));
+diesel::joinable!(staff -> downloads (download_id));
+
+diesel::table! {
+    staff (staff_id) {
+        staff_id -> Integer,
+        team_id -> Integer,
+        staff_type -> Integer,
+        staff_level -> Integer,
+        hired_date -> Text,
+        cost -> Integer,
+        name -> Text,
+        download_id -> Integer,
+    }
+}
 
 // Retain simple FKs where constraints still essentially exist or for join logic if IDs match
 diesel::joinable!(cups -> downloads (download_id));
@@ -324,4 +338,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     regions,
     teams,
     users,
+    staff,
 );

@@ -28,7 +28,7 @@ use crate::chpp::error::Error;
 use crate::chpp::metadata::ChppEndpoints;
 use crate::chpp::model::{
     AvatarsData, ChppErrorResponse, HattrickData, LeagueDetailsData, MatchesData, Player,
-    PlayerDetailsData, PlayersData, WorldDetails,
+    PlayerDetailsData, PlayersData, StaffListData, WorldDetails,
 };
 use crate::chpp::{CHPP_URL, NUTMEG_USER_AGENT};
 
@@ -373,6 +373,27 @@ pub async fn matches_archive_request(
     chpp_request::<MatchesData>(
         ChppEndpoints::MATCHES_ARCHIVE.name,
         ChppEndpoints::MATCHES_ARCHIVE.version,
+        Some(&params),
+        data,
+        key,
+    )
+    .await
+}
+pub async fn staff_list_request(
+    data: OAuthData,
+    key: SigningKey,
+    team_id: Option<u32>,
+) -> Result<StaffListData, Error> {
+    let mut params = Vec::new();
+    let tid_str;
+    if let Some(tid) = team_id {
+        tid_str = tid.to_string();
+        params.push(("teamId", tid_str.as_str()));
+    }
+
+    chpp_request::<StaffListData>(
+        ChppEndpoints::STAFF_LIST.name,
+        ChppEndpoints::STAFF_LIST.version,
         Some(&params),
         data,
         key,

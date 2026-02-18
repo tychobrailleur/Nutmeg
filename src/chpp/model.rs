@@ -1928,3 +1928,76 @@ pub struct AvatarsData {
     #[serde(rename = "Team")]
     pub team: AvatarsTeam,
 }
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Staff {
+    pub StaffId: u32,
+    pub StaffType: u32,
+    pub StaffLevel: u32,
+    pub HiredDate: String,
+    pub Cost: u32,
+    pub Name: String,
+    #[serde(default)]
+    pub HofPlayerId: Option<u32>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct StaffTrainer {
+    pub TrainerId: u32,
+    pub Name: String,
+    #[serde(default)]
+    pub Age: Option<u32>,
+    #[serde(default)]
+    pub AgeDays: Option<u32>,
+    #[serde(default)]
+    pub ContractDate: Option<String>,
+    #[serde(default)]
+    pub Cost: Option<u32>,
+    #[serde(default)]
+    pub CountryID: Option<u32>,
+    #[serde(default)]
+    pub TrainerType: Option<u32>,
+    #[serde(default)]
+    pub Leadership: Option<u32>,
+    #[serde(default)]
+    pub TrainerSkillLevel: Option<u32>,
+    #[serde(default)]
+    pub TrainerStatus: Option<u32>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct StaffMembersWrapper {
+    #[serde(rename = "Staff", default)]
+    pub staff: Vec<Staff>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct StaffList {
+    #[serde(default)]
+    pub Trainer: Option<StaffTrainer>,
+    #[serde(default)]
+    pub StaffMembers: Option<StaffMembersWrapper>,
+    #[serde(default)]
+    pub TotalStaffMembers: Option<u32>,
+    #[serde(default)]
+    pub TotalCost: Option<u32>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct StaffListData {
+    #[serde(rename = "FileName")]
+    pub file_name: String,
+    #[serde(rename = "Version")]
+    pub version: String,
+    #[serde(rename = "UserID")]
+    pub user_id: u32,
+    #[serde(rename = "FetchedDate", default)]
+    pub fetched_date: Option<String>,
+    #[serde(rename = "StaffList")]
+    pub staff_list: StaffList,
+}

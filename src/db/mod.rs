@@ -22,4 +22,5 @@ pub mod download_entries;
 pub mod manager;
 pub mod schema;
 pub mod series;
+pub mod staff;
 pub mod teams;
