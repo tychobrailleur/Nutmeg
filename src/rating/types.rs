@@ -1,5 +1,5 @@
 /// Core types and enums for the rating prediction system
-/// Based on Schum's formula implementation from Hattrick Organizer
+/// Based on Schum's formula.
 
 /// The seven rating sectors in a match
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

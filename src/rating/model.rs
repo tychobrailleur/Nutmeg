@@ -226,6 +226,25 @@ impl RatingPredictionModel {
 
         4.0 * hatstats
     }
+
+    /// Get player's set pieces strength
+    /// Used for selecting the set pieces taker
+    pub fn get_player_set_pieces_strength(player: &Player) -> f64 {
+        use super::strength::calc_player_tactic_strength;
+
+        let mut strength = calc_player_tactic_strength(player, PlayerSkill::SetPieces);
+
+        // Apply stamina effect at minute 0 with Normal tactic
+        let stamina_skill = player
+            .PlayerSkills
+            .as_ref()
+            .map(|ps| ps.StaminaSkill)
+            .unwrap_or(0) as f64;
+
+        strength *= calc_stamina(stamina_skill, 0, 0, TacticType::Normal);
+
+        strength
+    }
 }
 
 /// Get player's specialty

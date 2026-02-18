@@ -203,25 +203,27 @@ impl Formation {
 }
 
 #[derive(Debug, Clone)]
-pub struct OptimizedLineup {
+pub struct OptimisedLineup {
     pub formation: Formation,
     pub lineup: Lineup,
     pub sector_ratings: HashMap<RatingSector, f64>,
     pub hatstats: f64,
+    pub captain: Option<Player>,
+    pub set_pieces_taker: Option<Player>,
 }
 
-/// Optimizer that finds the best lineup for a formation using Hill Climbing
-pub struct LineupOptimizer<'a> {
+/// Optimiser that finds the best lineup for a formation using Hill Climbing
+pub struct LineupOptimiser<'a> {
     model: &'a RatingPredictionModel,
     players: &'a [Player],
 }
 
-impl<'a> LineupOptimizer<'a> {
+impl<'a> LineupOptimiser<'a> {
     pub fn new(model: &'a RatingPredictionModel, players: &'a [Player]) -> Self {
         Self { model, players }
     }
 
-    pub fn optimize(&self, formation: Formation) -> OptimizedLineup {
+    pub fn optimise(&self, formation: Formation) -> OptimisedLineup {
         let slots = formation.get_slots();
         let mut best_lineup = self.create_initial_lineup(&slots);
         let mut best_hatstats = self.model.calc_hatstats(&best_lineup, 0);
@@ -285,19 +287,99 @@ impl<'a> LineupOptimizer<'a> {
             sector_ratings.insert(sector, self.model.get_rating(&best_lineup, sector, 0));
         }
 
-        OptimizedLineup {
+        let captain = self.select_captain(&best_lineup);
+        let set_pieces_taker = self.select_set_pieces_taker(&best_lineup);
+
+        OptimisedLineup {
             formation,
             lineup: best_lineup,
             sector_ratings,
             hatstats: best_hatstats,
+            captain,
+            set_pieces_taker,
         }
+    }
+
+    fn select_captain(&self, lineup: &Lineup) -> Option<Player> {
+        let players: Vec<&Player> = lineup.positions.iter().map(|p| &p.player).collect();
+        if players.is_empty() {
+            return None;
+        }
+
+        let mut best_captain = None;
+        let mut max_xp_value = -1.0;
+
+        // Sum experience of all players
+        let mut total_xp = 0.0;
+        for p in &players {
+            total_xp += p.Experience as f64;
+        }
+
+        for candidate in &players {
+            // Add captain's experience again (as per Java logic: (sum(xp) + captain.xp) / 12)
+            let current_total_xp = total_xp + candidate.Experience as f64;
+            let avg_xp = current_total_xp / 12.0;
+
+            // Penalty for leadership < 7 (Solid)
+            // Factor = 1.0 - (7 - leadership) * 0.05
+            // Note: Leadership 7 is Solid? In CHPP API, 3 might be standard. Need to verify scale.
+            // In CHPP: 1=Disasterous ... 7=Solid, 8=Excellent.
+            // Java uses 7 as baseline.
+            let leadership = candidate.Leadership as f64;
+            let factor = 1.0 - (7.0 - leadership) * 0.05;
+
+            let value = avg_xp * factor;
+
+            if value > max_xp_value {
+                max_xp_value = value;
+                best_captain = Some((*candidate).clone());
+            }
+        }
+
+        best_captain
+    }
+
+    fn select_set_pieces_taker(&self, lineup: &Lineup) -> Option<Player> {
+        // Exclude keeper from set pieces taker candidates (as per Java logic)
+        let candidates: Vec<&Player> = lineup
+            .positions
+            .iter()
+            .filter(|p| p.role_id != PositionId::Keeper)
+            .map(|p| &p.player)
+            .collect();
+
+        if candidates.is_empty() {
+            return None;
+        }
+
+        let mut best_taker = None;
+        let mut max_sp_strength = -1.0;
+        let mut best_form = -1;
+
+        for player in candidates {
+            let strength = RatingPredictionModel::get_player_set_pieces_strength(player);
+            let form = player.PlayerForm as i32;
+
+            if strength > max_sp_strength {
+                max_sp_strength = strength;
+                best_taker = Some(player.clone());
+                best_form = form;
+            } else if (strength - max_sp_strength).abs() < 0.001 && form > best_form {
+                // Tie breaker on form
+                max_sp_strength = strength;
+                best_taker = Some(player.clone());
+                best_form = form;
+            }
+        }
+
+        best_taker
     }
 
     fn create_initial_lineup(&self, slots: &[PositionId]) -> Lineup {
         // Simple greedy initialization: pick best available player for each slot
         // This gives a much better starting point than random
         // Note: This is a simplified greedy approach, real optimal assignment is minimum cost maximum flow or similar
-        // But for Hill Climbing initialization, this is sufficient
+        // But for   Climbing initialization, this is sufficient
         
         // Use a set to keep track of assigned players
         let mut assigned_players = HashSet::new();
@@ -508,7 +590,7 @@ mod tests {
     }
 
     #[test]
-    fn test_optimizer_initialization() {
+    fn test_optimiser_initialization() {
         let team = Team::default();
         let model = RatingPredictionModel::new(team);
         let players = vec![
@@ -517,7 +599,7 @@ mod tests {
             // ... need 11 players for full test, but unit test can check partial logic
         ];
         
-        let optimizer = LineupOptimizer::new(&model, &players);
+        let optimiser = LineupOptimiser::new(&model, &players);
         // Optimization check would require more logic setup
     }
 }

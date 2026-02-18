@@ -86,7 +86,7 @@
 
             <!-- Optimizer Tab -->
             <child>
-              <object class="FormationOptimizerWidget" id="optimizer">
+              <object class="FormationOptimiserWidget" id="optimiser">
               </object>
             </child>
             <child type="tab">

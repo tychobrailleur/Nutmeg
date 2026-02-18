@@ -32,7 +32,7 @@ use log::info;
 use crate::ui::context_object::ContextObject;
 use crate::ui::player_object::PlayerObject;
 use crate::ui::team_object::TeamObject;
-use crate::rating::ui::page::FormationOptimizerWidget;
+use crate::rating::ui::page::FormationOptimiserWidget;
 
 use crate::squad::player_details::SquadPlayerDetails;
 use crate::squad::player_list::SquadPlayerList;
@@ -50,7 +50,7 @@ mod imp {
         #[template_child]
         pub combo_teams: TemplateChild<gtk::DropDown>,
         #[template_child]
-        pub optimizer: TemplateChild<FormationOptimizerWidget>,
+        pub optimiser: TemplateChild<FormationOptimiserWidget>,
 
         #[template_child]
         pub player_list: TemplateChild<SquadPlayerList>,
@@ -87,7 +87,7 @@ mod imp {
         type ParentType = gtk::ApplicationWindow;
 
         fn class_init(klass: &mut Self::Class) {
-            FormationOptimizerWidget::ensure_type();
+            FormationOptimiserWidget::ensure_type();
             klass.bind_template();
         }
 
@@ -196,16 +196,16 @@ impl NutmegWindow {
         //     window.imp().player_details.set_player(player_obj, None);
         // });
 
-        // Listen to players list changes to update optimizer AND bind to player list
+        // Listen to players list changes to update optimiser AND bind to player list
         let window = self.clone();
         model.connect_notify_local(Some("players"), move |model, _| {
-             window.update_optimizer_players(model.property("players"));
+             window.update_optimiser_players(model.property("players"));
         });
 
 
-        // Initialize optimizer with current players (if any already loaded)
+        // Initialize optimiser with current players (if any already loaded)
         if let Some(store) = model.property::<Option<gtk::ListStore>>("players") {
-            self.update_optimizer_players(Some(store));
+            self.update_optimiser_players(Some(store));
         }
 
         // Bind combo_teams selected item to ContextObject selected-team
@@ -227,7 +227,7 @@ impl NutmegWindow {
             .build();
     }
 
-    fn update_optimizer_players(&self, list_store: Option<gtk::ListStore>) {
+    fn update_optimiser_players(&self, list_store: Option<gtk::ListStore>) {
         if let Some(store) = list_store {
             let mut players = Vec::new();
             if let Some(iter) = store.iter_first() {
@@ -242,10 +242,10 @@ impl NutmegWindow {
                     }
                 }
             }
-            info!("Updating optimizer with {} players", players.len());
-            self.imp().optimizer.set_players(players);
+            info!("Updating optimiser with {} players", players.len());
+            self.imp().optimiser.set_players(players);
         } else {
-            self.imp().optimizer.set_players(Vec::new());
+            self.imp().optimiser.set_players(Vec::new());
         }
     }
 

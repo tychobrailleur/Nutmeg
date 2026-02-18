@@ -1,5 +1,5 @@
 use crate::chpp::model::Player;
-use crate::rating::optimizer::OptimizedLineup;
+use crate::rating::optimiser::OptimisedLineup;
 use crate::rating::{RatingSector, types::PositionId};
 use crate::rating::controller::RatingController;
 use adw::prelude::*;
@@ -15,7 +15,7 @@ mod imp {
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(string = r#"
     <interface>
-      <template class="FormationOptimizerWidget" parent="GtkBox">
+      <template class="FormationOptimiserWidget" parent="GtkBox">
         <property name="orientation">vertical</property>
         <property name="spacing">12</property>
         <property name="margin-top">12</property>
@@ -30,7 +30,7 @@ mod imp {
             
             <child>
               <object class="GtkLabel">
-                <property name="label" translatable="yes">Formation Optimizer</property>
+                <property name="label" translatable="yes">Formation Optimiser</property>
                 <property name="css-classes">title-1</property>
                 <property name="halign">start</property>
                 <property name="hexpand">true</property>
@@ -67,7 +67,7 @@ mod imp {
       </template>
     </interface>
     "#)]
-    pub struct FormationOptimizerWidget {
+    pub struct FormationOptimiserWidget {
         #[template_child]
         pub calculate_button: TemplateChild<gtk::Button>,
         #[template_child]
@@ -77,9 +77,9 @@ mod imp {
     }
 
     #[glib::object_subclass]
-    impl ObjectSubclass for FormationOptimizerWidget {
-        const NAME: &'static str = "FormationOptimizerWidget";
-        type Type = super::FormationOptimizerWidget;
+    impl ObjectSubclass for FormationOptimiserWidget {
+        const NAME: &'static str = "FormationOptimiserWidget";
+        type Type = super::FormationOptimiserWidget;
         type ParentType = gtk::Box;
 
         fn class_init(klass: &mut Self::Class) {
@@ -91,24 +91,24 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for FormationOptimizerWidget {
+    impl ObjectImpl for FormationOptimiserWidget {
         fn constructed(&self) {
             self.parent_constructed();
             self.obj().setup_callbacks();
         }
     }
     
-    impl WidgetImpl for FormationOptimizerWidget {}
-    impl BoxImpl for FormationOptimizerWidget {}
+    impl WidgetImpl for FormationOptimiserWidget {}
+    impl BoxImpl for FormationOptimiserWidget {}
 }
 
 glib::wrapper! {
-    pub struct FormationOptimizerWidget(ObjectSubclass<imp::FormationOptimizerWidget>)
+    pub struct FormationOptimiserWidget(ObjectSubclass<imp::FormationOptimiserWidget>)
         @extends gtk::Widget, gtk::Box,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Orientable;
 }
 
-impl FormationOptimizerWidget {
+impl FormationOptimiserWidget {
     pub fn new() -> Self {
         glib::Object::builder().build()
     }
@@ -132,7 +132,7 @@ impl FormationOptimizerWidget {
         let imp = self.imp();
         let players = imp.players.borrow().clone();
         
-        info!("Optimizer started with {} players", players.len());
+        info!("Optimiser started with {} players", players.len());
         if let Some(p) = players.first() {
             debug!("Sample player: {} {} (Form: {})", p.FirstName, p.LastName, p.PlayerForm);
              // Skills check omitted for brevity in controller call but good for debug
@@ -153,13 +153,13 @@ impl FormationOptimizerWidget {
                 obj.imp().calculate_button.set_sensitive(true);
                 match result {
                     Ok(results) => obj.display_results(results),
-                    Err(e) => error!("Optimization task failed: {}", e),
+                    Err(e) => error!("Optimisation task failed: {}", e),
                 }
             }
         });
     }
 
-    fn display_results(&self, results: Vec<OptimizedLineup>) {
+    fn display_results(&self, results: Vec<OptimisedLineup>) {
         let flowbox = self.imp().formations_flowbox.get();
         
         for result in results {
@@ -168,7 +168,7 @@ impl FormationOptimizerWidget {
         }
     }
 
-    fn create_formation_card(&self, result: &OptimizedLineup) -> gtk::Widget {
+    fn create_formation_card(&self, result: &OptimisedLineup) -> gtk::Widget {
         let card = gtk::Box::new(gtk::Orientation::Vertical, 6);
         card.add_css_class("card");
         card.set_margin_top(6);
@@ -222,6 +222,34 @@ impl FormationOptimizerWidget {
         add_row("Att L", *result.sector_ratings.get(&RatingSector::AttackLeft).unwrap_or(&0.0), 6);
 
         card.append(&grid);
+
+        // Roles Section
+        let roles_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        roles_box.set_margin_top(8);
+        roles_box.set_margin_bottom(8);
+        
+        let add_role = |label: &str, player: Option<&Player>| {
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            let lbl = gtk::Label::builder()
+                .label(label)
+                .halign(gtk::Align::Start)
+                .css_classes(["dim-label"])
+                .build();
+            let name_text = player.map(|p| format!("{} {}", p.FirstName, p.LastName)).unwrap_or_else(|| "-".to_string());
+            let val = gtk::Label::builder()
+                .label(&name_text)
+                .halign(gtk::Align::End)
+                .hexpand(true)
+                .build();
+            row.append(&lbl);
+            row.append(&val);
+            roles_box.append(&row);
+        };
+        
+        add_role("Captain", result.captain.as_ref());
+        add_role("Set Pieces", result.set_pieces_taker.as_ref());
+        
+        card.append(&roles_box);
 
         card.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
 
