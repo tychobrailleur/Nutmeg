@@ -4,3 +4,56 @@
     background-color: @mother_club_bg;
     color: inherit;
 }
+
+/* Visualization Styles */
+
+.pitch-view {
+    padding: 12px;
+    background-color: #2e8b57; /* SeaGreen - pitch color */
+    border-radius: 8px;
+    color: white;
+}
+
+.slot-filled {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 4px;
+    margin: 2px;
+    min-height: 40px;
+}
+
+.slot-empty {
+    border: 1px dashed rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    padding: 4px;
+    margin: 2px;
+    min-height: 40px;
+}
+
+.caption {
+    font-size: 0.8em;
+    font-weight: bold;
+    opacity: 0.8;
+}
+
+.dim-label {
+    opacity: 0.5;
+}
+
+.card {
+    background-color: @card_bg_color;
+    padding: 12px;
+    border-radius: 8px;
+    background-clip: border-box;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.heading {
+    font-size: 1.1em;
+    font-weight: bold;
+}
+
+.accent {
+    color: @accent_color;
+    font-weight: bold;
+}

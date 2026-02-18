@@ -46,7 +46,7 @@ pub struct PlayerDisplay {
 }
 
 impl PlayerDisplay {
-    pub fn new(p: &Player, locale: &SystemLocale) -> Self {
+    pub fn new(p: &Player, locale: &SystemLocale, preferred_position: Option<&str>) -> Self {
         let name = format!("{} {}", p.FirstName, p.LastName);
         let flag = p.Flag.clone().unwrap_or_else(|| "🏳️".to_string());
         let number = p
@@ -84,14 +84,19 @@ impl PlayerDisplay {
         let leadership = p.Leadership.to_string();
         let loyalty = p.Loyalty.to_string();
 
-        let best_pos = match p.PlayerCategoryId {
-            Some(1) => gettext("Keeper"),
-            Some(2) => gettext("Right Back"),
-            Some(3) => gettext("Central Defender"),
-            Some(4) => gettext("Winger"),
-            Some(5) => gettext("Inner Midfielder"),
-            Some(6) => gettext("Forward"),
-            _ => "-".to_string(),
+        // Use preferred position if provided, otherwise fall back to PlayerCategoryId
+        let best_pos = if let Some(pref) = preferred_position {
+            pref.to_string()
+        } else {
+            match p.PlayerCategoryId {
+                Some(1) => gettext("Keeper"),
+                Some(2) => gettext("Right Back"),
+                Some(3) => gettext("Central Defender"),
+                Some(4) => gettext("Winger"),
+                Some(5) => gettext("Inner Midfielder"),
+                Some(6) => gettext("Forward"),
+                _ => "-".to_string(),
+            }
         };
 
         let last_pos_code = p.LastMatch.as_ref().map(|m| m.PositionCode).unwrap_or(0);
@@ -275,7 +280,7 @@ mod tests {
         // Or we can assume strict output given SystemLocale::from_name("C")
         let locale = SystemLocale::from_name("C").unwrap();
         let p = create_dummy_player();
-        let display = PlayerDisplay::new(&p, &locale);
+        let display = PlayerDisplay::new(&p, &locale, None);
 
         assert_eq!(display.name, "John Doe");
         assert_eq!(display.number, "10");
@@ -305,6 +310,6 @@ mod tests {
         let locale =
             SystemLocale::default().unwrap_or_else(|_| SystemLocale::from_name("C").unwrap());
         let p = create_dummy_player();
-        let _display = PlayerDisplay::new(&p, &locale);
+        let _display = PlayerDisplay::new(&p, &locale, None);
     }
 }

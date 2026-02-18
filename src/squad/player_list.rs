@@ -136,7 +136,7 @@ pub fn create_player_model(players: &[crate::chpp::model::Player]) -> gtk::ListS
 
     for p in players {
         let obj = PlayerObject::new(p.clone());
-        let display = PlayerDisplay::new(p, &locale);
+        let display = PlayerDisplay::new(p, &locale, None);
 
         let bg = if p.MotherClubBonus {
             // FIXME: still haven't figured out to use the CSS class

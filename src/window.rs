@@ -32,6 +32,7 @@ use log::info;
 use crate::ui::context_object::ContextObject;
 use crate::ui::player_object::PlayerObject;
 use crate::ui::team_object::TeamObject;
+use crate::rating::ui::page::FormationOptimizerWidget;
 
 use crate::squad::player_details::SquadPlayerDetails;
 use crate::squad::player_list::SquadPlayerList;
@@ -41,11 +42,15 @@ use crate::series::page::SeriesPage;
 mod imp {
     use super::*;
 
+    // See https://gtk-rs.org/gtk4-rs/stable/latest/docs/gtk4_macros/derive.CompositeTemplate.html
+    // for composite template, it brings template and template_child attributes.
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(resource = "/org/gnome/Nutmeg/window.ui")]
     pub struct NutmegWindow {
         #[template_child]
         pub combo_teams: TemplateChild<gtk::DropDown>,
+        #[template_child]
+        pub optimizer: TemplateChild<FormationOptimizerWidget>,
 
         #[template_child]
         pub player_list: TemplateChild<SquadPlayerList>,
@@ -82,6 +87,7 @@ mod imp {
         type ParentType = gtk::ApplicationWindow;
 
         fn class_init(klass: &mut Self::Class) {
+            FormationOptimizerWidget::ensure_type();
             klass.bind_template();
         }
 
@@ -182,6 +188,26 @@ impl NutmegWindow {
         let imp = self.imp();
         let model = &imp.context_object;
 
+        // Listen to selected-player changes in ContextObject to update details panel
+        // REMOVED: Handled in selection handler to include preferred position which is not in ContextObject
+        // let window = self.clone();
+        // model.connect_notify_local(Some("selected-player"), move |model, _| {
+        //     let player_obj: Option<PlayerObject> = model.property("selected-player");
+        //     window.imp().player_details.set_player(player_obj, None);
+        // });
+
+        // Listen to players list changes to update optimizer AND bind to player list
+        let window = self.clone();
+        model.connect_notify_local(Some("players"), move |model, _| {
+             window.update_optimizer_players(model.property("players"));
+        });
+
+
+        // Initialize optimizer with current players (if any already loaded)
+        if let Some(store) = model.property::<Option<gtk::ListStore>>("players") {
+            self.update_optimizer_players(Some(store));
+        }
+
         // Bind combo_teams selected item to ContextObject selected-team
         imp.combo_teams
             .bind_property("selected-item", model, "selected-team")
@@ -199,13 +225,28 @@ impl NutmegWindow {
             .bind_property("players", &imp.player_list.tree_view(), "model")
             .sync_create()
             .build();
+    }
 
-        // Listen to selected-player changes in ContextObject to update details panel
-        let window = self.clone();
-        model.connect_notify_local(Some("selected-player"), move |model, _| {
-            let player_obj: Option<PlayerObject> = model.property("selected-player");
-            window.imp().player_details.set_player(player_obj);
-        });
+    fn update_optimizer_players(&self, list_store: Option<gtk::ListStore>) {
+        if let Some(store) = list_store {
+            let mut players = Vec::new();
+            if let Some(iter) = store.iter_first() {
+                loop {
+                    #[allow(deprecated)]
+                    let obj_val = store.get_value(&iter, 18);
+                    if let Ok(player_obj) = obj_val.get::<PlayerObject>() {
+                        players.push(player_obj.player().clone());
+                    }
+                    if !store.iter_next(&iter) {
+                        break;
+                    }
+                }
+            }
+            info!("Updating optimizer with {} players", players.len());
+            self.imp().optimizer.set_players(players);
+        } else {
+            self.imp().optimizer.set_players(Vec::new());
+        }
     }
 
     fn setup_signals(&self) {
@@ -215,17 +256,35 @@ impl NutmegWindow {
         let view = imp.player_list.tree_view();
         let selection = view.selection();
         let context_object = imp.context_object.clone();
+        
+        // Needed for manual update of details
+        let player_details = imp.player_details.clone();
 
         selection.connect_changed(move |selection| {
             #[allow(deprecated)]
             if let Some((model, iter)) = selection.selected() {
                 #[allow(deprecated)]
                 let obj_val = model.get_value(&iter, 18);
-                if let Ok(player_obj) = obj_val.get::<PlayerObject>() {
-                    context_object.set_selected_player(Some(player_obj));
-                }
+                
+                let player_obj = if let Ok(obj) = obj_val.get::<PlayerObject>() {
+                    Some(obj)
+                } else {
+                    None
+                };
+
+                // Get preferred position from column 11
+                #[allow(deprecated)]
+                let best_pos_val = model.get_value(&iter, 11);
+                let best_pos = best_pos_val.get::<String>().ok();
+
+                // Update ContextObject (for other consumers)
+                context_object.set_selected_player(player_obj.clone());
+                
+                // Update UI directly to include best_pos
+                player_details.set_player(player_obj, best_pos);
             } else {
                 context_object.set_selected_player(None);
+                player_details.set_player(None, None);
             }
         });
 

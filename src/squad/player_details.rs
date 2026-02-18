@@ -114,7 +114,7 @@ impl SquadPlayerDetails {
         glib::Object::builder().build()
     }
 
-    pub fn set_player(&self, player_obj: Option<PlayerObject>) {
+    pub fn set_player(&self, player_obj: Option<PlayerObject>, preferred_position: Option<String>) {
         if let Some(player_obj) = player_obj {
             let imp = self.imp();
             let p = player_obj.player();
@@ -162,14 +162,18 @@ impl SquadPlayerDetails {
             }
 
             // Category
-            let cat_str = match p.PlayerCategoryId {
-                Some(1) => gettext("Keeper"),
-                Some(2) => gettext("Right Back"),
-                Some(3) => gettext("Central Defender"),
-                Some(4) => gettext("Winger"),
-                Some(5) => gettext("Inner Midfielder"),
-                Some(6) => gettext("Forward"),
-                _ => gettext("Unknown/Unset"),
+            let cat_str = if let Some(pref) = preferred_position {
+                pref
+            } else {
+                match p.PlayerCategoryId {
+                    Some(1) => gettext("Keeper"),
+                    Some(2) => gettext("Right Back"),
+                    Some(3) => gettext("Central Defender"),
+                    Some(4) => gettext("Winger"),
+                    Some(5) => gettext("Inner Midfielder"),
+                    Some(6) => gettext("Forward"),
+                    _ => gettext("Unknown/Unset"),
+                }
             };
             imp.details_category.set_label(&cat_str);
 

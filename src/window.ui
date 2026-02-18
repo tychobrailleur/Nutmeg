@@ -54,6 +54,7 @@
         <child>
           <object class="GtkNotebook" id="notebook">
             <property name="vexpand">true</property>
+            <!-- Squad Tab -->
             <child>
               <object class="GtkPaned" id="squad_view">
                 <property name="vexpand">true</property>
@@ -82,11 +83,10 @@
                 <property name="use-underline">True</property>
               </object>
             </child>
+
+            <!-- Optimizer Tab -->
             <child>
-              <object class="GtkLabel">
-                <property name="label" translatable="yes">Coming soon...</property>
-                <property name="vexpand">true</property>
-                <property name="hexpand">true</property>
+              <object class="FormationOptimizerWidget" id="optimizer">
               </object>
             </child>
             <child type="tab">
@@ -95,6 +95,8 @@
                  <property name="use-underline">True</property>
                </object>
             </child>
+
+            <!-- Series Tab -->
             <child>
               <object class="SeriesPage" id="series_page">
                  <property name="visible">True</property>
