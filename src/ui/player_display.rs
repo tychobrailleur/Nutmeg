@@ -42,7 +42,7 @@ pub struct PlayerDisplay {
     pub injured: String,
     pub cards: String,
     pub mother_club: String,
-    pub mother_club_bonus: bool,
+    pub _mother_club_bonus: bool,
 }
 
 impl PlayerDisplay {
@@ -142,7 +142,7 @@ impl PlayerDisplay {
             injured,
             cards,
             mother_club,
-            mother_club_bonus: p.MotherClubBonus,
+            _mother_club_bonus: p.MotherClubBonus,
         }
     }
 }

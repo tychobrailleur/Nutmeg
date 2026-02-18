@@ -70,6 +70,7 @@ impl SyncService {
     }
 
     // For testing
+    #[allow(dead_code)]
     pub fn new_with_client(
         db_manager: Arc<DbManager>,
         client: Arc<dyn ChppClient>,

@@ -959,7 +959,8 @@ pub struct MatchDetails {
     pub AwayTeam: MatchAwayTeam,
     pub MatchDate: String,
     pub SourceSystem: Option<String>, // hattrick, youth or htointegrated
-    pub MatchType: u32,
+    pub MatchType: u32, // 1 league match, 2 qualification match, 3 cup match, 4 friendly (normal rules),
+    // 5 friendly (cup rules), 7 hattrick masters, 8 intl friendly (normal rules), 9 intl friendly (cup rules), ...
     pub MatchContextId: Option<u32>, // either LeagueLevelUnitId (for League), CupId (Cup, Hattrick Masters, World Cup and U-20 World Cup),
     // LadderId, TournamentId, or 0 for friendly, qualification, single matches and preparation matches.
     pub CupLevel: Option<u32>,
@@ -1621,6 +1622,7 @@ mod tests {
     }
 
     // Leaving this as sanity check, this what I used to debug the empty tag issue...
+    #[allow(non_snake_case)]
     #[derive(Debug, Deserialize)]
     struct Example {
         #[serde(default, deserialize_with = "deserialize_empty_tag_is_none")]

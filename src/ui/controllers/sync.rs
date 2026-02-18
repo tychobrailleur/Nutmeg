@@ -5,7 +5,7 @@ use crate::service::sync::{DataSyncService, SyncService};
 use crate::ui::oauth_dialog::OAuthDialog;
 use crate::window::NutmegWindow;
 use gtk::glib;
-use gtk::prelude::*;
+
 use log::{error, info, warn};
 use std::sync::Arc;
 

@@ -3,5 +3,5 @@ pub mod controllers;
 pub mod oauth_dialog;
 pub mod player_display;
 pub mod player_object;
-pub mod series_page;
+
 pub mod team_object;

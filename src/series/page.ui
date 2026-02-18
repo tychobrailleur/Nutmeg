@@ -8,7 +8,7 @@
     <property name="margin-bottom">12</property>
     <property name="margin-start">12</property>
     <property name="margin-end">12</property>
-    
+
     <child>
       <object class="GtkLabel" id="league_name_label">
         <property name="label">Series</property>

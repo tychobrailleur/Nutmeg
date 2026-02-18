@@ -12,7 +12,6 @@ use gtk::subclass::prelude::*;
 use gtk::{
     glib, ColumnView, ColumnViewColumn, CompositeTemplate, Label, ListItem, SignalListItemFactory,
 };
-// use std::cell::RefCell;
 
 // Object to wrap LeagueTeam for GListStore
 mod imp_model {
@@ -82,7 +81,7 @@ mod imp {
     use super::*;
 
     #[derive(Default, CompositeTemplate)]
-    #[template(resource = "/org/gnome/Nutmeg/ui/series_page.ui")]
+    #[template(resource = "/org/gnome/Nutmeg/series/page.ui")]
     pub struct SeriesPage {
         #[template_child]
         pub league_name_label: TemplateChild<Label>,
@@ -139,7 +138,7 @@ impl SeriesPage {
             );
             imp.league_name_label.set_text(&format!(
                 "{} ({})",
-                league_data.LeagueLevelUnitName, league_data.LeagueLevel
+                league_data.LeagueLevelUnitName, league_data.LeagueLevelUnitID
             ));
 
             let store = gtk::gio::ListStore::new::<LeagueTeamObject>();
@@ -248,7 +247,7 @@ impl SeriesPage {
                 .data
                 .borrow()
                 .as_ref()
-                .map(|team| calculate_goal_difference(team))
+                .map(calculate_goal_difference)
                 .unwrap_or_default()
         });
         self.add_column(view, "Pts", |obj: &LeagueTeamObject| {
@@ -284,7 +283,7 @@ impl SeriesPage {
                 .data
                 .borrow()
                 .as_ref()
-                .map(|details| format_match_score(details))
+                .map(format_match_score)
                 .unwrap_or_default()
         });
         self.add_match_column(matches_view, "Away", |obj: &MatchObject| {

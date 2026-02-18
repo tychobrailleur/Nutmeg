@@ -359,7 +359,11 @@ pub fn save_world_details(
                 });
             let country_model = Country {
                 CountryID: country_id,
-                CountryName: world_league.Country.CountryName.clone().unwrap(),
+                CountryName: world_league
+                    .Country
+                    .CountryName
+                    .clone()
+                    .ok_or_else(|| Error::Db("Missing CountryName".to_string()))?,
                 Currency: currency,
                 CountryCode: world_league.Country.CountryCode.clone(),
                 DateFormat: world_league.Country.DateFormat.clone(),
@@ -634,6 +638,7 @@ pub fn save_country(
 }
 
 // Persists a Region, linking it to its parent Country.
+#[allow(dead_code)]
 fn save_region(
     conn: &mut SqliteConnection,
     region: &Region,
@@ -897,6 +902,7 @@ pub fn get_teams_summary(
         .collect())
 }
 
+#[allow(dead_code)]
 pub fn get_latest_country(
     conn: &mut SqliteConnection,
     country_id_val: i32,
@@ -931,6 +937,7 @@ pub fn get_latest_country(
     }
 }
 
+#[allow(dead_code)]
 pub fn get_latest_currency(
     conn: &mut SqliteConnection,
     currency_id_val: i32,
@@ -952,6 +959,7 @@ pub fn get_latest_currency(
     }))
 }
 
+#[allow(dead_code)]
 pub fn get_latest_region(
     conn: &mut SqliteConnection,
     region_id_val: i32,
@@ -971,6 +979,7 @@ pub fn get_latest_region(
     }))
 }
 
+#[allow(dead_code)]
 pub fn get_latest_user(
     conn: &mut SqliteConnection,
     user_id_val: i32,
@@ -1017,6 +1026,7 @@ pub fn get_latest_user(
     }
 }
 
+#[allow(dead_code)]
 pub fn get_user_id_for_team(
     conn: &mut SqliteConnection,
     team_id_val: i32,

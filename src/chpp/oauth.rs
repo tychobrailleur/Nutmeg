@@ -278,7 +278,7 @@ mod tests {
         let access_token = "atoken";
         let access_secret = "asecret";
 
-        let (data, key) =
+        let (data, _key) =
             create_oauth_context(consumer_key, consumer_secret, access_token, access_secret);
 
         assert_eq!(data.client_id.0, "ckey");

@@ -24,6 +24,7 @@ mod config;
 mod db;
 mod service;
 mod setup_window;
+mod series;
 mod squad;
 mod ui;
 mod utils;

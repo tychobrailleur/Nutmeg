@@ -35,7 +35,7 @@ use crate::ui::team_object::TeamObject;
 
 use crate::squad::player_details::SquadPlayerDetails;
 use crate::squad::player_list::SquadPlayerList;
-use crate::ui::series_page::SeriesPage;
+use crate::series::page::SeriesPage;
 // use crate::ui::oauth_dialog::OAuthDialog; // Not needed anymore
 
 mod imp {
@@ -156,7 +156,7 @@ impl NutmegWindow {
             let window_weak = self.downgrade();
 
             glib::MainContext::default().spawn_local(async move {
-                use crate::ui::controllers::series::SeriesController;
+                use crate::series::controller::SeriesController;
 
                 match SeriesController::load_series_data(team_id).await {
                     Ok((league_data, matches_data)) => {
@@ -350,7 +350,7 @@ impl NutmegWindow {
                                         .message_type(gtk::MessageType::Error)
                                         .buttons(gtk::ButtonsType::Ok)
                                         .text("Failed to Clear Database")
-                                        .secondary_text(&format!("Error: {}", e))
+                                        .secondary_text(format!("Error: {}", e))
                                         .build();
                                     error_dialog.connect_response(|dialog, _| {
                                         dialog.close();
@@ -405,7 +405,7 @@ impl NutmegWindow {
                                             .message_type(gtk::MessageType::Error)
                                             .buttons(gtk::ButtonsType::Ok)
                                             .text("Failed to Delete Secrets")
-                                            .secondary_text(&format!("Error: {}", e))
+                                            .secondary_text(format!("Error: {}", e))
                                             .build();
                                         error_dialog.connect_response(|dialog, _| {
                                             dialog.close();

@@ -151,7 +151,7 @@ mod tests {
         let mut conn = db.get_connection().expect("Failed to get connection");
 
         // Create a download first
-        let download_id: i32 = diesel::insert_into(downloads::table)
+        let _download_id: i32 = diesel::insert_into(downloads::table)
             .values(NewDownload {
                 timestamp: "2026-02-04T18:45:00Z".to_string(),
                 status: "in_progress".to_string(),
