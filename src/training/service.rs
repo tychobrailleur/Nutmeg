@@ -17,37 +17,71 @@ impl TrainingService {
 
     pub fn load_plans() -> Vec<CyclePlan> {
         let path = Self::get_storage_path();
+        let defaults = Self::get_default_templates();
+
         if !path.exists() {
             log::info!("No training plans found, returning default templates");
-            let defaults = Self::get_default_templates();
             if let Err(e) = Self::save_all(&defaults) {
                 log::error!("Failed to save default templates: {}", e);
             }
             return defaults;
         }
 
-        match std::fs::read_to_string(path) {
+        match std::fs::read_to_string(&path) {
             Ok(content) => match serde_json::from_str::<Vec<CyclePlan>>(&content) {
-                Ok(plans) => {
-                    if plans.is_empty() {
-                        log::info!("Training plans file empty, returning default templates");
-                        let defaults = Self::get_default_templates();
-                        if let Err(e) = Self::save_all(&defaults) {
-                            log::error!("Failed to save default templates: {}", e);
+                Ok(mut plans) => {
+                    let mut modified = false;
+
+                    // 1. Deduplicate existing plans by name (keep first occurrence)
+                    let mut unique_plans = Vec::new();
+                    let mut seen_names = std::collections::HashSet::new();
+                    for plan in plans.drain(..) {
+                        if seen_names.insert(plan.cycle.name.clone()) {
+                            unique_plans.push(plan);
+                        } else {
+                            modified = true;
                         }
-                        defaults
-                    } else {
-                        plans
                     }
+                    plans = unique_plans;
+
+                    // 2. Merge/Update missing or old defaults
+                    for default_plan in defaults {
+                        if let Some(existing) = plans
+                            .iter_mut()
+                            .find(|p| p.cycle.name == default_plan.cycle.name)
+                        {
+                            // If it's a default but has 1-week placeholders, update it with expert durations
+                            let has_placeholders =
+                                existing.cycle.steps.iter().any(|s| {
+                                    s.duration_weeks.is_none() || s.duration_weeks == Some(1)
+                                });
+
+                            if has_placeholders {
+                                existing.cycle.steps = default_plan.cycle.steps.clone();
+                                existing.cycle.description = default_plan.cycle.description.clone();
+                                modified = true;
+                            }
+                        } else {
+                            plans.push(default_plan);
+                            modified = true;
+                        }
+                    }
+
+                    if modified {
+                        if let Err(e) = Self::save_all(&plans) {
+                            log::error!("Failed to save cleaned/merged training plans: {}", e);
+                        }
+                    }
+                    plans
                 }
                 Err(e) => {
                     log::error!("Failed to deserialize training plans: {}", e);
-                    Self::get_default_templates()
+                    defaults
                 }
             },
             Err(e) => {
                 log::error!("Failed to read training plans file: {}", e);
-                Self::get_default_templates()
+                defaults
             }
         }
     }
@@ -84,65 +118,58 @@ impl TrainingService {
     }
 
     pub fn get_default_templates() -> Vec<CyclePlan> {
-        let mut plans = Vec::new();
-
-        // 1. Goalkeeper Cycle
-        plans.push(CyclePlan::new_template(
-            "Goalkeeper Cycle",
-            "Standard cycle for GK training",
-            vec![
-                (PlayerSkill::Keeper, 10, None),
-                (PlayerSkill::Defending, 8, None),
-                (PlayerSkill::SetPieces, 10, None),
-            ],
-        ));
-
-        // 2. Defender Cycle -> Playmaking
-        plans.push(CyclePlan::new_template(
-            "Defender Cycle",
-            "Defending then Playmaking",
-            vec![
-                (PlayerSkill::Defending, 12, None),
-                (PlayerSkill::Playmaking, 8, None),
-                (PlayerSkill::Passing, 6, None),
-            ],
-        ));
-
-        // 3. Playmaker Cycle
-        plans.push(CyclePlan::new_template(
-            "Playmaker Cycle",
-            "PM -> Passing -> Defending",
-            vec![
-                (PlayerSkill::Playmaking, 13, None),
-                (PlayerSkill::Passing, 8, None),
-                (PlayerSkill::Defending, 7, None),
-            ],
-        ));
-
-        // 4. Winger Cycle
-        plans.push(CyclePlan::new_template(
-            "Winger Cycle",
-            "Winger -> Playmaking -> Passing",
-            vec![
-                (PlayerSkill::Winger, 12, None),
-                (PlayerSkill::Playmaking, 9, None),
-                (PlayerSkill::Passing, 7, None),
-                (PlayerSkill::Defending, 6, None),
-            ],
-        ));
-
-        // 5. Striker Cycle
-        plans.push(CyclePlan::new_template(
-            "Striker Cycle",
-            "Scoring -> Passing -> Winger",
-            vec![
-                (PlayerSkill::Scoring, 13, None),
-                (PlayerSkill::Passing, 8, None),
-                (PlayerSkill::Winger, 7, None),
-            ],
-        ));
-
-        plans
+        vec![
+            // 1. The Modern Midfielder (Long Cycle)
+            CyclePlan::new_template(
+                "Modern Midfielder (Long Cycle)",
+                "A comprehensive cycle to create a world-class inner midfielder. Optimises playmaking, passing, and defending over several seasons.",
+                vec![
+                    (PlayerSkill::Playmaking, 15, Some(45)),
+                    (PlayerSkill::Passing, 11, Some(24)),
+                    (PlayerSkill::Defending, 10, Some(20)),
+                    (PlayerSkill::Playmaking, 17, Some(35)),
+                ],
+            ),
+            // 2. The Quick Profit (Short Cycle)
+            CyclePlan::new_template(
+                "Quick Profit (Short Cycle)",
+                "A short 2-season cycle designed to train young strikers for a quick turnaround and profit on the transfer market.",
+                vec![
+                    (PlayerSkill::Scoring, 10, Some(28)),
+                    (PlayerSkill::Passing, 8, Some(14)),
+                ],
+            ),
+            // 3. The Solid Defender
+            CyclePlan::new_template(
+                "Solid Defender",
+                "Focuses on building a high-level defender with strong secondary skills in playmaking and passing for better team contribution.",
+                vec![
+                    (PlayerSkill::Defending, 14, Some(40)),
+                    (PlayerSkill::Playmaking, 9, Some(18)),
+                    (PlayerSkill::Passing, 8, Some(12)),
+                ],
+            ),
+            // 4. The Extreme Winger
+            CyclePlan::new_template(
+                "Extreme Winger",
+                "Dedicated winger training aimed at maximising side attack ratings. Includes significant playmaking and passing for versatility.",
+                vec![
+                    (PlayerSkill::Winger, 15, Some(38)),
+                    (PlayerSkill::Playmaking, 11, Some(22)),
+                    (PlayerSkill::Passing, 10, Some(16)),
+                ],
+            ),
+            // 5. The Creative Forward
+            CyclePlan::new_template(
+                "Creative Forward",
+                "Develops a hybrid player excellent for technical forward roles or creative play tactics, balancing scoring and passing.",
+                vec![
+                    (PlayerSkill::Scoring, 13, Some(32)),
+                    (PlayerSkill::Passing, 12, Some(24)),
+                    (PlayerSkill::Playmaking, 9, Some(15)),
+                ],
+            ),
+        ]
     }
 
     pub fn calculate_progress(plan: &CyclePlan, trainees: &[Player]) -> Vec<ProgressPoint> {
@@ -207,20 +234,21 @@ mod tests {
     use crate::training::cycle::{Cycle, CyclePlan, CycleStep};
 
     fn create_test_player() -> Player {
-        let mut p = Player::default();
-        p.PlayerID = 1;
-        p.Age = 17;
-        p.PlayerSkills = Some(PlayerSkills {
-            KeeperSkill: 1,
-            DefenderSkill: 5,
-            PlaymakerSkill: 5,
-            WingerSkill: 3,
-            PassingSkill: 4,
-            ScorerSkill: 3,
-            SetPiecesSkill: 3,
-            StaminaSkill: 3,
-        });
-        p
+        Player {
+            PlayerID: 1,
+            Age: 17,
+            PlayerSkills: Some(PlayerSkills {
+                KeeperSkill: 1,
+                DefenderSkill: 5,
+                PlaymakerSkill: 5,
+                WingerSkill: 3,
+                PassingSkill: 4,
+                ScorerSkill: 3,
+                SetPiecesSkill: 3,
+                StaminaSkill: 3,
+            }),
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -236,11 +264,13 @@ mod tests {
             }],
         };
 
-        let mut plan = CyclePlan::default();
-        plan.cycle = cycle;
-        plan.trainee_ids = vec![player.PlayerID];
+        let mut plan = CyclePlan {
+            cycle,
+            trainee_ids: vec![player.PlayerID],
+            ..Default::default()
+        };
 
-        let progress = TrainingService::calculate_progress(&plan, &vec![player]);
+        let progress = TrainingService::calculate_progress(&plan, &[player]);
 
         assert!(!progress.is_empty());
 

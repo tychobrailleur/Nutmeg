@@ -71,8 +71,22 @@
 
             <!-- Plan Header -->
             <child>
-                <object class="GtkEntry" id="plan_name_entry">
-                    <property name="placeholder-text">Plan Name</property>
+                <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">4</property>
+                    <child>
+                        <object class="GtkEntry" id="plan_name_entry">
+                            <property name="placeholder-text">Plan Name</property>
+                        </object>
+                    </child>
+                    <child>
+                        <object class="GtkLabel" id="plan_description_label">
+                            <property name="label"></property>
+                            <property name="wrap">true</property>
+                            <property name="xalign">0.0</property>
+                            <property name="css-classes">dim-label</property>
+                        </object>
+                    </child>
                 </object>
             </child>
 

@@ -21,6 +21,8 @@ mod imp {
         #[template_child]
         pub plan_name_entry: TemplateChild<gtk::Entry>,
         #[template_child]
+        pub plan_description_label: TemplateChild<gtk::Label>,
+        #[template_child]
         pub steps_container: TemplateChild<gtk::Box>,
         #[template_child]
         pub add_step_button: TemplateChild<gtk::Button>,
@@ -200,6 +202,8 @@ impl TrainingPlannerPage {
         if let Some(plan) = plans.get(index) {
             *imp.current_plan.borrow_mut() = Some(plan.clone());
             imp.plan_name_entry.set_text(&plan.cycle.name);
+            imp.plan_description_label
+                .set_label(&plan.cycle.description);
             self.refresh_steps_ui();
             self.refresh_player_selection_ui();
         }
@@ -302,9 +306,29 @@ impl TrainingPlannerPage {
                 });
                 row.append(&type_combo);
 
+                let until_label = gtk::Label::new(Some("until level"));
+                row.append(&until_label);
+
+                // Target Level SpinButton
+                let level_adj =
+                    gtk::Adjustment::new(step.target_level as f64, 1.0, 20.0, 1.0, 5.0, 0.0);
+                let level_spin = gtk::SpinButton::new(Some(&level_adj), 1.0, 0);
+                let obj_weak = self.downgrade();
+                let idx_copy = index;
+                level_spin.connect_value_changed(move |spin| {
+                    if let Some(obj) = obj_weak.upgrade() {
+                        obj.update_step_target_level(idx_copy, spin.value() as u8);
+                    }
+                });
+                row.append(&level_spin);
+
+                let spacer = gtk::Label::new(Some("(approx."));
+                spacer.set_margin_start(12);
+                row.append(&spacer);
+
                 // Weeks SpinButton
                 let weeks_val = step.duration_weeks.unwrap_or(1) as f64;
-                let weeks_adj = gtk::Adjustment::new(weeks_val, 1.0, 52.0, 1.0, 5.0, 0.0);
+                let weeks_adj = gtk::Adjustment::new(weeks_val, 1.0, 104.0, 1.0, 5.0, 0.0);
                 let weeks_spin = gtk::SpinButton::new(Some(&weeks_adj), 1.0, 0);
                 // Signal to update weeks
                 let obj_weak = self.downgrade();
@@ -316,7 +340,7 @@ impl TrainingPlannerPage {
                 });
                 row.append(&weeks_spin);
 
-                let weeks_label = gtk::Label::new(Some("weeks"));
+                let weeks_label = gtk::Label::new(Some("weeks)"));
                 row.append(&weeks_label);
 
                 // Remove Button
@@ -362,53 +386,50 @@ impl TrainingPlannerPage {
         let context_opt = imp.context_object.borrow();
         if let Some(context) = context_opt.as_ref() {
             let players_value: glib::Value = context.property("players");
-            if let Ok(store_opt) = players_value.get::<Option<gtk::ListStore>>() {
-                if let Some(store) = store_opt {
-                    let mut iter = store.iter_first();
-                    let mut count = 0;
-                    while let Some(it) = iter {
-                        let player_obj: crate::ui::player_object::PlayerObject = store.get(&it, 18);
-                        if true {
-                            // preserving scope for diff simplicity
+            if let Ok(Some(store)) = players_value.get::<Option<gtk::ListStore>>() {
+                let mut iter = store.iter_first();
+                let mut count = 0;
+                while let Some(it) = iter {
+                    let player_obj: crate::ui::player_object::PlayerObject = store.get(&it, 18);
+                    if true {
+                        // preserving scope for diff simplicity
 
-                            let player = player_obj.player();
-                            let player_id = player.PlayerID;
-                            let name = format!("{} {}", player.FirstName, player.LastName);
+                        let player = player_obj.player();
+                        let player_id = player.PlayerID;
+                        let name = format!("{} {}", player.FirstName, player.LastName);
 
-                            let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-                            let check = gtk::CheckButton::new();
-                            count += 1;
+                        let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+                        let check = gtk::CheckButton::new();
+                        count += 1;
 
-                            // Check if selected in current plan
-                            let is_selected = if let Some(plan) = imp.current_plan.borrow().as_ref()
-                            {
-                                plan.trainee_ids.contains(&player_id)
-                            } else {
-                                false
-                            };
-                            check.set_active(is_selected);
+                        // Check if selected in current plan
+                        let is_selected = if let Some(plan) = imp.current_plan.borrow().as_ref() {
+                            plan.trainee_ids.contains(&player_id)
+                        } else {
+                            false
+                        };
+                        check.set_active(is_selected);
 
-                            let label = gtk::Label::new(Some(&name));
-                            row_box.append(&check);
-                            row_box.append(&label);
+                        let label = gtk::Label::new(Some(&name));
+                        row_box.append(&check);
+                        row_box.append(&label);
 
-                            imp.players_list.append(&row_box);
+                        imp.players_list.append(&row_box);
 
-                            // Connect signal
-                            let obj_weak = self.downgrade();
-                            check.connect_toggled(move |btn| {
-                                if let Some(obj) = obj_weak.upgrade() {
-                                    obj.toggle_player_selection(player_id, btn.is_active());
-                                }
-                            });
-                        }
-                        if !store.iter_next(&it) {
-                            break;
-                        }
-                        iter = Some(it);
+                        // Connect signal
+                        let obj_weak = self.downgrade();
+                        check.connect_toggled(move |btn| {
+                            if let Some(obj) = obj_weak.upgrade() {
+                                obj.toggle_player_selection(player_id, btn.is_active());
+                            }
+                        });
                     }
-                    log::info!("Refreshed player list with {} players", count);
+                    if !store.iter_next(&it) {
+                        break;
+                    }
+                    iter = Some(it);
                 }
+                log::info!("Refreshed player list with {} players", count);
             }
         } else {
             log::warn!("Context object missing in refresh_player_selection_ui");
@@ -434,17 +455,68 @@ impl TrainingPlannerPage {
 
     pub fn run_simulation(&self) {
         let imp = self.imp();
+        let plan_opt = imp.current_plan.borrow();
+        let plan = match plan_opt.as_ref() {
+            Some(p) => p,
+            None => {
+                imp.results_label.set_label("No plan selected");
+                return;
+            }
+        };
 
-        // Context object might not be readily available in the same way,
-        // need to check how to access the current cycle and trainees.
-        // For now, let's assume we can construct a Cycle from the UI state
-        // and fetch players from the context.
+        if plan.trainee_ids.is_empty() {
+            imp.results_label
+                .set_label("No trainees selected. Select players in the list below to simulate.");
+            return;
+        }
 
-        // TODO: Implement proper retrieval of "Current Cycle" from UI
-        // This requires binding UI elements to a defined Cycle struct.
-        // For this fix, I'll comment out the broken logic to allow compilation,
-        // and we will implement the proper UI binding in the next step.
-        log::warn!("Simulation not yet fully implemented with new CyclePlanner");
+        // Fetch players from context
+        let mut trainees = Vec::new();
+        let context_opt = imp.context_object.borrow();
+        if let Some(context) = context_opt.as_ref() {
+            let players_value: glib::Value = context.property("players");
+            if let Ok(Some(store)) = players_value.get::<Option<gtk::ListStore>>() {
+                let mut iter = store.iter_first();
+                while let Some(it) = iter {
+                    let player_obj: crate::ui::player_object::PlayerObject = store.get(&it, 18);
+                    let player = player_obj.player();
+                    if plan.trainee_ids.contains(&player.PlayerID) {
+                        trainees.push(player.clone());
+                    }
+                    if !store.iter_next(&it) {
+                        break;
+                    }
+                    iter = Some(it);
+                }
+            }
+        }
+
+        if trainees.is_empty() {
+            imp.results_label
+                .set_label("Selected trainees not found in current squad.");
+            return;
+        }
+
+        let progress = TrainingService::calculate_progress(plan, &trainees);
+
+        // Summarise results
+        let mut summary = String::from("Simulation Results:\n\n");
+        for trainee in &trainees {
+            let trainee_progress: Vec<_> = progress
+                .iter()
+                .filter(|p| p.player_id == trainee.PlayerID)
+                .collect();
+            if let Some(last) = trainee_progress.last() {
+                let years = last.week / 16;
+                let weeks = last.week % 16;
+                summary.push_str(&format!(
+                    "• {}: Reaches target in {} weeks ({} seasons, {} weeks). Final level: {:.1}\n",
+                    trainee.FirstName, last.week, years, weeks, last.level
+                ));
+            }
+        }
+
+        imp.results_label.set_label(&summary);
     }
 
     fn display_results(&self) {
@@ -472,6 +544,19 @@ impl TrainingPlannerPage {
                 step.duration_weeks = Some(weeks);
                 if let Err(e) = TrainingService::save_plan(plan) {
                     log::error!("Failed to save plan after duration update: {}", e);
+                }
+            }
+        }
+    }
+
+    pub fn update_step_target_level(&self, index: usize, level: u8) {
+        let imp = self.imp();
+        let mut current_opt = imp.current_plan.borrow_mut();
+        if let Some(ref mut plan) = *current_opt {
+            if let Some(step) = plan.cycle.steps.get_mut(index) {
+                step.target_level = level;
+                if let Err(e) = TrainingService::save_plan(plan) {
+                    log::error!("Failed to save plan after target level update: {}", e);
                 }
             }
         }
