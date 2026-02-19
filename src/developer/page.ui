@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <template class="DeveloperAuditPage" parent="GtkBox">
+    <property name="orientation">vertical</property>
+    <property name="spacing">12</property>
+    <property name="margin-top">12</property>
+    <property name="margin-bottom">12</property>
+    <property name="margin-start">12</property>
+    <property name="margin-end">12</property>
+
+    <child>
+      <object class="GtkLabel">
+        <property name="label" translatable="yes">CHPP API Audit</property>
+        <property name="halign">start</property>
+        <style>
+          <class name="title-1"/>
+        </style>
+      </object>
+    </child>
+
+    <child>
+      <object class="GtkBox">
+        <property name="orientation">horizontal</property>
+        <property name="spacing">8</property>
+        <child>
+          <object class="GtkLabel">
+            <property name="label" translatable="yes">Filter by endpoint:</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkDropDown" id="filter_dropdown">
+            <property name="hexpand">true</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkButton" id="refresh_button">
+            <property name="icon-name">view-refresh-symbolic</property>
+            <property name="tooltip-text" translatable="yes">Refresh</property>
+          </object>
+        </child>
+      </object>
+    </child>
+
+    <child>
+      <object class="GtkScrolledWindow">
+        <property name="vexpand">true</property>
+        <child>
+          <object class="GtkColumnView" id="audit_view">
+            <property name="show-row-separators">true</property>
+            <property name="show-column-separators">true</property>
+          </object>
+        </child>
+      </object>
+    </child>
+
+  </template>
+</interface>

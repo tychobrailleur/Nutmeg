@@ -108,6 +108,20 @@
                  <property name="use-underline">True</property>
                </object>
             </child>
+
+            <!-- Developer Tab -->
+            <child>
+              <object class="DeveloperAuditPage" id="audit_page">
+                <property name="visible">True</property>
+              </object>
+            </child>
+            <child type="tab">
+              <object class="GtkLabel">
+                <property name="label" translatable="yes">_Developer</property>
+                <property name="use-underline">True</property>
+              </object>
+            </child>
+
           </object>
         </child>
         <child>

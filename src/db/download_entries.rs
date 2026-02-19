@@ -136,6 +136,28 @@ pub fn get_entries_for_download(
         .load::<DownloadEntry>(conn)
 }
 
+/// Get all download entries, most recent first
+pub fn get_all_entries(conn: &mut SqliteConnection) -> QueryResult<Vec<DownloadEntry>> {
+    use crate::db::schema::download_entries::dsl::*;
+
+    download_entries
+        .order(id.desc())
+        .load::<DownloadEntry>(conn)
+}
+
+/// Get download entries filtered by endpoint name, most recent first
+pub fn get_entries_by_endpoint(
+    conn: &mut SqliteConnection,
+    target_endpoint: &str,
+) -> QueryResult<Vec<DownloadEntry>> {
+    use crate::db::schema::download_entries::dsl::*;
+
+    download_entries
+        .filter(endpoint.eq(target_endpoint))
+        .order(id.desc())
+        .load::<DownloadEntry>(conn)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

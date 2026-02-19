@@ -12,8 +12,8 @@ use num_format::SystemLocale;
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
-use crate::db::teams::get_players_for_team;
 use crate::db::manager::DbManager;
+use crate::db::teams::get_players_for_team;
 use crate::squad::player_list::create_player_model;
 
 mod imp {
