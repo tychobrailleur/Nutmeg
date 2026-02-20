@@ -10,12 +10,12 @@ on:
 jobs:
   build-flatpak:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-47
+      options: --privileged
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Install xvfb
-        run: sudo apt-get update && sudo apt-get install -y xvfb flatpak-builder
 
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6

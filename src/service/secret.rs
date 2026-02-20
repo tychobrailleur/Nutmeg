@@ -76,7 +76,7 @@ impl SecretStorageService for SystemSecretService {
 
     async fn get_secret(&self, key: &str) -> Result<Option<String>, SecretError> {
         let entry = keyring::Entry::new("nutmeg", key)?;
-        
+
         match entry.get_password() {
             Ok(password) => Ok(Some(password)),
             Err(keyring::Error::NoEntry) => Ok(None),
@@ -86,13 +86,13 @@ impl SecretStorageService for SystemSecretService {
 
     async fn delete_secret(&self, key: &str) -> Result<(), SecretError> {
         let entry = keyring::Entry::new("nutmeg", key)?;
-        
+
         // Keyring throws an error if we try to delete a non-existent key, so we ignore NoEntry
         match entry.delete_credential() {
             Ok(_) => {
                 debug!("Deleted secret for key: {}", key);
                 Ok(())
-            },
+            }
             Err(keyring::Error::NoEntry) => Ok(()),
             Err(e) => Err(SecretError::Keyring(e)),
         }

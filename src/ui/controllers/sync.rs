@@ -1,6 +1,6 @@
 use crate::db::manager::DbManager;
 use crate::service::auth::{AuthenticationService, HattrickAuthService};
-use crate::service::secret::{SystemSecretService, SecretStorageService};
+use crate::service::secret::{SecretStorageService, SystemSecretService};
 use crate::service::sync::{DataSyncService, SyncService};
 use crate::ui::oauth_dialog::OAuthDialog;
 use crate::window::NutmegWindow;

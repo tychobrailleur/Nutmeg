@@ -93,7 +93,7 @@ impl SetupWindow {
 
     pub fn setup_signals(&self) {
         use crate::service::auth::{AuthenticationService, HattrickAuthService};
-        use crate::service::secret::{SystemSecretService, SecretStorageService};
+        use crate::service::secret::{SecretStorageService, SystemSecretService};
         use crate::service::sync::DataSyncService;
 
         let imp = self.imp();

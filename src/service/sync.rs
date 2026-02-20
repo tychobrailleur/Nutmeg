@@ -27,7 +27,7 @@ use crate::db::schema::downloads;
 use crate::db::series::{save_league_details, save_matches};
 use crate::db::teams::{save_avatars, save_players, save_team, save_world_details};
 use crate::service::avatar::AvatarService;
-use crate::service::secret::{SystemSecretService, SecretStorageService};
+use crate::service::secret::{SecretStorageService, SystemSecretService};
 use chrono::Utc;
 use diesel::prelude::*;
 use log::{debug, info, warn};

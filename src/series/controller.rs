@@ -7,7 +7,7 @@
 
 use crate::chpp::model::{LeagueDetailsData, MatchesData};
 use crate::chpp::request::{league_details_request, matches_request, team_details_request};
-use crate::service::secret::{SystemSecretService, SecretStorageService};
+use crate::service::secret::{SecretStorageService, SystemSecretService};
 
 use std::error::Error;
 
