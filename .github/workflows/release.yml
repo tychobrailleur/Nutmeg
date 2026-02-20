@@ -23,7 +23,7 @@ jobs:
           bundle: nutmeg.flatpak
           manifest-path: org.gnome.Nutmeg.json
           cache-key: flatpak-builder-${{ github.sha }}
-          build-args: "--env=HT_CONSUMER_KEY=${{ env.HT_CONSUMER_KEY }} --env=HT_CONSUMER_SECRET=${{ env.HT_CONSUMER_SECRET }}"
+          build-args: "--env=HT_CONSUMER_KEY=${{ secrets.HT_CONSUMER_KEY }} --env=HT_CONSUMER_SECRET=${{ secrets.HT_CONSUMER_SECRET }}"
 
       - name: Upload Flatpak Artifact
         uses: actions/upload-artifact@v4
