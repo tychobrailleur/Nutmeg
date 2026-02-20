@@ -85,6 +85,46 @@ impl From<u8> for Behaviour {
     }
 }
 
+impl Behaviour {
+    /// Returns a Unicode symbol representing the behaviour direction.
+    pub fn symbol(&self, position: &PositionId) -> &'static str {
+        match self {
+            Self::Normal => "",
+            Self::Offensive => "▲",
+            Self::Defensive => "▼",
+            Self::TowardsMiddle => {
+                if position.is_left_side() {
+                    "▶"
+                } else if position.is_right_side() {
+                    "◀"
+                } else {
+                    "↔"
+                }
+            }
+            Self::TowardsWing => {
+                if position.is_left_side() {
+                    "◀"
+                } else if position.is_right_side() {
+                    "▶"
+                } else {
+                    "↔"
+                }
+            }
+        }
+    }
+
+    /// Returns a human-readable name for display.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Normal => "Normal",
+            Self::Offensive => "Offensive",
+            Self::Defensive => "Defensive",
+            Self::TowardsMiddle => "Towards Middle",
+            Self::TowardsWing => "Towards Wing",
+        }
+    }
+}
+
 /// Lineup sectors (positions on the field)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Sector {
@@ -172,6 +212,71 @@ impl PositionId {
                 | Self::CentralForward
         )
     }
+
+    /// Returns the valid behaviours for this position.
+    /// Keepers only have Normal. Wingers cannot go "towards wing".
+    /// Central positions cannot go "towards middle", etc.
+    pub fn valid_behaviours(&self) -> Vec<Behaviour> {
+        match self.sector() {
+            Sector::Goal => vec![Behaviour::Normal],
+            Sector::CentralDefence => {
+                vec![
+                    Behaviour::Normal,
+                    Behaviour::Offensive,
+                    Behaviour::TowardsWing,
+                ]
+            }
+            Sector::Back => {
+                vec![
+                    Behaviour::Normal,
+                    Behaviour::Offensive,
+                    Behaviour::Defensive,
+                    Behaviour::TowardsMiddle,
+                ]
+            }
+            Sector::InnerMidfield => {
+                if self.is_middle() {
+                    vec![
+                        Behaviour::Normal,
+                        Behaviour::Offensive,
+                        Behaviour::Defensive,
+                        Behaviour::TowardsWing,
+                    ]
+                } else {
+                    vec![
+                        Behaviour::Normal,
+                        Behaviour::Offensive,
+                        Behaviour::Defensive,
+                        Behaviour::TowardsMiddle,
+                        Behaviour::TowardsWing,
+                    ]
+                }
+            }
+            Sector::Wing => {
+                vec![
+                    Behaviour::Normal,
+                    Behaviour::Offensive,
+                    Behaviour::Defensive,
+                    Behaviour::TowardsMiddle,
+                ]
+            }
+            Sector::Forward => {
+                if self.is_middle() {
+                    vec![
+                        Behaviour::Normal,
+                        Behaviour::Defensive,
+                        Behaviour::TowardsWing,
+                    ]
+                } else {
+                    vec![
+                        Behaviour::Normal,
+                        Behaviour::Defensive,
+                        Behaviour::TowardsMiddle,
+                    ]
+                }
+            }
+        }
+    }
 }
 
 /// Player skill types
@@ -192,7 +297,9 @@ pub enum PlayerSkill {
 
 /// Player specialty types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default)]
 pub enum Specialty {
+    #[default]
     NoSpecialty,
     Technical,
     Quick,
@@ -203,29 +310,23 @@ pub enum Specialty {
     Support,
 }
 
-impl Default for Specialty {
-    fn default() -> Self {
-        Self::NoSpecialty
-    }
-}
 
 /// Weather conditions
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default)]
 pub enum Weather {
+    #[default]
     Neutral,
     Rainy,
     Sunny,
 }
 
-impl Default for Weather {
-    fn default() -> Self {
-        Self::Neutral
-    }
-}
 
 /// Match tactic types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default)]
 pub enum TacticType {
+    #[default]
     Normal = 0,
     Pressing = 1,
     CounterAttacks = 2,
@@ -235,36 +336,25 @@ pub enum TacticType {
     LongShots = 8,
 }
 
-impl Default for TacticType {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
 
 /// Match attitude
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default)]
 pub enum Attitude {
+    #[default]
     Normal = 0,
     PlayItCool = 1,       // PIC
     MatchOfTheSeason = 2, // MOTS
 }
 
-impl Default for Attitude {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
 
 /// Match location
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default)]
 pub enum Location {
+    #[default]
     Away = 0,
     Home = 1,
     AwayDerby = 2,
 }
 
-impl Default for Location {
-    fn default() -> Self {
-        Self::Away
-    }
-}

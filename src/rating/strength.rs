@@ -160,7 +160,7 @@ mod tests {
     #[test]
     fn test_calc_loyalty_mother_club() {
         let player = create_test_player(7, 5, 10, true, 8, 10);
-        
+
         // Mother club bonus gives fixed 1.5
         assert_eq!(calc_loyalty(&player), 1.5);
     }
@@ -169,7 +169,7 @@ mod tests {
     fn test_calc_loyalty_non_mother_club() {
         // Loyalty = 8 (Excellent with no sub)
         let player = create_test_player(7, 5, 8, false, 8, 10);
-        
+
         // calc_skill_rating(8) = 7.0
         // loyalty_rating = 7.0 / 19.0 ≈ 0.368
         let loyalty = calc_loyalty(&player);
@@ -180,7 +180,7 @@ mod tests {
     fn test_calc_loyalty_low() {
         // Loyalty = 1 (Disastrous)
         let player = create_test_player(7, 5, 1, false, 8, 10);
-        
+
         // calc_skill_rating(1) = 0.0
         // loyalty_rating = 0.0 / 19.0 = 0.0
         assert_eq!(calc_loyalty(&player), 0.0);
@@ -190,7 +190,7 @@ mod tests {
     fn test_calc_form_excellent() {
         // Form = 8 (Excellent)
         let player = create_test_player(8, 5, 10, false, 8, 10);
-        
+
         // calc_skill_rating(8) = 7.0, min(7, 7.0) = 7.0
         // form = 0.378 * sqrt(7.0) ≈ 0.378 * 2.646 ≈ 1.0
         let form = calc_form(&player);
@@ -201,7 +201,7 @@ mod tests {
     fn test_calc_form_solid() {
         // Form = 7 (Solid)
         let player = create_test_player(7, 5, 10, false, 8, 10);
-        
+
         // calc_skill_rating(7) = 6.0, min(7, 6.0) = 6.0
         // form = 0.378 * sqrt(6.0) ≈ 0.926
         let form = calc_form(&player);
@@ -212,7 +212,7 @@ mod tests {
     fn test_calc_form_caps_at_seven() {
         // Form = 10 (Outstanding) - but should be capped at 7
         let player = create_test_player(10, 5, 10, false, 8, 10);
-        
+
         // calc_skill_rating(10) = 9.0, min(7, 9.0) = 7.0
         // form = 0.378 * sqrt(7.0) ≈ 1.0
         let form = calc_form(&player);
@@ -223,9 +223,9 @@ mod tests {
     fn test_calc_strength_basic() {
         // Form=8, Loyalty=10, Keeper=10
         let player = create_test_player(8, 5, 10, false, 10, 12);
-        
+
         let strength = calc_strength(&player, PlayerSkill::Keeper);
-        
+
         // keeper_rating = calc_skill_rating(10) = 9.0
         // loyalty = calc_skill_rating(10) / 19.0 ≈ 0.474
         // form = 0.378 * sqrt(7) ≈ 1.0
@@ -237,9 +237,9 @@ mod tests {
     fn test_calc_strength_mother_club() {
         // Form=8, Loyalty=10 (mother club), Keeper=10
         let player = create_test_player(8, 5, 10, true, 10, 12);
-        
+
         let strength = calc_strength(&player, PlayerSkill::Keeper);
-        
+
         // keeper_rating = 9.0
         // loyalty = 1.5 (mother club bonus)
         // form ≈ 1.0
@@ -250,14 +250,14 @@ mod tests {
     #[test]
     fn test_calc_strength_different_skills() {
         let player = create_test_player(8, 5, 10, false, 10, 12);
-        
+
         let keeper_strength = calc_strength(&player, PlayerSkill::Keeper);
         let defender_strength = calc_strength(&player, PlayerSkill::Defending);
-        
+
         // Defender skill (12) is higher than Keeper skill (10)
         // So defender strength should be higher
         assert!(defender_strength > keeper_strength);
-        
+
         // Specifically: defender_rating = 11.0, keeper_rating = 9.0
         // Difference should be about 2.0 (scaled by form)
         assert!((defender_strength - keeper_strength - 2.0).abs() < 0.1);
@@ -267,9 +267,9 @@ mod tests {
     fn test_calc_player_tactic_strength() {
         // Form=8, Experience=7, Loyalty=10, Keeper=10
         let player = create_test_player(8, 7, 10, false, 10, 12);
-        
+
         let tactic_strength = calc_player_tactic_strength(&player, PlayerSkill::Keeper);
-        
+
         // loyalty ≈ 0.474
         // strength ≈ 9.474
         // xp = calc_skill_rating(7) = 6.0
@@ -282,9 +282,9 @@ mod tests {
     fn test_calc_player_tactic_strength_with_high_experience() {
         // High experience should increase tactic strength
         let player = create_test_player(8, 10, 10, false, 10, 12);
-        
+
         let tactic_strength = calc_player_tactic_strength(&player, PlayerSkill::Keeper);
-        
+
         // xp = calc_skill_rating(10) = 9.0
         // f = log10(9.0) * 4.0 / 3.0 ≈ 0.954 * 1.333 ≈ 1.272
         // This should be higher than with experience=7
@@ -295,16 +295,15 @@ mod tests {
     fn test_get_player_skill_no_skills() {
         let mut player = create_test_player(8, 5, 10, false, 10, 12);
         player.PlayerSkills = None;
-        
+
         // Should return 0 for all skills when PlayerSkills is None
         assert_eq!(get_player_skill(&player, PlayerSkill::Keeper), 0.0);
         assert_eq!(get_player_skill(&player, PlayerSkill::Defending), 0.0);
         assert_eq!(get_player_skill(&player, PlayerSkill::Playmaking), 0.0);
-        
+
         // But Form, Experience, Loyalty should still work
         assert_eq!(get_player_skill(&player, PlayerSkill::Form), 8.0);
         assert_eq!(get_player_skill(&player, PlayerSkill::Experience), 5.0);
         assert_eq!(get_player_skill(&player, PlayerSkill::Loyalty), 10.0);
     }
 }
-

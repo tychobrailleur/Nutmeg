@@ -39,7 +39,9 @@ impl SeriesController {
         let mut conn = db_manager.get_connection()?;
 
         // 1. Get LeagueUnitID
-        let league_unit_id = Self::get_league_unit_id(team_id, &mut conn, &key, &secret, &token, &token_secret).await?;
+        let league_unit_id =
+            Self::get_league_unit_id(team_id, &mut conn, &key, &secret, &token, &token_secret)
+                .await?;
 
         log::debug!("Found LeagueUnitID: {}", league_unit_id);
 

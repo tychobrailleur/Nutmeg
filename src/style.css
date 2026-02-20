@@ -9,7 +9,8 @@
 
 .pitch-view {
     padding: 12px;
-    background-color: #2e8b57; /* SeaGreen - pitch color */
+    background-color: #2e8b57;
+    /* SeaGreen - pitch color */
     border-radius: 8px;
     color: white;
 }
@@ -45,7 +46,7 @@
     padding: 12px;
     border-radius: 8px;
     background-clip: border-box;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .heading {
@@ -55,5 +56,21 @@
 
 .accent {
     color: @accent_color;
+    font-weight: bold;
+}
+
+.dotted-leader {
+    opacity: 0.4;
+    letter-spacing: 2px;
+}
+
+.behaviour-indicator {
+    color: #ff8c00;
+    /* DarkOrange */
+    font-weight: bold;
+    margin-left: 2px;
+}
+
+.strong {
     font-weight: bold;
 }

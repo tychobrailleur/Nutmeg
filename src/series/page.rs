@@ -123,6 +123,12 @@ glib::wrapper! {
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Orientable;
 }
 
+impl Default for SeriesPage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SeriesPage {
     pub fn new() -> Self {
         glib::Object::builder().build()

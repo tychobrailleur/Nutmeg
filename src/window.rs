@@ -29,14 +29,14 @@ use gtk::subclass::prelude::*;
 use gtk::{gdk, gio, glib, CompositeTemplate, TemplateChild};
 use log::info;
 
+use crate::rating::ui::page::FormationOptimiserWidget;
 use crate::ui::context_object::ContextObject;
 use crate::ui::player_object::PlayerObject;
 use crate::ui::team_object::TeamObject;
-use crate::rating::ui::page::FormationOptimiserWidget;
 
+use crate::series::page::SeriesPage;
 use crate::squad::player_details::SquadPlayerDetails;
 use crate::squad::player_list::SquadPlayerList;
-use crate::series::page::SeriesPage;
 // use crate::ui::oauth_dialog::OAuthDialog; // Not needed anymore
 
 mod imp {
@@ -199,9 +199,8 @@ impl NutmegWindow {
         // Listen to players list changes to update optimiser AND bind to player list
         let window = self.clone();
         model.connect_notify_local(Some("players"), move |model, _| {
-             window.update_optimiser_players(model.property("players"));
+            window.update_optimiser_players(model.property("players"));
         });
-
 
         // Initialize optimiser with current players (if any already loaded)
         if let Some(store) = model.property::<Option<gtk::ListStore>>("players") {
@@ -256,7 +255,7 @@ impl NutmegWindow {
         let view = imp.player_list.tree_view();
         let selection = view.selection();
         let context_object = imp.context_object.clone();
-        
+
         // Needed for manual update of details
         let player_details = imp.player_details.clone();
 
@@ -265,12 +264,8 @@ impl NutmegWindow {
             if let Some((model, iter)) = selection.selected() {
                 #[allow(deprecated)]
                 let obj_val = model.get_value(&iter, 18);
-                
-                let player_obj = if let Ok(obj) = obj_val.get::<PlayerObject>() {
-                    Some(obj)
-                } else {
-                    None
-                };
+
+                let player_obj = obj_val.get::<PlayerObject>().ok();
 
                 // Get preferred position from column 11
                 #[allow(deprecated)]
@@ -279,7 +274,7 @@ impl NutmegWindow {
 
                 // Update ContextObject (for other consumers)
                 context_object.set_selected_player(player_obj.clone());
-                
+
                 // Update UI directly to include best_pos
                 player_details.set_player(player_obj, best_pos);
             } else {

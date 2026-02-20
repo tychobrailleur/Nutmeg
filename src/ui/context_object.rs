@@ -12,8 +12,8 @@ use num_format::SystemLocale;
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
-use crate::db::teams::get_players_for_team;
 use crate::db::manager::DbManager;
+use crate::db::teams::get_players_for_team;
 use crate::squad::player_list::create_player_model;
 
 mod imp {
@@ -274,9 +274,9 @@ impl ContextObject {
             let obj = PlayerObject::new(p.clone());
 
             // Calculate preferred position
-            let preferred_pos = self.calculate_preferred_position(&p);
+            let preferred_pos = self.calculate_preferred_position(p);
 
-            let display = PlayerDisplay::new(&p, &locale, Some(&preferred_pos));
+            let display = PlayerDisplay::new(p, &locale, Some(&preferred_pos));
 
             // Get the actual background color from CSS by creating a styled widget
             let bg = if p.MotherClubBonus {
