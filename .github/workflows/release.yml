@@ -112,7 +112,7 @@ jobs:
   create-release:
     needs: [build-flatpak, build-macos, build-windows]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/release'
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
