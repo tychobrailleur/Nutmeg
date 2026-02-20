@@ -165,7 +165,9 @@ impl RatingPredictionModel {
                 factor *= calc_trainer(sector, self.team.coach_modifier);
 
                 // Tactic effects
-                if lineup.tactic == TacticType::PlayCreatively { factor *= 0.93 }
+                if lineup.tactic == TacticType::PlayCreatively {
+                    factor *= 0.93
+                }
 
                 if matches!(
                     sector,
@@ -175,9 +177,10 @@ impl RatingPredictionModel {
                         factor *= 0.85;
                     }
                 } else if matches!(sector, RatingSector::DefenceCentral)
-                    && matches!(lineup.tactic, TacticType::AttackOnWings) {
-                        factor *= 0.85;
-                    }
+                    && matches!(lineup.tactic, TacticType::AttackOnWings)
+                {
+                    factor *= 0.85;
+                }
             }
             RatingSector::AttackLeft | RatingSector::AttackCentral | RatingSector::AttackRight => {
                 // Confidence effect (Attack only)

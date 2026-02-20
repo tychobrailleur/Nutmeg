@@ -308,12 +308,12 @@ impl FormationOptimiserWidget {
                             .label(&short_name)
                             .ellipsize(gtk::pango::EllipsizeMode::End)
                             .max_width_chars(10)
-                            .tooltip_text(&tooltip)
                             .css_classes(["body", "strong"])
                             .halign(gtk::Align::Center)
                             .build();
                         container.append(&name);
                         container.add_css_class("slot-filled");
+                        container.set_tooltip_text(Some(&tooltip));
                     } else {
                         Self::add_empty_slot_label(&container);
                     }

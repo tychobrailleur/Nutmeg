@@ -296,8 +296,7 @@ pub enum PlayerSkill {
 }
 
 /// Player specialty types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Specialty {
     #[default]
     NoSpecialty,
@@ -310,10 +309,8 @@ pub enum Specialty {
     Support,
 }
 
-
 /// Weather conditions
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Weather {
     #[default]
     Neutral,
@@ -321,10 +318,8 @@ pub enum Weather {
     Sunny,
 }
 
-
 /// Match tactic types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum TacticType {
     #[default]
     Normal = 0,
@@ -336,10 +331,8 @@ pub enum TacticType {
     LongShots = 8,
 }
 
-
 /// Match attitude
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Attitude {
     #[default]
     Normal = 0,
@@ -347,14 +340,11 @@ pub enum Attitude {
     MatchOfTheSeason = 2, // MOTS
 }
 
-
 /// Match location
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Location {
     #[default]
     Away = 0,
     Home = 1,
     AwayDerby = 2,
 }
-
