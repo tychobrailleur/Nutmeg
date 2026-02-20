@@ -27,7 +27,7 @@ use crate::db::schema::downloads;
 use crate::db::series::{save_league_details, save_matches};
 use crate::db::teams::{save_avatars, save_players, save_team, save_world_details};
 use crate::service::avatar::AvatarService;
-use crate::service::secret::{GnomeSecretService, SecretStorageService};
+use crate::service::secret::{SystemSecretService, SecretStorageService};
 use chrono::Utc;
 use diesel::prelude::*;
 use log::{debug, info, warn};
@@ -65,7 +65,7 @@ impl SyncService {
         Self {
             db_manager,
             client: Arc::new(HattrickClient::new()),
-            secret_service: Arc::new(GnomeSecretService::new()),
+            secret_service: Arc::new(SystemSecretService::new()),
         }
     }
 

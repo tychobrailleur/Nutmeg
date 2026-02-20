@@ -1,6 +1,6 @@
 use crate::db::manager::DbManager;
 use crate::service::auth::{AuthenticationService, HattrickAuthService};
-use crate::service::secret::{GnomeSecretService, SecretStorageService};
+use crate::service::secret::{SystemSecretService, SecretStorageService};
 use crate::service::sync::{DataSyncService, SyncService};
 use crate::ui::oauth_dialog::OAuthDialog;
 use crate::window::NutmegWindow;
@@ -71,7 +71,7 @@ impl SyncController {
         progress_cb: Box<dyn Fn(f64, &str) + Send + Sync>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let auth_service = HattrickAuthService::new();
-        let secret_service = GnomeSecretService::new();
+        let secret_service = SystemSecretService::new();
 
         // 1. Get Auth URL
         let (url, rt, rs) =

@@ -18,7 +18,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use crate::service::secret::{GnomeSecretService, SecretStorageService};
+use crate::service::secret::{SystemSecretService, SecretStorageService};
 use gtk::glib;
 use oauth_1a::{ClientId, ClientSecret, OAuthData, SigningKey, Token};
 use std::env;
@@ -56,7 +56,7 @@ pub fn perform_cli_auth() -> glib::ExitCode {
         .build()
         .unwrap();
 
-    let secret_service = GnomeSecretService::new();
+    let secret_service = SystemSecretService::new();
 
     let maybe_creds = rt.block_on(async {
         let token = secret_service
@@ -120,7 +120,7 @@ pub fn perform_cli_auth() -> glib::ExitCode {
 
                     // Store credentials
                     rt.block_on(async {
-                        let ss = GnomeSecretService::new();
+                        let ss = SystemSecretService::new();
                         if let Err(e) = ss.store_secret("access_token", &t).await {
                             eprintln!("Warning: Failed to save access token: {}", e);
                         }

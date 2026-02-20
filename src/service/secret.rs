@@ -43,80 +43,59 @@ pub trait SecretStorageService: Send + Sync {
 #[derive(Debug, thiserror::Error)]
 pub enum SecretError {
     #[error("Secret service error: {0}")]
-    Oo7(#[from] oo7::Error),
+    Keyring(#[from] keyring::Error),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Unknown error")]
     Unknown,
 }
 
-pub struct GnomeSecretService;
+pub struct SystemSecretService;
 
-impl GnomeSecretService {
+impl SystemSecretService {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Default for GnomeSecretService {
+impl Default for SystemSecretService {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[async_trait]
-impl SecretStorageService for GnomeSecretService {
+impl SecretStorageService for SystemSecretService {
     async fn store_secret(&self, key: &str, value: &str) -> Result<(), SecretError> {
-        let keyring = oo7::Keyring::new().await?;
-
-        // Define attributes to identify the secret
-        let mut attributes = HashMap::new();
-        attributes.insert("application", "nutmeg");
-        attributes.insert("key", key);
-
-        keyring
-            .create_item(
-                "Nutmeg Secret",
-                &attributes,
-                value,
-                true, // replace
-            )
-            .await?;
+        let entry = keyring::Entry::new("nutmeg", key)?;
+        entry.set_password(value)?;
 
         debug!("Stored secret for key: {}", key);
         Ok(())
     }
 
     async fn get_secret(&self, key: &str) -> Result<Option<String>, SecretError> {
-        let keyring = oo7::Keyring::new().await?;
-
-        let mut attributes = HashMap::new();
-        attributes.insert("application", "nutmeg");
-        attributes.insert("key", key);
-
-        let items = keyring.search_items(&attributes).await?;
-
-        if let Some(item) = items.first() {
-            let secret = item.secret().await?;
-            let secret_str =
-                String::from_utf8(secret.to_vec()).map_err(|_| SecretError::Unknown)?;
-            return Ok(Some(secret_str));
+        let entry = keyring::Entry::new("nutmeg", key)?;
+        
+        match entry.get_password() {
+            Ok(password) => Ok(Some(password)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(SecretError::Keyring(e)),
         }
-
-        Ok(None)
     }
 
     async fn delete_secret(&self, key: &str) -> Result<(), SecretError> {
-        let keyring = oo7::Keyring::new().await?;
-
-        let mut attributes = HashMap::new();
-        attributes.insert("application", "nutmeg");
-        attributes.insert("key", key);
-
-        keyring.delete(&attributes).await?;
-
-        debug!("Deleted secret for key: {}", key);
-        Ok(())
+        let entry = keyring::Entry::new("nutmeg", key)?;
+        
+        // Keyring throws an error if we try to delete a non-existent key, so we ignore NoEntry
+        match entry.delete_credential() {
+            Ok(_) => {
+                debug!("Deleted secret for key: {}", key);
+                Ok(())
+            },
+            Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(SecretError::Keyring(e)),
+        }
     }
 }
 

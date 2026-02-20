@@ -437,7 +437,7 @@ impl NutmegWindow {
                 dialog.connect_response(move |dialog, response| {
                     if response == gtk::ResponseType::Ok {
                         if let Some(_win) = window_weak.upgrade() {
-                            let secret_service = crate::service::secret::GnomeSecretService::new();
+                            let secret_service = crate::service::secret::SystemSecretService::new();
                             glib::MainContext::default().spawn_local(async move {
                                 match secret_service.clear_all_oauth_secrets().await {
                                     Ok(()) => {

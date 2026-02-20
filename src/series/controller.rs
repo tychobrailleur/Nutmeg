@@ -7,7 +7,7 @@
 
 use crate::chpp::model::{LeagueDetailsData, MatchesData};
 use crate::chpp::request::{league_details_request, matches_request, team_details_request};
-use crate::service::secret::{GnomeSecretService, SecretStorageService};
+use crate::service::secret::{SystemSecretService, SecretStorageService};
 
 use std::error::Error;
 
@@ -17,7 +17,7 @@ impl SeriesController {
     pub async fn load_series_data(
         team_id: u32,
     ) -> Result<(LeagueDetailsData, MatchesData), Box<dyn Error>> {
-        let secret_service = GnomeSecretService::new();
+        let secret_service = SystemSecretService::new();
         let token = secret_service
             .get_secret("access_token")
             .await?

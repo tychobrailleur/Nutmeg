@@ -93,7 +93,7 @@ impl SetupWindow {
 
     pub fn setup_signals(&self) {
         use crate::service::auth::{AuthenticationService, HattrickAuthService};
-        use crate::service::secret::{GnomeSecretService, SecretStorageService};
+        use crate::service::secret::{SystemSecretService, SecretStorageService};
         use crate::service::sync::DataSyncService;
 
         let imp = self.imp();
@@ -189,7 +189,7 @@ impl SetupWindow {
 
                 match verify_res {
                     Ok(Ok((access_token, access_secret))) => {
-                        let secret_service = GnomeSecretService::new();
+                        let secret_service = SystemSecretService::new();
                         if let Err(e) = secret_service
                             .store_secret("access_token", &access_token)
                             .await
