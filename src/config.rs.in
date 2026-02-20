@@ -26,14 +26,19 @@ pub static GETTEXT_PACKAGE: &str = @GETTEXT_PACKAGE@;
 pub static LOCALEDIR: &str = @LOCALEDIR@;
 pub static PKGDATADIR: &str = @PKGDATADIR@;
 
+
+
 pub fn consumer_key() -> String {
-    option_env!("HT_CONSUMER_KEY")
+    let key = option_env!("HT_CONSUMER_KEY")
         .map(|s| s.to_string())
-        .unwrap_or_else(|| env::var("HT_CONSUMER_KEY").unwrap_or_default())
+        .unwrap_or_else(|| env::var("HT_CONSUMER_KEY").unwrap_or_default());
+    crate::utils::secret::deobfuscate(key)
 }
 
 pub fn consumer_secret() -> String {
-    option_env!("HT_CONSUMER_SECRET")
+    let secret = option_env!("HT_CONSUMER_SECRET")
         .map(|s| s.to_string())
-        .unwrap_or_else(|| env::var("HT_CONSUMER_SECRET").unwrap_or_default())
+        .unwrap_or_else(|| env::var("HT_CONSUMER_SECRET").unwrap_or_default());
+    crate::utils::secret::deobfuscate(secret)
 }
+

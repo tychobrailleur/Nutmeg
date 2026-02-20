@@ -14,17 +14,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create .env file with secrets
-        run: |
-          echo "HT_CONSUMER_KEY=${{ secrets.HT_CONSUMER_KEY }}" >> .env
-          echo "HT_CONSUMER_SECRET=${{ secrets.HT_CONSUMER_SECRET }}" >> .env
-
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        env:
+          HT_CONSUMER_KEY: ${{ secrets.HT_CONSUMER_KEY }}
+          HT_CONSUMER_SECRET: ${{ secrets.HT_CONSUMER_SECRET }}
         with:
           bundle: nutmeg.flatpak
           manifest-path: org.gnome.Nutmeg.json
           cache-key: flatpak-builder-${{ github.sha }}
+          build-args: "--env=HT_CONSUMER_KEY=${{ env.HT_CONSUMER_KEY }} --env=HT_CONSUMER_SECRET=${{ env.HT_CONSUMER_SECRET }}"
 
       - name: Upload Flatpak Artifact
         uses: actions/upload-artifact@v4
@@ -45,12 +44,10 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Create .env file with secrets
-        run: |
-          echo "HT_CONSUMER_KEY=${{ secrets.HT_CONSUMER_KEY }}" >> .env
-          echo "HT_CONSUMER_SECRET=${{ secrets.HT_CONSUMER_SECRET }}" >> .env
-
       - name: Build macOS Release
+        env:
+          HT_CONSUMER_KEY: ${{ secrets.HT_CONSUMER_KEY }}
+          HT_CONSUMER_SECRET: ${{ secrets.HT_CONSUMER_SECRET }}
         run: cargo build --release
 
       - name: Package macOS App
@@ -87,12 +84,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create .env file with secrets
-        run: |
-          echo "HT_CONSUMER_KEY=${{ secrets.HT_CONSUMER_KEY }}" >> .env
-          echo "HT_CONSUMER_SECRET=${{ secrets.HT_CONSUMER_SECRET }}" >> .env
-
       - name: Build Windows Release
+        env:
+          HT_CONSUMER_KEY: ${{ secrets.HT_CONSUMER_KEY }}
+          HT_CONSUMER_SECRET: ${{ secrets.HT_CONSUMER_SECRET }}
         run: cargo build --release
 
       - name: Package Windows App
