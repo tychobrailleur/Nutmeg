@@ -20,4 +20,20 @@
 
 fn main() {
     glib_build_tools::compile_resources(&["src"], "src/nutmeg.gresource.xml", "nutmeg.gresource");
+
+    // Attempt to load .env file manually to bake compile-time secrets
+    // into the binary via `option_env!` (e.g. for Flatpak isolated builds).
+    if let Ok(content) = std::fs::read_to_string(".env") {
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some((key, value)) = line.split_once('=') {
+                let key = key.trim();
+                let value = value.trim().trim_matches('"').trim_matches('\'');
+                println!("cargo:rustc-env={}={}", key, value);
+            }
+        }
+    }
 }

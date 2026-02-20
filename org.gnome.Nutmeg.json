@@ -43,8 +43,8 @@
             "buildsystem": "meson",
             "sources": [
                 {
-                    "type": "git",
-                    "url": "file:///home/sebastien/dev"
+                    "type": "dir",
+                    "path": "."
                 }
             ]
         }

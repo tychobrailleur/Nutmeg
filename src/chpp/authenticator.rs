@@ -40,10 +40,14 @@ fn prompt_browser(url: &str) -> i32 {
 }
 
 pub fn perform_cli_auth() -> glib::ExitCode {
-    let consumer_key =
-        env::var("HT_CONSUMER_KEY").expect("HT_CONSUMER_KEY not set env or .env/.zshrc");
-    let consumer_secret =
-        env::var("HT_CONSUMER_SECRET").expect("HT_CONSUMER_SECRET not set env or .env/.zshrc");
+    let consumer_key = crate::config::consumer_key();
+    if consumer_key.is_empty() {
+        panic!("HT_CONSUMER_KEY not set env or .env/.zshrc");
+    }
+    let consumer_secret = crate::config::consumer_secret();
+    if consumer_secret.is_empty() {
+        panic!("HT_CONSUMER_SECRET not set env or .env/.zshrc");
+    }
 
     println!("Starting CHPP Authentication Flow...");
 

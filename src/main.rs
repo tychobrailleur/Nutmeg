@@ -47,13 +47,24 @@ fn main() -> glib::ExitCode {
         Err(e) => println!("INFO: Could not load .env: {}", e),
     }
 
-    match std::env::var("HT_CONSUMER_KEY") {
-        Ok(val) => println!("INFO: HT_CONSUMER_KEY found (length: {})", val.len()),
-        Err(e) => println!("ERROR: HT_CONSUMER_KEY not found in env: {}", e),
+    let consumer_key = crate::config::consumer_key();
+    if !consumer_key.is_empty() {
+        println!(
+            "INFO: HT_CONSUMER_KEY found (length: {})",
+            consumer_key.len()
+        );
+    } else {
+        println!("ERROR: HT_CONSUMER_KEY not found in compile environment or runtime env");
     }
-    match std::env::var("HT_CONSUMER_SECRET") {
-        Ok(val) => println!("INFO: HT_CONSUMER_SECRET found (length: {})", val.len()),
-        Err(e) => println!("ERROR: HT_CONSUMER_SECRET not found in env: {}", e),
+
+    let consumer_secret = crate::config::consumer_secret();
+    if !consumer_secret.is_empty() {
+        println!(
+            "INFO: HT_CONSUMER_SECRET found (length: {})",
+            consumer_secret.len()
+        );
+    } else {
+        println!("ERROR: HT_CONSUMER_SECRET not found in compile environment or runtime env");
     }
 
     env_logger::init();
