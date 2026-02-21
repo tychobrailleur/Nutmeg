@@ -21,12 +21,13 @@ impl TeamController {
                         model.append(&TeamObject::new(id, name, logo_url));
                     }
 
-                    // Setup factory
+                    dropdown.set_model(gio::ListModel::NONE);
+
                     let factory = gtk::SignalListItemFactory::new();
                     Self::setup_factory(&factory);
+                    dropdown.set_factory(Some(&factory));
 
                     dropdown.set_model(Some(&model));
-                    dropdown.set_factory(Some(&factory));
 
                     if model.n_items() > 0 {
                         dropdown.set_selected(0);
