@@ -35,7 +35,7 @@ pub trait SecretStorageService: Send + Sync {
         let _ = self.delete_secret("oauth_consumer_key").await;
         let _ = self.delete_secret("oauth_consumer_secret").await;
         let _ = self.delete_secret("access_token").await;
-        let _ = self.delete_secret("access_token_secret").await;
+        let _ = self.delete_secret("access_secret").await;
         Ok(())
     }
 }
@@ -67,35 +67,50 @@ impl Default for SystemSecretService {
 #[async_trait]
 impl SecretStorageService for SystemSecretService {
     async fn store_secret(&self, key: &str, value: &str) -> Result<(), SecretError> {
-        let entry = keyring::Entry::new("nutmeg", key)?;
-        entry.set_password(value)?;
-
-        debug!("Stored secret for key: {}", key);
+        let key = key.to_string();
+        let value = value.to_string();
+        tokio::task::spawn_blocking(move || -> Result<(), SecretError> {
+            let entry = keyring::Entry::new("nutmeg", &key)?;
+            entry.set_password(&value)?;
+            debug!("Stored secret for key: {}", key);
+            Ok(())
+        })
+        .await
+        .map_err(|e| SecretError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))??;
         Ok(())
     }
 
     async fn get_secret(&self, key: &str) -> Result<Option<String>, SecretError> {
-        let entry = keyring::Entry::new("nutmeg", key)?;
-
-        match entry.get_password() {
-            Ok(password) => Ok(Some(password)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(SecretError::Keyring(e)),
-        }
+        let key = key.to_string();
+        tokio::task::spawn_blocking(move || -> Result<Option<String>, SecretError> {
+            let entry = keyring::Entry::new("nutmeg", &key)?;
+            match entry.get_password() {
+                Ok(password) => Ok(Some(password)),
+                Err(keyring::Error::NoEntry) => Ok(None),
+                Err(e) => Err(SecretError::Keyring(e)),
+            }
+        })
+        .await
+        .map_err(|e| SecretError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?
     }
 
     async fn delete_secret(&self, key: &str) -> Result<(), SecretError> {
-        let entry = keyring::Entry::new("nutmeg", key)?;
-
-        // Keyring throws an error if we try to delete a non-existent key, so we ignore NoEntry
-        match entry.delete_credential() {
-            Ok(_) => {
-                debug!("Deleted secret for key: {}", key);
-                Ok(())
+        let key = key.to_string();
+        tokio::task::spawn_blocking(move || -> Result<(), SecretError> {
+            let entry = keyring::Entry::new("nutmeg", &key)?;
+            // Keyring throws an error if we try to delete a non-existent key, so we ignore NoEntry
+            match entry.delete_credential() {
+                Ok(_) => {
+                    debug!("Deleted secret for key: {}", key);
+                    Ok(())
+                }
+                Err(keyring::Error::NoEntry) => Ok(()),
+                Err(e) => Err(SecretError::Keyring(e)),
             }
-            Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(SecretError::Keyring(e)),
-        }
+        })
+        .await
+        .map_err(|e| SecretError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))??;
+        Ok(())
     }
 }
 

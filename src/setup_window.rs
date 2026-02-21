@@ -195,12 +195,16 @@ impl SetupWindow {
                             .await
                         {
                             error!("Failed to store access token: {}", e);
+                            stack.set_visible_child_name("page3");
+                            return;
                         }
                         if let Err(e) = secret_service
                             .store_secret("access_secret", &access_secret)
                             .await
                         {
                             error!("Failed to store access secret: {}", e);
+                            stack.set_visible_child_name("page3");
+                            return;
                         }
 
                         let db_manager = Arc::new(DbManager::new());
@@ -224,6 +228,8 @@ impl SetupWindow {
                             .perform_initial_sync(
                                 consumer_key(),
                                 consumer_secret(),
+                                access_token,
+                                access_secret,
                                 progress_callback,
                             )
                             .await

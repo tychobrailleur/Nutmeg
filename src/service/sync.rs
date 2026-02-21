@@ -42,6 +42,8 @@ pub trait DataSyncService {
         &self,
         consumer_key: String,
         consumer_secret: String,
+        access_token: String,
+        access_secret: String,
         on_progress: Box<dyn Fn(f64, &str) + Send + Sync>,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>>;
 
@@ -89,21 +91,21 @@ impl DataSyncService for SyncService {
         &self,
         consumer_key: String,
         consumer_secret: String,
+        access_token: String,
+        access_secret: String,
         on_progress: Box<dyn Fn(f64, &str) + Send + Sync>,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>> {
-        let consumer_key = consumer_key.clone();
-        let consumer_secret = consumer_secret.clone();
         let db_manager = self.db_manager.clone();
         let client = self.client.clone();
-        let secret_service = self.secret_service.clone();
 
         Box::pin(async move {
             Self::do_full_sync(
                 db_manager,
                 client,
-                secret_service,
                 consumer_key,
                 consumer_secret,
+                access_token,
+                access_secret,
                 on_progress,
             )
             .await
@@ -116,34 +118,36 @@ impl DataSyncService for SyncService {
         consumer_secret: String,
         on_progress: Box<dyn Fn(f64, &str) + Send + Sync>,
     ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + '_>> {
-        let consumer_key = consumer_key.clone();
-        let consumer_secret = consumer_secret.clone();
         let db_manager = self.db_manager.clone();
         let client = self.client.clone();
         let secret_service = self.secret_service.clone();
 
         Box::pin(async move {
-            // Check if secrets exist first to return boolean
-            let token_exists = secret_service.get_secret("access_token").await.is_ok();
-            let secret_exists = secret_service.get_secret("access_secret").await.is_ok();
+            let access_token = match secret_service.get_secret("access_token").await {
+                Ok(Some(token)) => token,
+                Ok(None) => return Ok(false),
+                Err(e) => return Err(Error::Io(e.to_string())),
+            };
 
-            if token_exists && secret_exists {
-                match Self::do_full_sync(
-                    db_manager,
-                    client,
-                    secret_service,
-                    consumer_key,
-                    consumer_secret,
-                    on_progress,
-                )
-                .await
-                {
-                    Ok(_) => Ok(true),
-                    Err(Error::Io(s)) if s.contains("Missing credentials") => Ok(false),
-                    Err(e) => Err(e),
-                }
-            } else {
-                Ok(false)
+            let access_secret = match secret_service.get_secret("access_secret").await {
+                Ok(Some(secret)) => secret,
+                Ok(None) => return Ok(false),
+                Err(e) => return Err(Error::Io(e.to_string())),
+            };
+
+            match Self::do_full_sync(
+                db_manager,
+                client,
+                consumer_key,
+                consumer_secret,
+                access_token,
+                access_secret,
+                on_progress,
+            )
+            .await
+            {
+                Ok(_) => Ok(true),
+                Err(e) => Err(e),
             }
         })
     }
@@ -660,23 +664,13 @@ impl SyncService {
     async fn do_full_sync(
         db_manager: Arc<DbManager>,
         client: Arc<dyn ChppClient>,
-        secret_service: Arc<dyn SecretStorageService>,
         consumer_key: String,
         consumer_secret: String,
+        access_token: String,
+        access_secret: String,
         on_progress: Box<dyn Fn(f64, &str) + Send + Sync>,
     ) -> Result<(), Error> {
         on_progress(0.0, "Checking credentials...");
-        let access_token = secret_service
-            .get_secret("access_token")
-            .await
-            .map_err(|e| Error::Io(e.to_string()))?
-            .ok_or(Error::Io("Missing credentials (token)".to_string()))?;
-
-        let access_secret = secret_service
-            .get_secret("access_secret")
-            .await
-            .map_err(|e| Error::Io(e.to_string()))?
-            .ok_or(Error::Io("Missing credentials (secret)".to_string()))?;
 
         debug!("consumer_key: {}", consumer_key);
         debug!("consumer_secret: {}", consumer_secret);
@@ -1079,24 +1073,18 @@ mod tests {
         db_manager.run_migrations().expect("Migrations failed");
 
         let client = Arc::new(MockChppClient);
-        let secret_service = Arc::new(MockSecretService::new());
-
-        // Seed some fake secrets
-        secret_service
-            .store_secret("access_token", "dummy_token")
-            .await
-            .expect("Failed to store token");
-        secret_service
-            .store_secret("access_secret", "dummy_secret")
-            .await
-            .expect("Failed to store secret");
-
-        let service = SyncService::new_with_client(db_manager.clone(), client, secret_service);
+        let service = SyncService::new_with_client(
+            db_manager.clone(),
+            client,
+            Arc::new(MockSecretService::new()),
+        );
 
         let res = service
             .perform_initial_sync(
                 "dummy_key".into(),
                 "dummy_secret".into(),
+                "dummy_token".into(),
+                "dummy_secret_val".into(),
                 Box::new(|_, _| {}),
             )
             .await;
