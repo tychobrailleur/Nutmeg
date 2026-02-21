@@ -51,7 +51,8 @@ impl SeriesController {
 
         if let (Some(league_details), Some(matches_data)) = (db_league, db_matches) {
             log::info!("Loaded Series and Matches data from Database.");
-            return Ok((league_details, matches_data));
+            let filtered = filter_matches_for_season(&league_details, matches_data);
+            return Ok((league_details, filtered));
         }
 
         log::info!("Data not found in DB. Fetching from CHPP API...");
@@ -224,9 +225,14 @@ fn filter_matches_for_season(
         .Matches
         .into_iter()
         .filter(|m| {
-            // MatchType 1 is League Match
-            // MatchContextId should be the LeagueLevelUnitID for league matches
-            m.MatchType == 1 && m.MatchContextId == Some(league_unit_id)
+            // Keep only league matches (MatchType 1) for this team's specific division.
+            // MatchContextId carries the LeagueLevelUnitId for league matches, which lets
+            // us distinguish "our division" from other league matches that may appear in
+            // the results (e.g. if archived matches span multiple seasons/divisions).
+            // We also accept None to remain compatible with rows that were written before
+            // the match_context_id column was added to the database.
+            m.MatchType == 1
+                && (m.MatchContextId.is_none() || m.MatchContextId == Some(league_unit_id))
         })
         .collect();
 

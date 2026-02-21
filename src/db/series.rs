@@ -86,6 +86,13 @@ pub struct Match {
     pub status: String,
     pub home_goals: Option<i32>,
     pub away_goals: Option<i32>,
+    /// The CHPP `MatchContextId` value. Its meaning depends on `match_type`:
+    /// - League match (type 1): the `LeagueLevelUnitId` of the division
+    /// - Cup/Masters/World Cup (type 3/7/…): the `CupId`
+    /// - Tournament (type 50/51): the `TournamentId`
+    /// - Ladder (type 62): the `LadderId`
+    /// - Friendlies and other non-competition matches: 0 or NULL
+    pub match_context_id: Option<i32>,
 }
 
 #[derive(Insertable)]
@@ -102,6 +109,8 @@ pub struct NewMatch<'a> {
     pub status: &'a str,
     pub home_goals: Option<i32>,
     pub away_goals: Option<i32>,
+    /// See `Match::match_context_id`.
+    pub match_context_id: Option<i32>,
 }
 
 pub fn save_league_details(
@@ -195,6 +204,7 @@ pub fn save_matches(
             status: &match_data.Status,
             home_goals: match_data.HomeGoals.map(|v| v as i32),
             away_goals: match_data.AwayGoals.map(|v| v as i32),
+            match_context_id: match_data.MatchContextId.map(|v| v as i32),
         })
         .collect();
 
@@ -310,7 +320,7 @@ pub fn get_latest_matches(
                 MatchDate: match_entity.match_date,
                 SourceSystem: None,
                 MatchType: match_entity.match_type as u32,
-                MatchContextId: None,
+                MatchContextId: match_entity.match_context_id.map(|v| v as u32),
                 CupLevel: None,
                 CupLevelIndex: None,
                 HomeGoals: match_entity.home_goals.map(|v| v as u32),

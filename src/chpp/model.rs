@@ -983,10 +983,22 @@ pub struct MatchDetails {
     pub AwayTeam: MatchAwayTeam,
     pub MatchDate: String,
     pub SourceSystem: Option<String>, // hattrick, youth or htointegrated
-    pub MatchType: u32, // 1 league match, 2 qualification match, 3 cup match, 4 friendly (normal rules),
-    // 5 friendly (cup rules), 7 hattrick masters, 8 intl friendly (normal rules), 9 intl friendly (cup rules), ...
-    pub MatchContextId: Option<u32>, // either LeagueLevelUnitId (for League), CupId (Cup, Hattrick Masters, World Cup and U-20 World Cup),
-    // LadderId, TournamentId, or 0 for friendly, qualification, single matches and preparation matches.
+    // Official CHPP match type codes:
+    //   1  = League, 2 = Qualification, 3 = Cup, 4 = Friendly (normal rules),
+    //   5  = Friendly (cup rules), 7 = Hattrick Masters,
+    //   8  = Intl friendly (normal rules), 9 = Intl friendly (cup rules),
+    //   50 = Tournament league, 51 = Tournament playoff, 62 = Ladder, 80 = Preparation, ...
+    pub MatchType: u32,
+    // Official CHPP field whose meaning depends on MatchType:
+    //   MatchType 1  (League)               → LeagueLevelUnitId  (identifies the division/series)
+    //   MatchType 3  (Cup / HT Masters /
+    //                 World Cup / U-20 WC)  → CupId
+    //   MatchType 50/51 (Tournament)        → TournamentId
+    //   MatchType 62 (Ladder)               → LadderId
+    //   All other types (friendlies, etc.)  → 0 or absent
+    // We use it together with MatchType == 1 to filter the matches that belong to
+    // the team's own league series (LeagueLevelUnitId).
+    pub MatchContextId: Option<u32>,
     pub CupLevel: Option<u32>,
     pub CupLevelIndex: Option<u32>,
     pub HomeGoals: Option<u32>,

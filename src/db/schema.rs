@@ -287,6 +287,7 @@ diesel::table! {
         status -> Text,
         home_goals -> Nullable<Integer>,
         away_goals -> Nullable<Integer>,
+        match_context_id -> Nullable<Integer>,
     }
 }
 
