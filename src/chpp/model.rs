@@ -70,6 +70,13 @@ where
             }
         }
 
+        fn visit_unit<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(false)
+        }
+
         fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
         where
             M: serde::de::MapAccess<'de>,
@@ -77,12 +84,9 @@ where
             while let Some(key) = map.next_key::<String>()? {
                 if key == "$value" || key == "value" {
                     let value: String = map.next_value()?;
-                    if value.is_empty() {
-                        return Ok(false);
-                    }
                     return match value.trim().to_lowercase().as_str() {
                         "true" | "1" => Ok(true),
-                        "false" | "0" => Ok(false),
+                        "false" | "0" | "" => Ok(false),
                         _ => Err(serde::de::Error::custom(format!(
                             "Expected True/False/1/0, got '{}'",
                             value
@@ -593,7 +597,7 @@ pub struct LastMatch {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 // Player maps to Player in players and playerdetails
 pub struct Player {
     pub PlayerID: u32,
@@ -1935,4 +1939,77 @@ pub struct AvatarsData {
     pub user_id: u32,
     #[serde(rename = "Team")]
     pub team: AvatarsTeam,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Staff {
+    pub StaffId: u32,
+    pub StaffType: u32,
+    pub StaffLevel: u32,
+    pub HiredDate: String,
+    pub Cost: u32,
+    pub Name: String,
+    #[serde(default)]
+    pub HofPlayerId: Option<u32>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct StaffTrainer {
+    pub TrainerId: u32,
+    pub Name: String,
+    #[serde(default)]
+    pub Age: Option<u32>,
+    #[serde(default)]
+    pub AgeDays: Option<u32>,
+    #[serde(default)]
+    pub ContractDate: Option<String>,
+    #[serde(default)]
+    pub Cost: Option<u32>,
+    #[serde(default)]
+    pub CountryID: Option<u32>,
+    #[serde(default)]
+    pub TrainerType: Option<u32>,
+    #[serde(default)]
+    pub Leadership: Option<u32>,
+    #[serde(default)]
+    pub TrainerSkillLevel: Option<u32>,
+    #[serde(default)]
+    pub TrainerStatus: Option<u32>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct StaffMembersWrapper {
+    #[serde(rename = "Staff", default)]
+    pub staff: Vec<Staff>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct StaffList {
+    #[serde(default)]
+    pub Trainer: Option<StaffTrainer>,
+    #[serde(default)]
+    pub StaffMembers: Option<StaffMembersWrapper>,
+    #[serde(default)]
+    pub TotalStaffMembers: Option<u32>,
+    #[serde(default)]
+    pub TotalCost: Option<u32>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct StaffListData {
+    #[serde(rename = "FileName")]
+    pub file_name: String,
+    #[serde(rename = "Version")]
+    pub version: String,
+    #[serde(rename = "UserID")]
+    pub user_id: u32,
+    #[serde(rename = "FetchedDate", default)]
+    pub fetched_date: Option<String>,
+    #[serde(rename = "StaffList")]
+    pub staff_list: StaffList,
 }

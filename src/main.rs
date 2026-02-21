@@ -27,6 +27,7 @@ mod series;
 mod service;
 mod setup_window;
 mod squad;
+mod training;
 mod ui;
 mod utils;
 mod window;

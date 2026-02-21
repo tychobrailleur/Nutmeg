@@ -302,6 +302,20 @@ diesel::joinable!(players -> downloads (download_id));
 diesel::joinable!(regions -> downloads (download_id));
 diesel::joinable!(teams -> downloads (download_id));
 diesel::joinable!(users -> downloads (download_id));
+diesel::joinable!(staff -> downloads (download_id));
+
+diesel::table! {
+    staff (staff_id) {
+        staff_id -> Integer,
+        team_id -> Integer,
+        staff_type -> Integer,
+        staff_level -> Integer,
+        hired_date -> Text,
+        cost -> Integer,
+        name -> Text,
+        download_id -> Integer,
+    }
+}
 
 diesel::allow_tables_to_appear_in_same_query!(
     avatars,
@@ -317,6 +331,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     matches,
     players,
     regions,
+    staff,
     teams,
     users,
 );

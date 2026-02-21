@@ -1,5 +1,5 @@
 use super::model::{Lineup, LineupPosition};
-use super::position_eval::evaluate_all_positions;
+use super::position_eval::{calculate_position_rating, evaluate_all_positions, PositionRating};
 use super::types::{Attitude, Behaviour, Location, PositionId, RatingSector, TacticType, Weather};
 use crate::chpp::model::Player;
 use crate::rating::RatingPredictionModel;
@@ -207,6 +207,7 @@ pub struct OptimisedLineup {
     pub formation: Formation,
     pub lineup: Lineup,
     pub sector_ratings: HashMap<RatingSector, f64>,
+    pub player_ratings: HashMap<PositionId, PositionRating>,
     pub hatstats: f64,
     pub captain: Option<Player>,
     pub set_pieces_taker: Option<Player>,
@@ -224,6 +225,8 @@ impl<'a> LineupOptimiser<'a> {
     }
 
     pub fn optimise(&self, formation: Formation) -> OptimisedLineup {
+        // ... (existing optimization loop)
+
         let slots = formation.get_slots();
         let mut best_lineup = self.create_initial_lineup(&slots);
         let mut best_hatstats = self.model.calc_hatstats(&best_lineup, 0);
@@ -287,6 +290,20 @@ impl<'a> LineupOptimiser<'a> {
             sector_ratings.insert(sector, self.model.get_rating(&best_lineup, sector, 0));
         }
 
+        // Calculate individual player ratings
+        let mut player_ratings = HashMap::new();
+        for pos in &best_lineup.positions {
+            let rating = calculate_position_rating(
+                self.model,
+                &pos.player,
+                pos.role_id,
+                pos.behaviour,
+                &best_lineup,
+                0,
+            );
+            player_ratings.insert(pos.role_id, rating);
+        }
+
         let captain = self.select_captain(&best_lineup);
         let set_pieces_taker = self.select_set_pieces_taker(&best_lineup);
 
@@ -294,6 +311,7 @@ impl<'a> LineupOptimiser<'a> {
             formation,
             lineup: best_lineup,
             sector_ratings,
+            player_ratings,
             hatstats: best_hatstats,
             captain,
             set_pieces_taker,
@@ -475,13 +493,12 @@ impl<'a> LineupOptimiser<'a> {
         best_player
     }
 
-    fn try_swap_bench(&self, lineup: &Lineup, slots: &[PositionId]) -> Option<Lineup> {
+    fn try_swap_bench(&self, lineup: &Lineup, _slots: &[PositionId]) -> Option<Lineup> {
         // Randomly pick a slot in lineup
         if lineup.positions.is_empty() {
             return None;
         }
         let idx = fastrand::usize(0..lineup.positions.len());
-        let current_pos = &lineup.positions[idx];
 
         // Find bench players
         let lineup_ids: HashSet<u32> = lineup.positions.iter().map(|p| p.player.PlayerID).collect();
@@ -533,16 +550,17 @@ impl<'a> LineupOptimiser<'a> {
             return None;
         }
         let idx = fastrand::usize(0..lineup.positions.len());
+        let current_pos = &lineup.positions[idx];
 
-        // Use valid behaviours for this specific position
-        let valid = lineup.positions[idx].role_id.valid_behaviours();
-        if valid.len() <= 1 {
-            return None;
-        } // Keeper only has Normal
-        let new_behaviour = valid[fastrand::usize(0..valid.len())];
+        let valid_behaviours = current_pos.role_id.valid_behaviours();
+        if valid_behaviours.len() <= 1 {
+            return None; // No alternative behaviour
+        }
 
-        if lineup.positions[idx].behaviour == new_behaviour {
-            return None;
+        // Pick a random DIFFERENT behaviour
+        let mut new_behaviour = valid_behaviours[fastrand::usize(0..valid_behaviours.len())];
+        while new_behaviour == current_pos.behaviour {
+            new_behaviour = valid_behaviours[fastrand::usize(0..valid_behaviours.len())];
         }
 
         let mut new_lineup = lineup.clone();
@@ -643,7 +661,7 @@ mod tests {
             // ... need 11 players for full test, but unit test can check partial logic
         ];
 
-        let optimiser = LineupOptimiser::new(&model, &players);
+        let _optimiser = LineupOptimiser::new(&model, &players);
         // Optimization check would require more logic setup
     }
 }

@@ -419,8 +419,7 @@ mod tests {
         assert_eq!(fetched_league.Teams[0].TeamName, "Team A");
 
         // Idempotency: re-saving must not duplicate rows (ON CONFLICT DO NOTHING)
-        save_league_details(&mut conn, 1, &league_data)
-            .expect("Failed to re-save league details");
+        save_league_details(&mut conn, 1, &league_data).expect("Failed to re-save league details");
         let fetched_again = get_latest_league_details(&mut conn, 100)
             .expect("Failed to fetch league after re-save")
             .unwrap();

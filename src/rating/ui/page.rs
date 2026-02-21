@@ -1,12 +1,14 @@
 use crate::chpp::model::Player;
 use crate::rating::controller::RatingController;
+use crate::rating::model::Lineup;
 use crate::rating::optimiser::{Formation, OptimisedLineup};
-use crate::rating::types::{Behaviour, PositionId};
-use crate::rating::RatingSector;
+use crate::rating::types::{
+    Attitude, Behaviour, Location, PositionId, RatingSector, TacticType, Weather,
+};
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gtk::{glib, CompositeTemplate};
-use log::{error, info};
+use log::{debug, error, info};
 use num_format::{Buffer, SystemLocale};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -15,7 +17,60 @@ mod imp {
     use super::*;
 
     #[derive(Debug, CompositeTemplate)]
-    #[template(resource = "/org/gnome/Nutmeg/rating/ui/page.ui")]
+    #[template(string = r#"
+    <interface>
+      <template class="FormationOptimiserWidget" parent="GtkBox">
+        <property name="orientation">vertical</property>
+        <property name="spacing">12</property>
+        <property name="margin-top">12</property>
+        <property name="margin-bottom">12</property>
+        <property name="margin-start">12</property>
+        <property name="margin-end">12</property>
+
+        <child>
+          <object class="GtkBox">
+            <property name="orientation">horizontal</property>
+            <property name="spacing">12</property>
+
+            <child>
+              <object class="GtkLabel">
+                <property name="label" translatable="yes">Formation Optimiser</property>
+                <property name="css-classes">title-1</property>
+                <property name="halign">start</property>
+                <property name="hexpand">true</property>
+              </object>
+            </child>
+
+            <child>
+              <object class="GtkButton" id="calculate_button">
+                <property name="label" translatable="yes">Calculate Best Lineups</property>
+                <property name="css-classes">suggested-action</property>
+              </object>
+            </child>
+          </object>
+        </child>
+
+        <child>
+            <object class="GtkScrolledWindow">
+                <property name="vexpand">true</property>
+                <property name="hexpand">true</property>
+                <property name="hscrollbar-policy">never</property>
+                <child>
+                    <object class="GtkFlowBox" id="formations_flowbox">
+                        <property name="valign">start</property>
+                        <property name="max-children-per-line">5</property>
+                        <property name="min-children-per-line">1</property>
+                        <property name="selection-mode">none</property>
+                        <property name="row-spacing">12</property>
+                        <property name="column-spacing">12</property>
+                    </object>
+                </child>
+            </object>
+        </child>
+
+      </template>
+    </interface>
+    "#)]
     pub struct FormationOptimiserWidget {
         #[template_child]
         pub calculate_button: TemplateChild<gtk::Button>,
@@ -56,7 +111,7 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
             self.obj().setup_callbacks();
-            self.obj().populate_empty_cards();
+            self.obj().populate_initial_cards();
         }
     }
 
@@ -96,14 +151,28 @@ impl FormationOptimiserWidget {
         });
     }
 
-    /// Populates the FlowBox with empty placeholder cards for each formation.
-    fn populate_empty_cards(&self) {
+    fn populate_initial_cards(&self) {
         let imp = self.imp();
         let flowbox = imp.formations_flowbox.get();
         flowbox.remove_all();
 
         for formation in Formation::all() {
-            let card = self.create_empty_card(&formation);
+            let empty_lineup = OptimisedLineup {
+                formation,
+                lineup: Lineup {
+                    positions: vec![],
+                    weather: Weather::default(),
+                    tactic: TacticType::Normal,
+                    attitude: Attitude::Normal,
+                    location: Location::default(),
+                },
+                sector_ratings: HashMap::new(),
+                player_ratings: HashMap::new(),
+                hatstats: 0.0,
+                captain: None,
+                set_pieces_taker: None,
+            };
+            let card = self.create_formation_card(&empty_lineup);
             imp.card_size_group.add_widget(&card);
             flowbox.append(&card);
         }
@@ -114,6 +183,12 @@ impl FormationOptimiserWidget {
         let players = imp.players.borrow().clone();
 
         info!("Optimiser started with {} players", players.len());
+        if let Some(p) = players.first() {
+            debug!(
+                "Sample player: {} {} (Form: {})",
+                p.FirstName, p.LastName, p.PlayerForm
+            );
+        }
 
         imp.calculate_button.set_sensitive(false);
 
@@ -448,76 +523,9 @@ impl FormationOptimiserWidget {
     // Card builders
     // ─────────────────────────────────────────────────────────────────────
 
-    /// Creates an empty placeholder card showing formation name, empty ratings,
-    /// empty roles, and the full pitch with empty slots.
-    fn create_empty_card(&self, formation: &Formation) -> gtk::Widget {
-        let card = gtk::Box::new(gtk::Orientation::Vertical, 6);
-        card.add_css_class("card");
-        card.set_margin_top(6);
-        card.set_margin_bottom(6);
-        card.set_margin_start(6);
-        card.set_margin_end(6);
-
-        // Header
-        let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        let title = gtk::Label::builder()
-            .label(formation.name())
-            .css_classes(["heading"])
-            .halign(gtk::Align::Start)
-            .hexpand(true)
-            .build();
-        let hatstats = gtk::Label::builder()
-            .label("—")
-            .css_classes(["accent"])
-            .halign(gtk::Align::End)
-            .build();
-        header.append(&title);
-        header.append(&hatstats);
-        card.append(&header);
-
-        card.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-
-        // Empty ratings with dotted leaders
-        let ratings_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        for label in [
-            "Midfield", "Def R", "Def C", "Def L", "Att R", "Att C", "Att L",
-        ] {
-            ratings_box.append(&Self::create_rating_row(label, "—"));
-        }
-        card.append(&ratings_box);
-
-        // Empty roles
-        let roles_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
-        roles_box.set_margin_top(8);
-        roles_box.set_margin_bottom(8);
-        for role_label in ["Captain", "Set Pieces"] {
-            let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-            let lbl = gtk::Label::builder()
-                .label(role_label)
-                .halign(gtk::Align::Start)
-                .css_classes(["dim-label"])
-                .build();
-            let val = gtk::Label::builder()
-                .label("—")
-                .halign(gtk::Align::End)
-                .hexpand(true)
-                .build();
-            row.append(&lbl);
-            row.append(&val);
-            roles_box.append(&row);
-        }
-        card.append(&roles_box);
-
-        card.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-
-        // Full pitch with empty slots (no player data)
-        let visual_box = Self::create_pitch_visualisation(None, None);
-        card.append(&visual_box);
-
-        card.upcast()
-    }
-
-    /// Creates a populated formation card with all data filled in.
+    /// Creates a formation card. When `result` has an empty lineup (no positions),
+    /// all slots are shown as dashes, producing a placeholder card.
+    /// When called with a populated `OptimisedLineup` it shows the full lineup.
     fn create_formation_card(&self, result: &OptimisedLineup) -> gtk::Widget {
         let card = gtk::Box::new(gtk::Orientation::Vertical, 6);
         card.add_css_class("card");
@@ -611,9 +619,12 @@ impl FormationOptimiserWidget {
         let mut rating_map: HashMap<u32, f64> = HashMap::new();
         for pos in &result.lineup.positions {
             let player_id = pos.player.PlayerID;
-            rating_map.entry(player_id).or_insert_with(|| {
-                let sector_rating = match pos.role_id.sector() {
-                    crate::rating::types::Sector::Goal => result
+            rating_map
+                .entry(player_id)
+                .or_insert_with(|| match pos.role_id.sector() {
+                    crate::rating::types::Sector::Goal
+                    | crate::rating::types::Sector::InnerMidfield
+                    | crate::rating::types::Sector::Wing => result
                         .sector_ratings
                         .get(&RatingSector::Midfield)
                         .copied()
@@ -624,24 +635,12 @@ impl FormationOptimiserWidget {
                         .get(&RatingSector::DefenceCentral)
                         .copied()
                         .unwrap_or(0.0),
-                    crate::rating::types::Sector::InnerMidfield => result
-                        .sector_ratings
-                        .get(&RatingSector::Midfield)
-                        .copied()
-                        .unwrap_or(0.0),
-                    crate::rating::types::Sector::Wing => result
-                        .sector_ratings
-                        .get(&RatingSector::Midfield)
-                        .copied()
-                        .unwrap_or(0.0),
                     crate::rating::types::Sector::Forward => result
                         .sector_ratings
                         .get(&RatingSector::AttackCentral)
                         .copied()
                         .unwrap_or(0.0),
-                };
-                sector_rating
-            });
+                });
         }
 
         let visual_box = Self::create_pitch_visualisation(Some(&player_map), Some(&rating_map));

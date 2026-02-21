@@ -223,7 +223,6 @@ mod tests {
     fn test_calc_strength_basic() {
         // Form=8, Loyalty=10, Keeper=10
         let player = create_test_player(8, 5, 10, false, 10, 12);
-
         let strength = calc_strength(&player, PlayerSkill::Keeper);
 
         // keeper_rating = calc_skill_rating(10) = 9.0
@@ -237,7 +236,6 @@ mod tests {
     fn test_calc_strength_mother_club() {
         // Form=8, Loyalty=10 (mother club), Keeper=10
         let player = create_test_player(8, 5, 10, true, 10, 12);
-
         let strength = calc_strength(&player, PlayerSkill::Keeper);
 
         // keeper_rating = 9.0

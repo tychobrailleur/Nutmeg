@@ -1,6 +1,7 @@
-/// Core types and enums for the rating prediction system
-/// Based on Schum's formula.
+use serde::{Deserialize, Serialize};
 
+/// Based on Schum's formula.
+///
 /// The seven rating sectors in a match
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RatingSector {
@@ -213,74 +214,61 @@ impl PositionId {
         )
     }
 
-    /// Returns the valid behaviours for this position.
-    /// Keepers only have Normal. Wingers cannot go "towards wing".
-    /// Central positions cannot go "towards middle", etc.
     pub fn valid_behaviours(&self) -> Vec<Behaviour> {
-        match self.sector() {
-            Sector::Goal => vec![Behaviour::Normal],
-            Sector::CentralDefence => {
-                vec![
-                    Behaviour::Normal,
-                    Behaviour::Offensive,
-                    Behaviour::TowardsWing,
-                ]
-            }
-            Sector::Back => {
-                vec![
-                    Behaviour::Normal,
-                    Behaviour::Offensive,
-                    Behaviour::Defensive,
-                    Behaviour::TowardsMiddle,
-                ]
-            }
-            Sector::InnerMidfield => {
-                if self.is_middle() {
-                    vec![
-                        Behaviour::Normal,
-                        Behaviour::Offensive,
-                        Behaviour::Defensive,
-                        Behaviour::TowardsWing,
-                    ]
-                } else {
-                    vec![
-                        Behaviour::Normal,
-                        Behaviour::Offensive,
-                        Behaviour::Defensive,
-                        Behaviour::TowardsMiddle,
-                        Behaviour::TowardsWing,
-                    ]
-                }
-            }
-            Sector::Wing => {
-                vec![
-                    Behaviour::Normal,
-                    Behaviour::Offensive,
-                    Behaviour::Defensive,
-                    Behaviour::TowardsMiddle,
-                ]
-            }
-            Sector::Forward => {
-                if self.is_middle() {
-                    vec![
-                        Behaviour::Normal,
-                        Behaviour::Defensive,
-                        Behaviour::TowardsWing,
-                    ]
-                } else {
-                    vec![
-                        Behaviour::Normal,
-                        Behaviour::Defensive,
-                        Behaviour::TowardsMiddle,
-                    ]
-                }
-            }
+        match self {
+            Self::Keeper => vec![Behaviour::Normal],
+            Self::LeftBack | Self::RightBack => vec![
+                Behaviour::Normal,
+                Behaviour::Offensive,
+                Behaviour::Defensive,
+                Behaviour::TowardsMiddle,
+            ],
+            Self::LeftCentralDefender | Self::RightCentralDefender => vec![
+                Behaviour::Normal,
+                Behaviour::Offensive,
+                Behaviour::Defensive,
+                Behaviour::TowardsWing,
+            ],
+            Self::MiddleCentralDefender => vec![
+                Behaviour::Normal,
+                Behaviour::Offensive,
+                Behaviour::Defensive,
+            ],
+            Self::LeftWinger | Self::RightWinger => vec![
+                Behaviour::Normal,
+                Behaviour::Offensive,
+                Behaviour::Defensive,
+                Behaviour::TowardsMiddle,
+            ],
+            Self::LeftInnerMidfield | Self::RightInnerMidfield => vec![
+                Behaviour::Normal,
+                Behaviour::Offensive,
+                Behaviour::Defensive,
+                Behaviour::TowardsWing,
+            ],
+            Self::CentralInnerMidfield => vec![
+                Behaviour::Normal,
+                Behaviour::Offensive,
+                Behaviour::Defensive,
+                Behaviour::TowardsWing,
+            ],
+            Self::LeftForward | Self::RightForward => vec![
+                Behaviour::Normal,
+                Behaviour::Defensive,
+                Behaviour::TowardsWing,
+            ],
+            Self::CentralForward => vec![
+                Behaviour::Normal,
+                Behaviour::Defensive,
+                Behaviour::TowardsWing,
+            ],
+            Self::SetPieces => vec![Behaviour::Normal],
         }
     }
 }
 
 /// Player skill types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PlayerSkill {
     Keeper,
     Defending,

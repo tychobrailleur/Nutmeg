@@ -35,18 +35,20 @@ pub type SqlitePool = Pool<ConnectionManager<SqliteConnection>>;
 
 static DB_POOL: OnceLock<SqlitePool> = OnceLock::new();
 
-/// r2d2 connection customizer that enables foreign-key enforcement on every
+/// r2d2 connection customizer that sets per-connection PRAGMAs on every
 /// acquired connection. SQLite disables FKs by default; this ensures the
 /// PRAGMA is applied before any application code runs on the connection.
 #[derive(Debug)]
-struct ForeignKeyPragma;
+struct ConnectionOptions;
 
-impl r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error> for ForeignKeyPragma {
+impl r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error> for ConnectionOptions {
     fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel::r2d2::Error> {
-        diesel::sql_query("PRAGMA foreign_keys = ON;")
-            .execute(conn)
-            .map(|_| ())
-            .map_err(diesel::r2d2::Error::QueryError)
+        use diesel::connection::SimpleConnection;
+        conn.batch_execute(
+            "PRAGMA busy_timeout = 5000;
+             PRAGMA foreign_keys = ON;",
+        )
+        .map_err(diesel::r2d2::Error::QueryError)
     }
 }
 
@@ -62,27 +64,23 @@ impl DbManager {
             let database_url = db_path.to_string_lossy().to_string();
             let manager = ConnectionManager::<SqliteConnection>::new(database_url);
             let pool = r2d2::Pool::builder()
-                .connection_customizer(Box::new(ForeignKeyPragma))
+                .connection_customizer(Box::new(ConnectionOptions))
                 .build(manager)
                 .expect("Failed to create pool.");
 
             // Set WAL mode and performance PRAGMAs once for the database file.
-            // journal_mode=WAL persists in the db file; the others apply per-connection
-            // but are set here for the initial connection to seed the pool.
-            {
-                let mut conn = pool.get().expect("Failed to get connection for PRAGMA setup");
-                diesel::sql_query("PRAGMA journal_mode = WAL;")
-                    .execute(&mut *conn)
-                    .expect("Failed to set WAL journal mode");
-                diesel::sql_query("PRAGMA synchronous = NORMAL;")
-                    .execute(&mut *conn)
-                    .expect("Failed to set synchronous = NORMAL");
-                diesel::sql_query("PRAGMA temp_store = MEMORY;")
-                    .execute(&mut *conn)
-                    .expect("Failed to set temp_store = MEMORY");
-                diesel::sql_query("PRAGMA mmap_size = 134217728;")
-                    .execute(&mut *conn)
-                    .expect("Failed to set mmap_size");
+            // journal_mode=WAL persists in the db file; the others are set here
+            // for the initial connection to seed the pool.
+            if let Ok(mut conn) = pool.get() {
+                use diesel::connection::SimpleConnection;
+                if let Err(e) = conn.batch_execute(
+                    "PRAGMA journal_mode = WAL;
+                     PRAGMA synchronous = NORMAL;
+                     PRAGMA temp_store = MEMORY;
+                     PRAGMA mmap_size = 134217728;",
+                ) {
+                    eprintln!("Failed to set WAL/performance PRAGMAs: {e}");
+                }
             }
 
             // Run migrations on first initialization
@@ -102,6 +100,7 @@ impl DbManager {
     pub fn from_url(database_url: &str) -> Self {
         let manager = ConnectionManager::<SqliteConnection>::new(database_url);
         let pool = r2d2::Pool::builder()
+            .connection_customizer(Box::new(ConnectionOptions))
             .build(manager)
             .expect("Failed to create pool.");
         Self { pool }
@@ -186,6 +185,7 @@ impl DbManager {
     /// Because all entity tables have `ON DELETE CASCADE` foreign keys to the
     /// `downloads` table (activated by the FK PRAGMA applied on every connection),
     /// deleting a download row automatically removes all associated entity rows.
+    #[allow(dead_code)]
     pub fn prune_old_downloads(&self, keep_count: u32) -> Result<usize, Error> {
         let mut conn = self.get_connection()?;
         diesel::sql_query(

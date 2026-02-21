@@ -27,6 +27,7 @@ use gtk::{gdk, gio, glib, CompositeTemplate, TemplateChild};
 use log::info;
 
 use crate::rating::ui::page::FormationOptimiserWidget;
+use crate::training::ui::page::TrainingPlannerPage;
 use crate::ui::context_object::ContextObject;
 use crate::ui::player_object::PlayerObject;
 use crate::ui::team_object::TeamObject;
@@ -34,6 +35,7 @@ use crate::ui::team_object::TeamObject;
 use crate::series::page::SeriesPage;
 use crate::squad::player_details::SquadPlayerDetails;
 use crate::squad::player_list::SquadPlayerList;
+
 mod imp {
     use super::*;
 
@@ -72,6 +74,9 @@ mod imp {
         #[template_child]
         pub series_page: TemplateChild<SeriesPage>,
 
+        #[template_child]
+        pub training_planner: TemplateChild<TrainingPlannerPage>,
+
         pub context_object: ContextObject,
     }
 
@@ -83,6 +88,7 @@ mod imp {
 
         fn class_init(klass: &mut Self::Class) {
             FormationOptimiserWidget::ensure_type();
+            TrainingPlannerPage::ensure_type();
             klass.bind_template();
         }
 
@@ -105,6 +111,11 @@ mod imp {
 
             // Setup Signals
             obj.setup_signals();
+
+            // Inject ContextObject into sub-pages
+            obj.imp()
+                .training_planner
+                .set_context_object(&obj.imp().context_object.clone());
 
             // Setup window actions
             obj.setup_actions();

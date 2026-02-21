@@ -25,6 +25,7 @@ use crate::db::download_entries::{create_download_entry, update_entry_status, Ne
 use crate::db::manager::DbManager;
 use crate::db::schema::downloads;
 use crate::db::series::{save_league_details, save_matches};
+use crate::db::staff::save_staff;
 use crate::db::teams::{save_avatars, save_players, save_team, save_world_details};
 use crate::service::avatar::AvatarService;
 use crate::service::secret::{SecretStorageService, SystemSecretService};
@@ -657,6 +658,62 @@ impl SyncService {
         Ok(())
     }
 
+    async fn fetch_and_save_staff<F>(
+        db_manager: Arc<DbManager>,
+        client: Arc<dyn ChppClient>,
+        get_auth: &F,
+        team_id: u32,
+        download_id: i32,
+    ) -> Result<(), Error>
+    where
+        F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
+    {
+        // Log download entry
+        let entry_id = Self::log_download_entry(
+            db_manager.clone(),
+            download_id,
+            ChppEndpoints::STAFF_LIST.name,
+            ChppEndpoints::STAFF_LIST.version,
+            Some(team_id as i32),
+        )
+        .await?;
+
+        let (data, key) = get_auth();
+        let staff_res = client.staff_list(data, key, Some(team_id)).await;
+
+        match staff_res {
+            Ok(staff_data) => {
+                Self::update_download_entry(db_manager.clone(), entry_id, "success", None).await?;
+
+                let db = db_manager.clone();
+                let sl = staff_data.staff_list;
+                let staff_count = sl.StaffMembers.as_ref().map_or(0, |m| m.staff.len());
+
+                tokio::task::spawn_blocking(move || {
+                    let mut conn = db.get_connection()?;
+                    save_staff(&mut conn, &sl, team_id, download_id)
+                        .map_err(|e| Error::Db(format!("Failed to save staff: {}", e)))
+                })
+                .await
+                .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+
+                log::info!("Saved {} staff members", staff_count);
+            }
+            Err(e) => {
+                Self::update_download_entry(
+                    db_manager.clone(),
+                    entry_id,
+                    "error",
+                    Some(e.to_string()),
+                )
+                .await?;
+                log::warn!("Failed to fetch staff list: {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
     async fn do_full_sync(
         db_manager: Arc<DbManager>,
         client: Arc<dyn ChppClient>,
@@ -707,6 +764,16 @@ impl SyncService {
 
         on_progress(0.6, "Fetching players...");
         Self::fetch_and_save_players(
+            db_manager.clone(),
+            client.clone(),
+            &get_auth,
+            team_id,
+            download_id,
+        )
+        .await?;
+
+        on_progress(0.7, "Fetching staff...");
+        Self::fetch_and_save_staff(
             db_manager.clone(),
             client.clone(),
             &get_auth,
@@ -1056,6 +1123,26 @@ mod tests {
                     League: None,
                     LeagueLevelUnit: None,
                     MatchList: MatchesListWrapper { Matches: vec![] },
+                },
+            })
+        }
+
+        async fn staff_list(
+            &self,
+            _data: OAuthData,
+            _key: SigningKey,
+            _team_id: Option<u32>,
+        ) -> Result<StaffListData, Error> {
+            Ok(StaffListData {
+                file_name: "stafflist.xml".to_string(),
+                version: "1.2".to_string(),
+                user_id: 12345,
+                fetched_date: None,
+                staff_list: StaffList {
+                    Trainer: None,
+                    StaffMembers: None,
+                    TotalStaffMembers: Some(0),
+                    TotalCost: Some(0),
                 },
             })
         }

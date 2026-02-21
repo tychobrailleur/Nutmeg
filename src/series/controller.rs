@@ -63,6 +63,7 @@ impl SeriesController {
             return Err("Empty access token or secret".into());
         }
 
+        // Create a download record for this session
         let timestamp = chrono::Utc::now().to_rfc3339();
         let download_id =
             crate::db::download_entries::create_download(&mut conn, &timestamp, "completed")?;
