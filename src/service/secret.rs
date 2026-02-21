@@ -20,7 +20,6 @@
 
 use async_trait::async_trait;
 use log::debug;
-use std::collections::HashMap;
 
 /// Trait to allow for mocking the secret service
 #[async_trait]
@@ -29,9 +28,7 @@ pub trait SecretStorageService: Send + Sync {
     async fn get_secret(&self, key: &str) -> Result<Option<String>, SecretError>;
     async fn delete_secret(&self, key: &str) -> Result<(), SecretError>;
 
-    /// Clear all OAuth-related secrets from storage
     async fn clear_all_oauth_secrets(&self) -> Result<(), SecretError> {
-        // Delete all known OAuth keys (ignore errors if they don't exist)
         let _ = self.delete_secret("oauth_consumer_key").await;
         let _ = self.delete_secret("oauth_consumer_secret").await;
         let _ = self.delete_secret("access_token").await;
@@ -46,8 +43,6 @@ pub enum SecretError {
     Keyring(#[from] keyring::Error),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("Unknown error")]
-    Unknown,
 }
 
 pub struct SystemSecretService;
@@ -76,7 +71,7 @@ impl SecretStorageService for SystemSecretService {
             Ok(())
         })
         .await
-        .map_err(|e| SecretError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))??;
+        .map_err(|e| SecretError::Io(std::io::Error::other(e.to_string())))??;
         Ok(())
     }
 
@@ -91,7 +86,7 @@ impl SecretStorageService for SystemSecretService {
             }
         })
         .await
-        .map_err(|e| SecretError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?
+        .map_err(|e| SecretError::Io(std::io::Error::other(e.to_string())))?
     }
 
     async fn delete_secret(&self, key: &str) -> Result<(), SecretError> {
@@ -100,7 +95,7 @@ impl SecretStorageService for SystemSecretService {
             let entry = keyring::Entry::new("nutmeg", &key)?;
             // Keyring throws an error if we try to delete a non-existent key, so we ignore NoEntry
             match entry.delete_credential() {
-                Ok(_) => {
+                Ok(()) => {
                     debug!("Deleted secret for key: {}", key);
                     Ok(())
                 }
@@ -109,21 +104,21 @@ impl SecretStorageService for SystemSecretService {
             }
         })
         .await
-        .map_err(|e| SecretError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))??;
+        .map_err(|e| SecretError::Io(std::io::Error::other(e.to_string())))??;
         Ok(())
     }
 }
 
 #[cfg(test)]
 pub struct MockSecretService {
-    storage: std::sync::Arc<tokio::sync::Mutex<HashMap<String, String>>>,
+    storage: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, String>>>,
 }
 
 #[cfg(test)]
 impl MockSecretService {
     pub fn new() -> Self {
         Self {
-            storage: std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            storage: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         }
     }
 }

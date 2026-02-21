@@ -297,6 +297,7 @@ pub enum PlayerSkill {
 
 /// Player specialty types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[allow(clippy::enum_variant_names)] // NoSpecialty is the Hattrick domain term for specialty code 0
 pub enum Specialty {
     #[default]
     NoSpecialty,

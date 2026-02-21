@@ -17,6 +17,38 @@ impl SeriesController {
     pub async fn load_series_data(
         team_id: u32,
     ) -> Result<(LeagueDetailsData, MatchesData), Box<dyn Error>> {
+        let key = crate::config::consumer_key();
+        let secret = crate::config::consumer_secret();
+
+        let db_manager = crate::db::manager::DbManager::new();
+        let mut conn = db_manager.get_connection()?;
+
+        // Serve from the local cache when possible; credentials are only needed
+        // on a cache miss when the CHPP API must be called.
+        let team_in_db = crate::db::teams::get_team(&mut conn, team_id)?;
+        if let Some(ref team) = team_in_db {
+            if let Some(ref unit) = team.LeagueLevelUnit {
+                let league_unit_id = unit.LeagueLevelUnitID;
+                log::debug!(
+                    "Found LeagueLevelUnitID {} in DB for team_id: {}",
+                    league_unit_id,
+                    team_id
+                );
+
+                let db_league =
+                    crate::db::series::get_latest_league_details(&mut conn, league_unit_id)?;
+                let db_matches = crate::db::series::get_latest_matches(&mut conn, team_id)?;
+
+                if let (Some(league_details), Some(matches_data)) = (db_league, db_matches) {
+                    log::info!("Loaded Series and Matches data from Database.");
+                    let filtered = filter_matches_for_season(&league_details, matches_data);
+                    return Ok((league_details, filtered));
+                }
+            }
+        }
+
+        log::info!("Data not found in DB. Fetching from CHPP API...");
+
         let secret_service = SystemSecretService::new();
         let token = secret_service
             .get_secret("access_token")
@@ -31,38 +63,16 @@ impl SeriesController {
             return Err("Empty access token or secret".into());
         }
 
-        let key = crate::config::consumer_key();
-        let secret = crate::config::consumer_secret();
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        let download_id =
+            crate::db::download_entries::create_download(&mut conn, &timestamp, "completed")?;
 
-        // 0. Initialize DB Manager
-        let db_manager = crate::db::manager::DbManager::new();
-        let mut conn = db_manager.get_connection()?;
-
-        // 1. Get LeagueUnitID
         let league_unit_id =
             Self::get_league_unit_id(team_id, &mut conn, &key, &secret, &token, &token_secret)
                 .await?;
 
         log::debug!("Found LeagueUnitID: {}", league_unit_id);
 
-        // 2. Check DB for League and Matches
-        let db_league = crate::db::series::get_latest_league_details(&mut conn, league_unit_id)?;
-        let db_matches = crate::db::series::get_latest_matches(&mut conn, team_id)?;
-
-        if let (Some(league_details), Some(matches_data)) = (db_league, db_matches) {
-            log::info!("Loaded Series and Matches data from Database.");
-            let filtered = filter_matches_for_season(&league_details, matches_data);
-            return Ok((league_details, filtered));
-        }
-
-        log::info!("Data not found in DB. Fetching from CHPP API...");
-
-        // Create a download record for this session
-        let timestamp = chrono::Utc::now().to_rfc3339();
-        let download_id =
-            crate::db::download_entries::create_download(&mut conn, &timestamp, "completed")?;
-
-        // 3. Fetch and Save League Details
         let league_details = Self::fetch_and_save_league_details(
             league_unit_id,
             download_id,
@@ -74,7 +84,6 @@ impl SeriesController {
         )
         .await?;
 
-        // 4. Fetch and Save Matches
         let matches = Self::fetch_and_save_matches(
             team_id,
             download_id,
@@ -101,11 +110,20 @@ impl SeriesController {
         // Try DB first
         let team_details_opt = crate::db::teams::get_team(conn, team_id)?;
         if let Some(team) = team_details_opt {
-            log::debug!("Found team details in DB for team_id: {}", team_id);
-            return Ok(team
-                .LeagueLevelUnit
-                .ok_or("No LeagueLevelUnit found for team")?
-                .LeagueLevelUnitID);
+            if let Some(unit) = team.LeagueLevelUnit {
+                log::debug!(
+                    "Found LeagueLevelUnitID {} in DB for team_id: {}",
+                    unit.LeagueLevelUnitID,
+                    team_id
+                );
+                return Ok(unit.LeagueLevelUnitID);
+            }
+            // Team record exists but LeagueLevelUnit was not populated in the stored
+            // JSON; fall through and fetch fresh data from the API.
+            log::debug!(
+                "Team {} found in DB but has no LeagueLevelUnit; falling back to API",
+                team_id
+            );
         }
 
         // Fetch from API

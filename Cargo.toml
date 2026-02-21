@@ -22,7 +22,7 @@ diesel = { version = "2.2.0", features = ["sqlite", "r2d2", "chrono", "64-column
 diesel_migrations = { version = "2.2.0", features = ["sqlite"] }
 async-trait = "0.1"
 chrono = "0.4"
-keyring = "3.6.1"
+keyring = { version = "3.6.1", features = ["apple-native", "windows-native", "linux-native"] }
 gdk-pixbuf = "0.21"
 num-format = { version = "0.4.4", features = ["with-system-locale"] }
 image = "0.24"

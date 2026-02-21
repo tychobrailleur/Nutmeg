@@ -20,9 +20,6 @@
 * SPDX-License-Identifier: GPL-3.0-or-later
 */
 
-// use crate::db::manager::DbManager;
-// use crate::db::teams::get_teams_summary; // Moved to controller
-// use crate::service::sync::DataSyncService; // Moved to controller
 use crate::service::secret::SecretStorageService;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
@@ -37,8 +34,6 @@ use crate::ui::team_object::TeamObject;
 use crate::series::page::SeriesPage;
 use crate::squad::player_details::SquadPlayerDetails;
 use crate::squad::player_list::SquadPlayerList;
-// use crate::ui::oauth_dialog::OAuthDialog; // Not needed anymore
-
 mod imp {
     use super::*;
 
@@ -188,14 +183,6 @@ impl NutmegWindow {
         let imp = self.imp();
         let model = &imp.context_object;
 
-        // Listen to selected-player changes in ContextObject to update details panel
-        // REMOVED: Handled in selection handler to include preferred position which is not in ContextObject
-        // let window = self.clone();
-        // model.connect_notify_local(Some("selected-player"), move |model, _| {
-        //     let player_obj: Option<PlayerObject> = model.property("selected-player");
-        //     window.imp().player_details.set_player(player_obj, None);
-        // });
-
         // Listen to players list changes to update optimiser AND bind to player list
         let window = self.clone();
         model.connect_notify_local(Some("players"), move |model, _| {
@@ -207,17 +194,22 @@ impl NutmegWindow {
             self.update_optimiser_players(Some(store));
         }
 
-        // Bind combo_teams selected item to ContextObject selected-team
-        imp.combo_teams
-            .bind_property("selected-item", model, "selected-team")
-            .sync_create()
-            .build();
-
-        // Listen to selected-team changes to load series data
+        // Listen to selected-team changes to load series data.
+        // Must be connected BEFORE bind_property(...).sync_create() below so that
+        // the initial sync fires into the already-connected handler and the series
+        // tab is populated on startup without requiring the user to switch teams.
         let window = self.clone();
         model.connect_notify_local(Some("selected-team"), move |_, _| {
             window.load_current_team_series_data();
         });
+
+        // Bind combo_teams selected item to ContextObject selected-team.
+        // sync_create immediately fires the "selected-team" notify, which is why
+        // the handler above must already be connected at this point.
+        imp.combo_teams
+            .bind_property("selected-item", model, "selected-team")
+            .sync_create()
+            .build();
 
         // Bind ContextObject players to TreeView model (inside PlayerList)
         model
@@ -333,8 +325,10 @@ impl NutmegWindow {
                     imp.sync_revealer.set_reveal_child(false);
                     imp.team_sync.set_sensitive(true);
 
-                    // Refresh teams if successful
                     win.load_teams();
+                    // load_teams() fires selected-team notify, but call explicitly
+                    // in case the team list is unchanged and the notify doesn't fire.
+                    win.load_current_team_series_data();
                 }
             });
         });

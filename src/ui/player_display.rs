@@ -121,8 +121,8 @@ impl PlayerDisplay {
             _ => "".to_string(),
         };
 
-        let mother_club = if p.MotherClub.is_some() {
-            p.MotherClub.as_ref().unwrap().TeamName.clone()
+        let mother_club = if let Some(ref club) = p.MotherClub {
+            club.TeamName.clone()
         } else if p.MotherClubBonus {
             "🌟".to_string()
         } else {

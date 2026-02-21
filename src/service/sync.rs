@@ -37,6 +37,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+pub type ProgressCallback = Box<dyn Fn(f64, &str) + Send + Sync>;
+
 pub trait DataSyncService {
     fn perform_initial_sync(
         &self,
@@ -44,21 +46,20 @@ pub trait DataSyncService {
         consumer_secret: String,
         access_token: String,
         access_secret: String,
-        on_progress: Box<dyn Fn(f64, &str) + Send + Sync>,
+        on_progress: ProgressCallback,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>>;
 
     fn perform_sync_with_stored_secrets(
         &self,
         consumer_key: String,
         consumer_secret: String,
-        on_progress: Box<dyn Fn(f64, &str) + Send + Sync>,
+        on_progress: ProgressCallback,
     ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + '_>>;
 }
 
 pub struct SyncService {
     db_manager: Arc<DbManager>,
     client: Arc<dyn ChppClient>,
-    // Service to retrieve secret from keyring
     secret_service: Arc<dyn SecretStorageService>,
 }
 
@@ -71,8 +72,7 @@ impl SyncService {
         }
     }
 
-    // For testing
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn new_with_client(
         db_manager: Arc<DbManager>,
         client: Arc<dyn ChppClient>,
@@ -93,7 +93,7 @@ impl DataSyncService for SyncService {
         consumer_secret: String,
         access_token: String,
         access_secret: String,
-        on_progress: Box<dyn Fn(f64, &str) + Send + Sync>,
+        on_progress: ProgressCallback,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>> {
         let db_manager = self.db_manager.clone();
         let client = self.client.clone();
@@ -116,7 +116,7 @@ impl DataSyncService for SyncService {
         &self,
         consumer_key: String,
         consumer_secret: String,
-        on_progress: Box<dyn Fn(f64, &str) + Send + Sync>,
+        on_progress: ProgressCallback,
     ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + '_>> {
         let db_manager = self.db_manager.clone();
         let client = self.client.clone();
@@ -135,7 +135,7 @@ impl DataSyncService for SyncService {
                 Err(e) => return Err(Error::Io(e.to_string())),
             };
 
-            match Self::do_full_sync(
+            Self::do_full_sync(
                 db_manager,
                 client,
                 consumer_key,
@@ -145,10 +145,7 @@ impl DataSyncService for SyncService {
                 on_progress,
             )
             .await
-            {
-                Ok(_) => Ok(true),
-                Err(e) => Err(e),
-            }
+            .map(|_| true)
         })
     }
 }
@@ -285,7 +282,6 @@ impl SyncService {
         )
         .await?;
 
-        // Get user / team details
         let (data, key) = get_auth();
         let hattrick_data = match client.team_details(data, key, None).await {
             Ok(data) => {
@@ -310,17 +306,14 @@ impl SyncService {
             hattrick_data.User.Loginname
         );
 
-        // Save user and teams
         let user = hattrick_data.User;
         let teams = hattrick_data.Teams.Teams;
 
-        //Extract first team ID for player fetching (simplified - just using first team)
+        // Uses first team only; multi-team accounts are not currently supported.
         let team_id: u32 = teams
             .first()
             .and_then(|t| t.TeamID.parse().ok())
             .unwrap_or(0);
-
-        log::info!("Processing teams, found {} team(s)", teams.len());
 
         let db = db_manager.clone();
         let teams_clone = teams.clone();
@@ -335,7 +328,6 @@ impl SyncService {
         .await
         .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
 
-        // Get LeagueUnitID from the first team
         let league_unit_id_opt = teams
             .first()
             .and_then(|t| t.LeagueLevelUnit.as_ref())
@@ -360,10 +352,7 @@ impl SyncService {
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
-        // FIXME: separate series details retrieval from match details retrieval, for separation of concerns.
-        // 1. Fetch League Details if we have a Unit ID
         if let Some(unit_id) = league_unit_id_opt {
-            // Log download entry for league_details
             let entry_id = Self::log_download_entry(
                 db_manager.clone(),
                 download_id,
@@ -378,12 +367,10 @@ impl SyncService {
                 Ok(league_details) => {
                     Self::update_download_entry(db_manager.clone(), entry_id, "success", None)
                         .await?;
-                    // Save League Details
                     let db = db_manager.clone();
-                    let ld = league_details;
                     tokio::task::spawn_blocking(move || {
                         let mut conn = db.get_connection()?;
-                        save_league_details(&mut conn, download_id, &ld)
+                        save_league_details(&mut conn, download_id, &league_details)
                     })
                     .await
                     .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
@@ -397,13 +384,10 @@ impl SyncService {
                     )
                     .await?;
                     log::warn!("Failed to fetch league details: {}", e);
-                    // We continue even if league details fail
                 }
             }
         }
 
-        // 2. Fetch Matches
-        // Log download entry for matches
         let entry_id = Self::log_download_entry(
             db_manager.clone(),
             download_id,
@@ -421,10 +405,9 @@ impl SyncService {
                 Self::update_download_entry(db_manager.clone(), entry_id, "success", None).await?;
 
                 let db = db_manager.clone();
-                let md = matches_data;
                 tokio::task::spawn_blocking(move || {
                     let mut conn = db.get_connection()?;
-                    save_matches(&mut conn, download_id, &md)
+                    save_matches(&mut conn, download_id, &matches_data)
                 })
                 .await
                 .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
@@ -668,16 +651,14 @@ impl SyncService {
         consumer_secret: String,
         access_token: String,
         access_secret: String,
-        on_progress: Box<dyn Fn(f64, &str) + Send + Sync>,
+        on_progress: ProgressCallback,
     ) -> Result<(), Error> {
         on_progress(0.0, "Checking credentials...");
 
         debug!("consumer_key: {}", consumer_key);
-        debug!("consumer_secret: {}", consumer_secret);
-        debug!("access_token size: {}", access_token.len());
-        debug!("access_secret size: {}", access_secret.len());
+        debug!("access_token length: {}", access_token.len());
+        debug!("access_secret length: {}", access_secret.len());
 
-        // Helper to get fresh auth data
         let get_auth = || {
             create_oauth_context(
                 &consumer_key,

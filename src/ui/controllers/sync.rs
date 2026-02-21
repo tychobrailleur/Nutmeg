@@ -1,7 +1,7 @@
 use crate::db::manager::DbManager;
 use crate::service::auth::{AuthenticationService, HattrickAuthService};
 use crate::service::secret::{SecretStorageService, SystemSecretService};
-use crate::service::sync::{DataSyncService, SyncService};
+use crate::service::sync::{DataSyncService, ProgressCallback, SyncService};
 use crate::ui::oauth_dialog::OAuthDialog;
 use crate::window::NutmegWindow;
 use gtk::glib;
@@ -68,7 +68,7 @@ impl SyncController {
         key: &str,
         secret: &str,
         sync: &SyncService,
-        progress_cb: Box<dyn Fn(f64, &str) + Send + Sync>,
+        progress_cb: ProgressCallback,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let auth_service = HattrickAuthService::new();
         let secret_service = SystemSecretService::new();
@@ -80,15 +80,12 @@ impl SyncController {
         // 2. Open Browser
         open::that(&url)?;
 
-        // 3. Show Dialog (UI Thread)
-        // We need to switch to MainContext to show the dialog
+        // 3. Show Dialog — must run on the GTK main thread
         let (tx, rx) = tokio::sync::oneshot::channel();
 
         let window_weak_clone = window_weak.clone();
         glib::MainContext::default().spawn_local(async move {
             if let Some(win) = window_weak_clone.upgrade() {
-                // OAuthDialog expects &impl IsA<gtk::Window>
-                // NutmegWindow implements IsA<gtk::Window>
                 let dialog = OAuthDialog::new(&win);
                 let result = dialog.run().await;
                 let _ = tx.send(result);
@@ -113,13 +110,22 @@ impl SyncController {
                 .store_secret("access_secret", &token_secret)
                 .await?;
 
-            // 6. Retry Sync
+            // 6. Retry Sync — pass the freshly obtained tokens directly instead of
+            //    re-reading them from the keychain.  A round-trip through the system
+            //    keychain immediately after writing can return Ok(None) on some
+            //    platforms (macOS Keychain visibility race), which would cause the sync
+            //    to silently fail even though authentication succeeded.
             match sync
-                .perform_sync_with_stored_secrets(key.to_string(), secret.to_string(), progress_cb)
+                .perform_initial_sync(
+                    key.to_string(),
+                    secret.to_string(),
+                    token,
+                    token_secret,
+                    progress_cb,
+                )
                 .await
             {
-                Ok(true) => info!("Retry sync successful"),
-                Ok(false) => return Err("Retry sync failed (still no creds?)".into()),
+                Ok(()) => info!("Retry sync successful"),
                 Err(e) => return Err(format!("Retry sync error: {}", e).into()),
             }
         } else {
