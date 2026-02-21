@@ -237,8 +237,13 @@ impl SyncService {
         .map_err(|e| Error::Io(format!("Join error: {}", e)))?
     }
 
-    /// Update download entry status (success or error)
-    // FIXME: This contravenes the append-only principle of the database.
+    /// Update download entry status (success or error).
+    ///
+    /// This is a documented exception to the insert-only principle: `download_entries`
+    /// rows are used for operational retry tracking and audit logging, not for domain
+    /// history. Mutating the status in-place avoids creating phantom "in_progress"
+    /// entries that would never be resolved. See also `update_entry_status` in
+    /// `download_entries.rs`.
     async fn update_download_entry(
         db_manager: Arc<DbManager>,
         entry_id: i32,
@@ -319,11 +324,13 @@ impl SyncService {
         let teams_clone = teams.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = db.get_connection()?;
-            for team in &teams_clone {
-                log::info!("Saving team: {} ({})", team.TeamName, team.TeamID);
-                save_team(&mut conn, team, &user, download_id)?;
-            }
-            Ok::<(), Error>(())
+            conn.transaction::<_, Error, _>(|conn| {
+                for team in &teams_clone {
+                    log::info!("Saving team: {} ({})", team.TeamName, team.TeamID);
+                    save_team(conn, team, &user, download_id)?;
+                }
+                Ok(())
+            })
         })
         .await
         .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
@@ -370,7 +377,9 @@ impl SyncService {
                     let db = db_manager.clone();
                     tokio::task::spawn_blocking(move || {
                         let mut conn = db.get_connection()?;
-                        save_league_details(&mut conn, download_id, &league_details)
+                        conn.transaction::<_, Error, _>(|conn| {
+                            save_league_details(conn, download_id, &league_details)
+                        })
                     })
                     .await
                     .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
@@ -407,7 +416,9 @@ impl SyncService {
                 let db = db_manager.clone();
                 tokio::task::spawn_blocking(move || {
                     let mut conn = db.get_connection()?;
-                    save_matches(&mut conn, download_id, &matches_data)
+                    conn.transaction::<_, Error, _>(|conn| {
+                        save_matches(conn, download_id, &matches_data)
+                    })
                 })
                 .await
                 .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
@@ -635,8 +646,10 @@ impl SyncService {
         let db = db_manager.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = db.get_connection()?;
-            save_players(&mut conn, &players_list, team_id, download_id)?;
-            save_avatars(&mut conn, &avatars_list, download_id)
+            conn.transaction::<_, Error, _>(|conn| {
+                save_players(conn, &players_list, team_id, download_id)?;
+                save_avatars(conn, &avatars_list, download_id)
+            })
         })
         .await
         .map_err(|e| Error::Io(format!("Join error: {}", e)))??;

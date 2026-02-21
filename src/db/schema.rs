@@ -1,4 +1,4 @@
-// @generated automatically by Diesel CLI. (Cleaned up manually)
+// @generated automatically by Diesel CLI.
 
 diesel::table! {
     avatars (player_id, download_id) {
@@ -22,16 +22,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    currencies (id, download_id) {
-        id -> Integer,
-        download_id -> Integer,
-        name -> Text,
-        rate -> Nullable<Double>,
-        symbol -> Nullable<Text>,
-    }
-}
-
-diesel::table! {
     cups (id, download_id) {
         id -> Integer,
         download_id -> Integer,
@@ -45,10 +35,12 @@ diesel::table! {
 }
 
 diesel::table! {
-    downloads (id) {
+    currencies (id, download_id) {
         id -> Integer,
-        timestamp -> Text,
-        status -> Text,
+        download_id -> Integer,
+        name -> Text,
+        rate -> Nullable<Double>,
+        symbol -> Nullable<Text>,
     }
 }
 
@@ -67,10 +59,46 @@ diesel::table! {
 }
 
 diesel::table! {
+    downloads (id) {
+        id -> Integer,
+        timestamp -> Text,
+        status -> Text,
+    }
+}
+
+diesel::table! {
     languages (id, download_id) {
         id -> Integer,
         download_id -> Integer,
         name -> Text,
+    }
+}
+
+diesel::table! {
+    league_unit_teams (unit_id, team_id, download_id) {
+        unit_id -> Integer,
+        team_id -> Integer,
+        download_id -> Integer,
+        team_name -> Text,
+        position -> Integer,
+        points -> Integer,
+        matches_played -> Integer,
+        goals_for -> Integer,
+        goals_against -> Integer,
+        won -> Integer,
+        draws -> Integer,
+        lost -> Integer,
+    }
+}
+
+diesel::table! {
+    league_units (unit_id, download_id) {
+        unit_id -> Integer,
+        download_id -> Integer,
+        unit_name -> Text,
+        league_level -> Integer,
+        max_number_of_teams -> Nullable<Integer>,
+        current_match_round -> Nullable<Integer>,
     }
 }
 
@@ -94,6 +122,23 @@ diesel::table! {
         active_users -> Nullable<Integer>,
         number_of_levels -> Nullable<Integer>,
         league_system_id -> Integer,
+    }
+}
+
+diesel::table! {
+    matches (match_id, download_id) {
+        match_id -> Integer,
+        download_id -> Integer,
+        home_team_id -> Integer,
+        home_team_name -> Text,
+        away_team_id -> Integer,
+        away_team_name -> Text,
+        match_date -> Text,
+        match_type -> Integer,
+        status -> Text,
+        home_goals -> Nullable<Integer>,
+        away_goals -> Nullable<Integer>,
+        match_context_id -> Nullable<Integer>,
     }
 }
 
@@ -125,6 +170,7 @@ diesel::table! {
         friendlies_goals -> Nullable<Integer>,
         career_goals -> Nullable<Integer>,
         career_hattricks -> Nullable<Integer>,
+        specialty -> Nullable<Integer>,
         transfer_listed -> Bool,
         national_team_id -> Nullable<Integer>,
         country_id -> Integer,
@@ -132,7 +178,6 @@ diesel::table! {
         caps_u20 -> Nullable<Integer>,
         cards -> Nullable<Integer>,
         injury_level -> Nullable<Integer>,
-        specialty -> Nullable<Integer>,
         stamina_skill -> Nullable<Integer>,
         keeper_skill -> Nullable<Integer>,
         playmaker_skill -> Nullable<Integer>,
@@ -243,83 +288,32 @@ diesel::table! {
     }
 }
 
-diesel::table! {
-    league_units (id) {
-        id -> Integer,
-        download_id -> Integer,
-        unit_id -> Integer,
-        unit_name -> Text,
-        league_level -> Integer,
-        max_number_of_teams -> Nullable<Integer>,
-        current_match_round -> Nullable<Integer>,
-    }
-}
-
-diesel::table! {
-    league_unit_teams (id) {
-        id -> Integer,
-        download_id -> Integer,
-        league_unit_id -> Integer,
-        team_id -> Integer,
-        team_name -> Text,
-        position -> Integer,
-        points -> Integer,
-        matches_played -> Integer,
-        goals_for -> Integer,
-        goals_against -> Integer,
-        won -> Integer,
-        draws -> Integer,
-        lost -> Integer,
-    }
-}
-
-diesel::table! {
-    matches (id) {
-        id -> Integer,
-        download_id -> Integer,
-        match_id -> Integer,
-        home_team_id -> Integer,
-        home_team_name -> Text,
-        away_team_id -> Integer,
-        away_team_name -> Text,
-        match_date -> Text,
-        match_type -> Integer,
-        status -> Text,
-        home_goals -> Nullable<Integer>,
-        away_goals -> Nullable<Integer>,
-        match_context_id -> Nullable<Integer>,
-    }
-}
-
 diesel::joinable!(avatars -> downloads (download_id));
 diesel::joinable!(countries -> downloads (download_id));
+diesel::joinable!(cups -> downloads (download_id));
 diesel::joinable!(currencies -> downloads (download_id));
 diesel::joinable!(download_entries -> downloads (download_id));
+diesel::joinable!(languages -> downloads (download_id));
+diesel::joinable!(league_unit_teams -> downloads (download_id));
+diesel::joinable!(league_units -> downloads (download_id));
 diesel::joinable!(leagues -> downloads (download_id));
+diesel::joinable!(matches -> downloads (download_id));
 diesel::joinable!(players -> downloads (download_id));
 diesel::joinable!(regions -> downloads (download_id));
 diesel::joinable!(teams -> downloads (download_id));
 diesel::joinable!(users -> downloads (download_id));
-diesel::joinable!(league_units -> downloads (download_id));
-diesel::joinable!(league_unit_teams -> downloads (download_id));
-diesel::joinable!(matches -> downloads (download_id));
-
-// Retain simple FKs where constraints still essentially exist or for join logic if IDs match
-diesel::joinable!(cups -> downloads (download_id));
-diesel::joinable!(languages -> downloads (download_id));
-diesel::joinable!(league_unit_teams -> league_units (league_unit_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     avatars,
     countries,
-    currencies,
     cups,
+    currencies,
     download_entries,
     downloads,
     languages,
-    leagues,
-    league_units,
     league_unit_teams,
+    league_units,
+    leagues,
     matches,
     players,
     regions,

@@ -35,6 +35,21 @@ pub type SqlitePool = Pool<ConnectionManager<SqliteConnection>>;
 
 static DB_POOL: OnceLock<SqlitePool> = OnceLock::new();
 
+/// r2d2 connection customizer that enables foreign-key enforcement on every
+/// acquired connection. SQLite disables FKs by default; this ensures the
+/// PRAGMA is applied before any application code runs on the connection.
+#[derive(Debug)]
+struct ForeignKeyPragma;
+
+impl r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error> for ForeignKeyPragma {
+    fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel::r2d2::Error> {
+        diesel::sql_query("PRAGMA foreign_keys = ON;")
+            .execute(conn)
+            .map(|_| ())
+            .map_err(diesel::r2d2::Error::QueryError)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct DbManager {
     pool: SqlitePool,
@@ -47,8 +62,28 @@ impl DbManager {
             let database_url = db_path.to_string_lossy().to_string();
             let manager = ConnectionManager::<SqliteConnection>::new(database_url);
             let pool = r2d2::Pool::builder()
+                .connection_customizer(Box::new(ForeignKeyPragma))
                 .build(manager)
                 .expect("Failed to create pool.");
+
+            // Set WAL mode and performance PRAGMAs once for the database file.
+            // journal_mode=WAL persists in the db file; the others apply per-connection
+            // but are set here for the initial connection to seed the pool.
+            {
+                let mut conn = pool.get().expect("Failed to get connection for PRAGMA setup");
+                diesel::sql_query("PRAGMA journal_mode = WAL;")
+                    .execute(&mut *conn)
+                    .expect("Failed to set WAL journal mode");
+                diesel::sql_query("PRAGMA synchronous = NORMAL;")
+                    .execute(&mut *conn)
+                    .expect("Failed to set synchronous = NORMAL");
+                diesel::sql_query("PRAGMA temp_store = MEMORY;")
+                    .execute(&mut *conn)
+                    .expect("Failed to set temp_store = MEMORY");
+                diesel::sql_query("PRAGMA mmap_size = 134217728;")
+                    .execute(&mut *conn)
+                    .expect("Failed to set mmap_size");
+            }
 
             // Run migrations on first initialization
             let db_manager = Self { pool: pool.clone() };
@@ -93,6 +128,16 @@ impl DbManager {
 
     pub fn run_migrations(&self) -> Result<(), Error> {
         let mut conn = self.get_connection()?;
+
+        // Delete stale in-progress downloads before applying migrations.
+        // This runs even before pending migrations are applied so that any
+        // partial download from a previous crashed session does not block startup.
+        // The .ok() silently ignores the error when the downloads table does not
+        // exist yet (first-ever run on a fresh database).
+        diesel::sql_query("DELETE FROM downloads WHERE status = 'in_progress';")
+            .execute(&mut conn)
+            .ok();
+
         conn.run_pending_migrations(MIGRATIONS)
             .map_err(|e| Error::Io(format!("Migration failed: {}", e)))?;
         Ok(())
@@ -134,6 +179,28 @@ impl DbManager {
             Ok(())
         })
         .map_err(|e| Error::Io(format!("Failed to clear database: {}", e)))
+    }
+
+    /// Delete old completed downloads, keeping only the `keep_count` most recent.
+    ///
+    /// Because all entity tables have `ON DELETE CASCADE` foreign keys to the
+    /// `downloads` table (activated by the FK PRAGMA applied on every connection),
+    /// deleting a download row automatically removes all associated entity rows.
+    pub fn prune_old_downloads(&self, keep_count: u32) -> Result<usize, Error> {
+        let mut conn = self.get_connection()?;
+        diesel::sql_query(
+            "DELETE FROM downloads
+             WHERE status = 'completed'
+               AND id NOT IN (
+                   SELECT id FROM downloads
+                   WHERE status = 'completed'
+                   ORDER BY id DESC
+                   LIMIT ?
+               )",
+        )
+        .bind::<diesel::sql_types::Integer, _>(keep_count as i32)
+        .execute(&mut conn)
+        .map_err(|e| Error::Db(format!("Prune failed: {}", e)))
     }
 }
 

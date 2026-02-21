@@ -14,10 +14,10 @@ use crate::db::schema::{league_unit_teams, league_units, matches};
 
 #[derive(Queryable, Identifiable, Debug)]
 #[diesel(table_name = league_units)]
+#[diesel(primary_key(unit_id, download_id))]
 pub struct LeagueUnit {
-    pub id: i32,
-    pub download_id: i32,
     pub unit_id: i32,
+    pub download_id: i32,
     pub unit_name: String,
     pub league_level: i32,
     pub max_number_of_teams: Option<i32>,
@@ -27,22 +27,21 @@ pub struct LeagueUnit {
 #[derive(Insertable)]
 #[diesel(table_name = league_units)]
 pub struct NewLeagueUnit<'a> {
-    pub download_id: i32,
     pub unit_id: i32,
+    pub download_id: i32,
     pub unit_name: &'a str,
     pub league_level: i32,
     pub max_number_of_teams: Option<i32>,
     pub current_match_round: Option<i32>,
 }
 
-#[derive(Queryable, Identifiable, Associations, Debug)]
-#[diesel(belongs_to(LeagueUnit))]
+#[derive(Queryable, Identifiable, Debug)]
 #[diesel(table_name = league_unit_teams)]
+#[diesel(primary_key(unit_id, team_id, download_id))]
 pub struct LeagueUnitTeam {
-    pub id: i32,
-    pub download_id: i32,
-    pub league_unit_id: i32,
+    pub unit_id: i32,
     pub team_id: i32,
+    pub download_id: i32,
     pub team_name: String,
     pub position: i32,
     pub points: i32,
@@ -57,9 +56,9 @@ pub struct LeagueUnitTeam {
 #[derive(Insertable)]
 #[diesel(table_name = league_unit_teams)]
 pub struct NewLeagueUnitTeam<'a> {
-    pub download_id: i32,
-    pub league_unit_id: i32,
+    pub unit_id: i32,
     pub team_id: i32,
+    pub download_id: i32,
     pub team_name: &'a str,
     pub position: i32,
     pub points: i32,
@@ -73,10 +72,10 @@ pub struct NewLeagueUnitTeam<'a> {
 
 #[derive(Queryable, Identifiable, Debug)]
 #[diesel(table_name = matches)]
+#[diesel(primary_key(match_id, download_id))]
 pub struct Match {
-    pub id: i32,
-    pub download_id: i32,
     pub match_id: i32,
+    pub download_id: i32,
     pub home_team_id: i32,
     pub home_team_name: String,
     pub away_team_id: i32,
@@ -98,8 +97,8 @@ pub struct Match {
 #[derive(Insertable)]
 #[diesel(table_name = matches)]
 pub struct NewMatch<'a> {
-    pub download_id: i32,
     pub match_id: i32,
+    pub download_id: i32,
     pub home_team_id: i32,
     pub home_team_name: &'a str,
     pub away_team_id: i32,
@@ -120,9 +119,11 @@ pub fn save_league_details(
 ) -> Result<(), Error> {
     use crate::db::schema::league_units;
 
+    let unit_id = data.LeagueLevelUnitID as i32;
+
     let new_unit = NewLeagueUnit {
+        unit_id,
         download_id,
-        unit_id: data.LeagueLevelUnitID as i32,
         unit_name: &data.LeagueLevelUnitName,
         league_level: data.LeagueLevel as i32,
         max_number_of_teams: data.MaxLevel.map(|v| v as i32),
@@ -131,16 +132,12 @@ pub fn save_league_details(
 
     diesel::insert_into(league_units::table)
         .values(&new_unit)
+        .on_conflict((league_units::unit_id, league_units::download_id))
+        .do_nothing()
         .execute(conn)
         .map_err(|e| Error::Io(format!("Failed to insert league unit: {}", e)))?;
 
-    // Get the ID of the inserted unit
-    let inserted_unit: LeagueUnit = league_units::table
-        .order(league_units::id.desc())
-        .first(conn)
-        .map_err(|e| Error::Io(format!("Failed to get inserted league unit: {}", e)))?;
-
-    save_league_teams(conn, download_id, inserted_unit.id, data)?;
+    save_league_teams(conn, download_id, unit_id, data)?;
 
     Ok(())
 }
@@ -148,7 +145,7 @@ pub fn save_league_details(
 fn save_league_teams(
     conn: &mut SqliteConnection,
     download_id: i32,
-    league_unit_id: i32,
+    unit_id: i32,
     data: &LeagueDetailsData,
 ) -> Result<(), Error> {
     use crate::db::schema::league_unit_teams;
@@ -157,9 +154,9 @@ fn save_league_teams(
         .Teams
         .iter()
         .map(|team| NewLeagueUnitTeam {
-            download_id,
-            league_unit_id,
+            unit_id,
             team_id: team.TeamID.parse::<i32>().unwrap_or(0),
+            download_id,
             team_name: &team.TeamName,
             position: team.Position as i32,
             points: team.Points as i32,
@@ -172,7 +169,9 @@ fn save_league_teams(
         })
         .collect();
 
-    diesel::insert_into(league_unit_teams::table)
+    // Use INSERT OR IGNORE (insert_or_ignore_into) for batch inserts in SQLite.
+    // Diesel's on_conflict().do_nothing() is not supported on batch inserts for SQLite.
+    diesel::insert_or_ignore_into(league_unit_teams::table)
         .values(&records)
         .execute(conn)
         .map_err(|e| Error::Io(format!("Failed to insert league teams: {}", e)))?;
@@ -193,8 +192,8 @@ pub fn save_matches(
         .Matches
         .iter()
         .map(|match_data| NewMatch {
-            download_id,
             match_id: match_data.MatchID as i32,
+            download_id,
             home_team_id: match_data.HomeTeam.HomeTeamID.parse::<i32>().unwrap_or(0),
             home_team_name: &match_data.HomeTeam.HomeTeamName,
             away_team_id: match_data.AwayTeam.AwayTeamID.parse::<i32>().unwrap_or(0),
@@ -208,7 +207,9 @@ pub fn save_matches(
         })
         .collect();
 
-    diesel::insert_into(matches::table)
+    // Use INSERT OR IGNORE (insert_or_ignore_into) for batch inserts in SQLite.
+    // Diesel's on_conflict().do_nothing() is not supported on batch inserts for SQLite.
+    diesel::insert_or_ignore_into(matches::table)
         .values(&records)
         .execute(conn)
         .map_err(|e| Error::Io(format!("Failed to insert matches: {}", e)))?;
@@ -231,9 +232,10 @@ pub fn get_latest_league_details(
         .map_err(|e| Error::Io(format!("Failed to get league unit: {}", e)))?;
 
     if let Some(unit) = unit_opt {
-        // 2. Fetch the teams
+        // 2. Fetch the teams using the composite FK (unit_id, download_id)
         let db_teams: Vec<LeagueUnitTeam> = league_unit_teams::table
-            .filter(league_unit_teams::league_unit_id.eq(unit.id))
+            .filter(league_unit_teams::unit_id.eq(unit.unit_id))
+            .filter(league_unit_teams::download_id.eq(unit.download_id))
             .order(league_unit_teams::position.asc())
             .load(conn)
             .map_err(|e| Error::Io(format!("Failed to get league teams: {}", e)))?;
@@ -416,6 +418,14 @@ mod tests {
         assert_eq!(fetched_league.Teams.len(), 1);
         assert_eq!(fetched_league.Teams[0].TeamName, "Team A");
 
+        // Idempotency: re-saving must not duplicate rows (ON CONFLICT DO NOTHING)
+        save_league_details(&mut conn, 1, &league_data)
+            .expect("Failed to re-save league details");
+        let fetched_again = get_latest_league_details(&mut conn, 100)
+            .expect("Failed to fetch league after re-save")
+            .unwrap();
+        assert_eq!(fetched_again.Teams.len(), 1);
+
         // Mock Match Data
         let match_data = MatchesData {
             Team: crate::chpp::model::MatchesTeamWrapper {
@@ -453,6 +463,9 @@ mod tests {
         };
 
         save_matches(&mut conn, 1, &match_data).expect("Failed to save matches");
+
+        // Idempotency: re-saving matches must not duplicate rows
+        save_matches(&mut conn, 1, &match_data).expect("Failed to re-save matches");
 
         // Verify Match Data
         let fetched_matches = get_latest_matches(&mut conn, 1)

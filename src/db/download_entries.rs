@@ -98,7 +98,12 @@ pub fn create_download(
     .get_result(conn)
 }
 
-/// Update the status of a download entry (for retry tracking)
+/// Update the status of a download entry (for retry tracking).
+///
+/// This is the **only** `UPDATE` statement in the codebase and is an intentional,
+/// documented exception to the insert-only schema design. Download entries track
+/// operational state (in_progress → success/error) that is not domain history;
+/// mutating in-place avoids orphaned "in_progress" rows on retry or failure.
 pub fn update_entry_status(
     conn: &mut SqliteConnection,
     entry_id: i32,

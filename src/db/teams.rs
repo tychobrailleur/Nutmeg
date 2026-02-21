@@ -250,6 +250,7 @@ struct PlayerEntity {
     friendlies_goals: Option<i32>,
     career_goals: Option<i32>,
     career_hattricks: Option<i32>,
+    specialty: Option<i32>,
     transfer_listed: bool,
     national_team_id: Option<i32>,
     country_id: i32,
@@ -257,7 +258,6 @@ struct PlayerEntity {
     caps_u20: Option<i32>,
     cards: Option<i32>,
     injury_level: Option<i32>,
-    specialty: Option<i32>,
     stamina_skill: Option<i32>,
     keeper_skill: Option<i32>,
     playmaker_skill: Option<i32>,
@@ -291,91 +291,93 @@ pub fn save_world_details(
     world_details: &WorldDetails,
     download_id: i32,
 ) -> Result<(), Error> {
-    for world_league in &world_details.LeagueList.Leagues {
-        // Save Language if present
-        if let (Some(lang_id), Some(lang_name)) =
-            (world_league.LanguageId, &world_league.LanguageName)
-        {
-            let language = Language {
-                LanguageID: lang_id,
-                LanguageName: lang_name.clone(),
+    conn.transaction::<_, Error, _>(|conn| {
+        for world_league in &world_details.LeagueList.Leagues {
+            // Save Language if present
+            if let (Some(lang_id), Some(lang_name)) =
+                (world_league.LanguageId, &world_league.LanguageName)
+            {
+                let language = Language {
+                    LanguageID: lang_id,
+                    LanguageName: lang_name.clone(),
+                };
+                save_language(conn, &language, download_id)?;
+            }
+
+            // Save Currency if present in WorldCountry
+            // WorldCountry has CurrencyName and CurrencyRate but no CurrencyID
+            // We'll use CountryID as a proxy for CurrencyID since each country has one currency
+            if let (Some(country_id), Some(currency_name), Some(currency_rate_str)) = (
+                world_league.Country.CountryID,
+                &world_league.Country.CurrencyName,
+                &world_league.Country.CurrencyRate,
+            ) {
+                // Parse rate (handle comma as decimal separator)
+                let rate = currency_rate_str.replace(',', ".").parse::<f64>().ok();
+                let currency = Currency {
+                    CurrencyID: country_id, // Using country ID as currency ID (TODO is it ok?)  FIXME: this is not ok.
+                    CurrencyName: currency_name.clone(),
+                    Rate: rate,
+                    Symbol: Some(currency_name.clone()), // Using name as symbol for now
+                };
+                save_currency(conn, &currency, download_id)?;
+            }
+
+            // TODO Investigate if we need both WorldLeague and League structs,
+            // or WorldCountry and Country structs, etc.
+            // Construct a standard League object from WorldLeague data
+            let league = League {
+                LeagueID: world_league.LeagueID,
+                LeagueName: world_league.LeagueName.clone(),
+                ShortName: world_league.ShortName.clone(),
+                Continent: world_league.Continent.clone(),
+                Season: world_league.Season,
+                SeasonOffset: world_league.SeasonOffset,
+                MatchRound: world_league.MatchRound,
+                ZoneName: world_league.ZoneName.clone(),
+                EnglishName: world_league.EnglishName.clone(),
+                LanguageID: world_league.LanguageId,
+                NationalTeamId: world_league.NationalTeamId,
+                U20TeamId: world_league.U20TeamId,
+                ActiveTeams: world_league.ActiveTeams,
+                ActiveUsers: world_league.ActiveUsers,
+                NumberOfLevels: world_league.NumberOfLevels,
+                LeagueSystemId: None,
             };
-            save_language(conn, &language, download_id)?;
-        }
 
-        // Save Currency if present in WorldCountry
-        // WorldCountry has CurrencyName and CurrencyRate but no CurrencyID
-        // We'll use CountryID as a proxy for CurrencyID since each country has one currency
-        if let (Some(country_id), Some(currency_name), Some(currency_rate_str)) = (
-            world_league.Country.CountryID,
-            &world_league.Country.CurrencyName,
-            &world_league.Country.CurrencyRate,
-        ) {
-            // Parse rate (handle comma as decimal separator)
-            let rate = currency_rate_str.replace(',', ".").parse::<f64>().ok();
-            let currency = Currency {
-                CurrencyID: country_id, // Using country ID as currency ID (TODO is it ok?)  FIXME: this is not ok.
-                CurrencyName: currency_name.clone(),
-                Rate: rate,
-                Symbol: Some(currency_name.clone()), // Using name as symbol for now
-            };
-            save_currency(conn, &currency, download_id)?;
-        }
-
-        // TODO Investigate if we need both WorldLeague and League structs,
-        // or WorldCountry and Country structs, etc.
-        // Construct a standard League object from WorldLeague data
-        let league = League {
-            LeagueID: world_league.LeagueID,
-            LeagueName: world_league.LeagueName.clone(),
-            ShortName: world_league.ShortName.clone(),
-            Continent: world_league.Continent.clone(),
-            Season: world_league.Season,
-            SeasonOffset: world_league.SeasonOffset,
-            MatchRound: world_league.MatchRound,
-            ZoneName: world_league.ZoneName.clone(),
-            EnglishName: world_league.EnglishName.clone(),
-            LanguageID: world_league.LanguageId,
-            NationalTeamId: world_league.NationalTeamId,
-            U20TeamId: world_league.U20TeamId,
-            ActiveTeams: world_league.ActiveTeams,
-            ActiveUsers: world_league.ActiveUsers,
-            NumberOfLevels: world_league.NumberOfLevels,
-            LeagueSystemId: None,
-        };
-
-        // Save Country
-        if let Some(country_id) = world_league.Country.CountryID {
-            let currency = world_league
-                .Country
-                .CurrencyName
-                .as_ref()
-                .map(|_| Currency {
-                    CurrencyID: country_id, // See above
-                    // placeholders, just need ID
-                    CurrencyName: "".to_string(),
-                    Rate: None,
-                    Symbol: None,
-                });
-            let country_model = Country {
-                CountryID: country_id,
-                CountryName: world_league
+            // Save Country
+            if let Some(country_id) = world_league.Country.CountryID {
+                let currency = world_league
                     .Country
-                    .CountryName
-                    .clone()
-                    .ok_or_else(|| Error::Db("Missing CountryName".to_string()))?,
-                Currency: currency,
-                CountryCode: world_league.Country.CountryCode.clone(),
-                DateFormat: world_league.Country.DateFormat.clone(),
-                TimeFormat: world_league.Country.TimeFormat.clone(),
-            };
-            save_country(conn, &country_model, download_id)?;
-        }
+                    .CurrencyName
+                    .as_ref()
+                    .map(|_| Currency {
+                        CurrencyID: country_id, // See above
+                        // placeholders, just need ID
+                        CurrencyName: "".to_string(),
+                        Rate: None,
+                        Symbol: None,
+                    });
+                let country_model = Country {
+                    CountryID: country_id,
+                    CountryName: world_league
+                        .Country
+                        .CountryName
+                        .clone()
+                        .ok_or_else(|| Error::Db("Missing CountryName".to_string()))?,
+                    Currency: currency,
+                    CountryCode: world_league.Country.CountryCode.clone(),
+                    DateFormat: world_league.Country.DateFormat.clone(),
+                    TimeFormat: world_league.Country.TimeFormat.clone(),
+                };
+                save_country(conn, &country_model, download_id)?;
+            }
 
-        // Save the League
-        save_league(conn, &league, world_league.Country.CountryID, download_id)?;
-    }
-    Ok(())
+            // Save the League
+            save_league(conn, &league, world_league.Country.CountryID, download_id)?;
+        }
+        Ok(())
+    })
 }
 
 pub fn save_players(

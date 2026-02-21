@@ -1,0 +1,14 @@
+# diesel.toml
+#
+# Configuration for the Diesel CLI.
+# `diesel print-schema` writes the generated table! macros here.
+# Do NOT hand-edit src/db/schema.rs; regenerate it by running:
+#   diesel print-schema --database-url <db> > src/db/schema.rs
+# or equivalently:
+#   diesel migration run && diesel print-schema
+
+[print_schema]
+file = "src/db/schema.rs"
+
+[migrations_directory]
+dir = "migrations"

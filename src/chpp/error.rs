@@ -68,3 +68,9 @@ impl From<std::io::Error> for Error {
         Error::Io(err.to_string())
     }
 }
+
+impl From<diesel::result::Error> for Error {
+    fn from(err: diesel::result::Error) -> Self {
+        Error::Db(err.to_string())
+    }
+}
