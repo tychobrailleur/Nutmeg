@@ -288,6 +288,23 @@ diesel::table! {
     }
 }
 
+
+diesel::table! {
+    match_ratings (match_id, team_id) {
+        match_id         -> Integer,
+        team_id          -> Integer,
+        formation        -> Nullable<Text>,
+        tactic_type      -> Nullable<Integer>,
+        rating_midfield  -> Nullable<Double>,
+        rating_right_def -> Nullable<Double>,
+        rating_mid_def   -> Nullable<Double>,
+        rating_left_def  -> Nullable<Double>,
+        rating_right_att -> Nullable<Double>,
+        rating_mid_att   -> Nullable<Double>,
+        rating_left_att  -> Nullable<Double>,
+    }
+}
+
 diesel::joinable!(avatars -> downloads (download_id));
 diesel::joinable!(countries -> downloads (download_id));
 diesel::joinable!(cups -> downloads (download_id));
@@ -328,6 +345,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     league_unit_teams,
     league_units,
     leagues,
+    match_ratings,
     matches,
     players,
     regions,

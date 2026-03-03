@@ -37,10 +37,14 @@ pub struct OpponentMatchData {
     pub match_id: u32,
     pub match_date: String,
     pub is_home: bool,
+    pub home_team_name: String,
+    pub away_team_name: String,
+    pub opponent_team_name: String,
     pub match_type: u32,
     pub home_goals: Option<u32>,
     pub away_goals: Option<u32>,
     pub formation: Option<String>,
+    pub tactic_type: Option<u32>,
     pub rating_midfield: Option<u32>,
     pub rating_right_def: Option<u32>,
     pub rating_mid_def: Option<u32>,
@@ -107,6 +111,7 @@ impl OpponentAnalysisService {
         get_auth: &F,
         team_id: u32,
         limit: usize,
+        match_type_filter: Option<Vec<u32>>,
     ) -> Result<OpponentAnalysis, Error>
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
@@ -121,6 +126,13 @@ impl OpponentAnalysisService {
         let finished_matches: Vec<_> = match_list
             .into_iter()
             .filter(|m| m.Status == "FINISHED")
+            .filter(|m| {
+                if let Some(ref filter) = match_type_filter {
+                    filter.contains(&m.MatchType)
+                } else {
+                    true
+                }
+            })
             .take(limit)
             .collect();
 
@@ -143,9 +155,11 @@ impl OpponentAnalysisService {
                     .unwrap_or(0)
                     == team_id;
 
-                let (formation, ratings) = if is_home {
+                let (formation, tactic_type, opponent_team_name, ratings) = if is_home {
                     (
                         details.Match.HomeTeam.Formation,
+                        details.Match.HomeTeam.TacticType,
+                        details.Match.AwayTeam.AwayTeamName.clone(),
                         (
                             details.Match.HomeTeam.RatingMidfield,
                             details.Match.HomeTeam.RatingRightDef,
@@ -159,6 +173,8 @@ impl OpponentAnalysisService {
                 } else {
                     (
                         details.Match.AwayTeam.Formation,
+                        details.Match.AwayTeam.TacticType,
+                        details.Match.HomeTeam.HomeTeamName.clone(),
                         (
                             details.Match.AwayTeam.RatingMidfield,
                             details.Match.AwayTeam.RatingRightDef,
@@ -179,10 +195,14 @@ impl OpponentAnalysisService {
                     match_id: m.MatchID,
                     match_date: m.MatchDate,
                     is_home,
+                    home_team_name: details.Match.HomeTeam.HomeTeamName.clone(),
+                    away_team_name: details.Match.AwayTeam.AwayTeamName.clone(),
+                    opponent_team_name,
                     match_type: details.Match.MatchType,
                     home_goals: details.Match.HomeGoals,
                     away_goals: details.Match.AwayGoals,
                     formation,
+                    tactic_type,
                     rating_midfield: ratings.0,
                     rating_right_def: ratings.1,
                     rating_mid_def: ratings.2,
@@ -504,7 +524,10 @@ mod tests {
 
         let get_auth = || crate::chpp::oauth::create_oauth_context("", "", "", "");
 
-        let opponents = service.get_upcoming_opponents(&get_auth, 12345).await.unwrap();
+        let opponents = service
+            .get_upcoming_opponents(&get_auth, 12345)
+            .await
+            .unwrap();
 
         // Should find 1 upcoming opponent (match 2)
         assert_eq!(opponents.len(), 1);
@@ -520,7 +543,10 @@ mod tests {
 
         let get_auth = || crate::chpp::oauth::create_oauth_context("", "", "", "");
 
-        let result = service.analyze_opponent(&get_auth, 10, 10).await.unwrap();
+        let result = service
+            .analyze_opponent(&get_auth, 10, 10, None)
+            .await
+            .unwrap();
 
         assert_eq!(result.team_id, 10);
         assert_eq!(result.matches.len(), 1);
@@ -528,9 +554,11 @@ mod tests {
         let m = &result.matches[0];
         assert_eq!(m.match_id, 1);
         assert!(m.is_home);
+        assert_eq!(m.opponent_team_name, "Team B");
         assert_eq!(m.home_goals, Some(2));
         assert_eq!(m.away_goals, Some(1));
         assert_eq!(m.formation.as_deref(), Some("3-5-2"));
+        assert_eq!(m.tactic_type, Some(0));
         assert_eq!(m.rating_midfield, Some(60));
 
         assert_eq!(result.injured_or_suspended_players.len(), 2);

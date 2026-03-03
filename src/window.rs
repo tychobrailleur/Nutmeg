@@ -224,6 +224,9 @@ impl NutmegWindow {
             .sync_create()
             .build();
 
+        imp.opponent_analysis.set_property("context", model);
+        imp.optimiser.set_property("context", model);
+
         // Bind combo_teams selected item to ContextObject selected-team.
         // sync_create immediately fires the "selected-team" notify, which is why
         // the handler above must already be connected at this point.

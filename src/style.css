@@ -74,3 +74,8 @@
 .strong {
     font-weight: bold;
 }
+
+.highlighted-formation {
+    border: 2px solid @accent_color;
+    background-color: rgba(53, 132, 228, 0.1);
+}

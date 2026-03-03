@@ -45,8 +45,38 @@
         </child>
 
         <child>
+          <object class="GtkLabel">
+            <property name="label" translatable="yes">Match types:</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkCheckButton" id="check_league">
+            <property name="label" translatable="yes">League</property>
+            <property name="active">true</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkCheckButton" id="check_cup">
+            <property name="label" translatable="yes">Cup</property>
+            <property name="active">true</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkCheckButton" id="check_friendly">
+            <property name="label" translatable="yes">Friendly</property>
+            <property name="active">false</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkCheckButton" id="check_international">
+            <property name="label" translatable="yes">International</property>
+            <property name="active">true</property>
+          </object>
+        </child>
+
+        <child>
           <object class="GtkButton" id="btn_analyze">
-            <property name="label">Analyse Opponent</property>
+            <property name="label" translatable="yes">Analyse Opponent</property>
           </object>
         </child>
 
@@ -152,9 +182,11 @@
                           </object>
                         </child>
                         <child>
-                          <object class="GtkLabel" id="lbl_ratings">
-                            <property name="label">No data yet.</property>
-                            <property name="xalign">0</property>
+                          <object class="GtkBox" id="average_ratings_pitch">
+                            <!-- PitchView will be inserted here dynamically -->
+                            <property name="orientation">vertical</property>
+                            <property name="vexpand">true</property>
+                            <property name="hexpand">true</property>
                           </object>
                         </child>
                       </object>

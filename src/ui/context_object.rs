@@ -24,6 +24,7 @@ mod imp {
         pub selected_team: RefCell<Option<TeamObject>>,
         pub selected_player: RefCell<Option<PlayerObject>>,
         pub players: RefCell<Option<gtk::ListStore>>,
+        pub opponent_avg_ratings: RefCell<Option<[f32; 7]>>,
     }
 
     #[glib::object_subclass]
@@ -46,6 +47,9 @@ mod imp {
                     glib::ParamSpecObject::builder::<gtk::ListStore>("players")
                         .read_only()
                         .build(),
+                    glib::ParamSpecBoolean::builder("has-opponent-ratings")
+                        .explicit_notify()
+                        .build(),
                 ]
             })
         }
@@ -55,6 +59,7 @@ mod imp {
                 "selected-team" => self.selected_team.borrow().to_value(),
                 "selected-player" => self.selected_player.borrow().to_value(),
                 "players" => self.players.borrow().to_value(),
+                "has-opponent-ratings" => self.opponent_avg_ratings.borrow().is_some().to_value(),
                 _ => unimplemented!(),
             }
         }
@@ -113,11 +118,22 @@ impl ContextObject {
         self.set_property("selected-player", player);
     }
 
+    pub fn set_opponent_avg_ratings(&self, ratings: Option<[f32; 7]>) {
+        *self.imp().opponent_avg_ratings.borrow_mut() = ratings;
+        self.notify("has-opponent-ratings");
+    }
+
+    pub fn get_opponent_avg_ratings(&self) -> Option<[f32; 7]> {
+        *self.imp().opponent_avg_ratings.borrow()
+    }
+
     fn clear_context(&self) {
         // Clear players list
         let store = create_player_model(&[]);
         self.imp().players.replace(Some(store));
         self.notify("players");
+
+        self.set_opponent_avg_ratings(None);
 
         // Clear selected player
         self.set_selected_player(None::<PlayerObject>);
