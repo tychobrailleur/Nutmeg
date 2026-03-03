@@ -1,15 +1,14 @@
 use crate::chpp::model::Player;
 use crate::rating::controller::RatingController;
 use crate::rating::optimiser::{Formation, OptimisedLineup};
-use crate::rating::types::{Behaviour, PositionId};
 use crate::rating::RatingSector;
+use crate::ui::components::pitch_view::{PitchPlayer, PitchView};
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gtk::{glib, CompositeTemplate};
 use log::{error, info};
 use num_format::{Buffer, SystemLocale};
 use std::cell::RefCell;
-use std::collections::HashMap;
 
 mod imp {
     use super::*;
@@ -230,218 +229,12 @@ impl FormationOptimiserWidget {
 
     /// Creates the pitch visualisation with all position slots.
     /// If `player_map` is `None`, all slots are shown as empty.
-    fn create_pitch_visualisation(
-        player_map: Option<&HashMap<PositionId, (&Player, Behaviour)>>,
-        rating_map: Option<&HashMap<u32, f64>>,
-    ) -> gtk::Grid {
-        // Use a 5-column grid so all slots share exactly the same
-        // column width, regardless of how many slots each row has.
-        let grid = gtk::Grid::builder()
-            .row_spacing(4)
-            .column_spacing(2)
-            .column_homogeneous(true)
-            .row_homogeneous(true)
-            .vexpand(true)
-            .build();
-        grid.add_css_class("pitch-view");
-
-        // SizeGroup for uniform slot dimensions
-        let slot_size_group = gtk::SizeGroup::new(gtk::SizeGroupMode::Both);
-
-        // Helper to create a single slot
-        let create_slot =
-            |id: PositionId, label_text: &str, size_group: &gtk::SizeGroup| -> gtk::Widget {
-                let container = gtk::Box::new(gtk::Orientation::Vertical, 0);
-                container.set_halign(gtk::Align::Fill);
-                container.set_valign(gtk::Align::Center);
-
-                // Position label row (with behaviour triangle if populated)
-                let pos_row = gtk::Box::new(gtk::Orientation::Horizontal, 2);
-                pos_row.set_halign(gtk::Align::Center);
-
-                let slot_label = gtk::Label::builder()
-                    .label(label_text)
-                    .css_classes(["caption", "dim-label"])
-                    .halign(gtk::Align::Center)
-                    .build();
-                pos_row.append(&slot_label);
-
-                if let Some(pmap) = player_map {
-                    if let Some((_player, behaviour)) = pmap.get(&id) {
-                        let symbol = behaviour.symbol(&id);
-                        if !symbol.is_empty() {
-                            let triangle = gtk::Label::builder()
-                                .label(symbol)
-                                .css_classes(["caption", "behaviour-indicator"])
-                                .halign(gtk::Align::Center)
-                                .build();
-                            pos_row.append(&triangle);
-                        }
-                    }
-                }
-
-                container.append(&pos_row);
-
-                // Player name or empty dash
-                if let Some(pmap) = player_map {
-                    if let Some((player, behaviour)) = pmap.get(&id) {
-                        let short_name = format!(
-                            "{}. {}",
-                            player.FirstName.chars().next().unwrap_or('?'),
-                            player.LastName
-                        );
-
-                        let player_id = player.PlayerID;
-                        let rating = rating_map
-                            .and_then(|rm| rm.get(&player_id).copied())
-                            .unwrap_or(0.0);
-                        let tooltip = format!(
-                            "{} {} ({} {}) - Rating: {:.1}",
-                            player.FirstName,
-                            player.LastName,
-                            label_text,
-                            behaviour.name(),
-                            rating
-                        );
-
-                        let name = gtk::Label::builder()
-                            .label(&short_name)
-                            .ellipsize(gtk::pango::EllipsizeMode::End)
-                            .max_width_chars(10)
-                            .css_classes(["body", "strong"])
-                            .halign(gtk::Align::Center)
-                            .build();
-                        container.append(&name);
-                        container.add_css_class("slot-filled");
-                        container.set_tooltip_text(Some(&tooltip));
-                    } else {
-                        Self::add_empty_slot_label(&container);
-                    }
-                } else {
-                    Self::add_empty_slot_label(&container);
-                }
-
-                size_group.add_widget(&container);
-                container.upcast()
-            };
-
-        // Row 0: Attack — columns 1, 2, 3 (centred in the 5-column grid)
-        grid.attach(
-            &create_slot(PositionId::LeftForward, "LF", &slot_size_group),
-            1,
-            0,
-            1,
-            1,
-        );
-        grid.attach(
-            &create_slot(PositionId::CentralForward, "CF", &slot_size_group),
-            2,
-            0,
-            1,
-            1,
-        );
-        grid.attach(
-            &create_slot(PositionId::RightForward, "RF", &slot_size_group),
-            3,
-            0,
-            1,
-            1,
-        );
-
-        // Row 1: Midfield — all 5 columns
-        grid.attach(
-            &create_slot(PositionId::LeftWinger, "LW", &slot_size_group),
-            0,
-            1,
-            1,
-            1,
-        );
-        grid.attach(
-            &create_slot(PositionId::LeftInnerMidfield, "LIM", &slot_size_group),
-            1,
-            1,
-            1,
-            1,
-        );
-        grid.attach(
-            &create_slot(PositionId::CentralInnerMidfield, "MIM", &slot_size_group),
-            2,
-            1,
-            1,
-            1,
-        );
-        grid.attach(
-            &create_slot(PositionId::RightInnerMidfield, "RIM", &slot_size_group),
-            3,
-            1,
-            1,
-            1,
-        );
-        grid.attach(
-            &create_slot(PositionId::RightWinger, "RW", &slot_size_group),
-            4,
-            1,
-            1,
-            1,
-        );
-
-        // Row 2: Defence — all 5 columns
-        grid.attach(
-            &create_slot(PositionId::LeftBack, "LB", &slot_size_group),
-            0,
-            2,
-            1,
-            1,
-        );
-        grid.attach(
-            &create_slot(PositionId::LeftCentralDefender, "LCD", &slot_size_group),
-            1,
-            2,
-            1,
-            1,
-        );
-        grid.attach(
-            &create_slot(PositionId::MiddleCentralDefender, "MCD", &slot_size_group),
-            2,
-            2,
-            1,
-            1,
-        );
-        grid.attach(
-            &create_slot(PositionId::RightCentralDefender, "RCD", &slot_size_group),
-            3,
-            2,
-            1,
-            1,
-        );
-        grid.attach(
-            &create_slot(PositionId::RightBack, "RB", &slot_size_group),
-            4,
-            2,
-            1,
-            1,
-        );
-
-        // Row 3: Keeper — column 2 (centred)
-        grid.attach(
-            &create_slot(PositionId::Keeper, "GK", &slot_size_group),
-            2,
-            3,
-            1,
-            1,
-        );
-
-        grid
-    }
-
-    fn add_empty_slot_label(container: &gtk::Box) {
-        let empty = gtk::Label::builder()
-            .label("-")
-            .css_classes(["dim-label"])
-            .halign(gtk::Align::Center)
-            .build();
-        container.append(&empty);
-        container.add_css_class("slot-empty");
+    fn create_pitch_visualisation(players: Option<&Vec<PitchPlayer>>) -> gtk::Grid {
+        if let Some(list) = players {
+            PitchView::create(list)
+        } else {
+            PitchView::create(&[])
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -511,7 +304,7 @@ impl FormationOptimiserWidget {
         card.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
 
         // Full pitch with empty slots (no player data)
-        let visual_box = Self::create_pitch_visualisation(None, None);
+        let visual_box = Self::create_pitch_visualisation(None);
         card.append(&visual_box);
 
         card.upcast()
@@ -602,49 +395,49 @@ impl FormationOptimiserWidget {
         card.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
 
         // ── Visual Lineup on Pitch ──
-        let mut player_map: HashMap<PositionId, (&Player, Behaviour)> = HashMap::new();
-        for pos in &result.lineup.positions {
-            player_map.insert(pos.role_id, (&pos.player, pos.behaviour));
-        }
+        let mut pitch_players = Vec::new();
 
-        // Pre-calculate ratings for tooltip display
-        let mut rating_map: HashMap<u32, f64> = HashMap::new();
         for pos in &result.lineup.positions {
-            let player_id = pos.player.PlayerID;
-            rating_map.entry(player_id).or_insert_with(|| {
-                let sector_rating = match pos.role_id.sector() {
-                    crate::rating::types::Sector::Goal => result
-                        .sector_ratings
-                        .get(&RatingSector::Midfield)
-                        .copied()
-                        .unwrap_or(0.0),
-                    crate::rating::types::Sector::CentralDefence
-                    | crate::rating::types::Sector::Back => result
-                        .sector_ratings
-                        .get(&RatingSector::DefenceCentral)
-                        .copied()
-                        .unwrap_or(0.0),
-                    crate::rating::types::Sector::InnerMidfield => result
-                        .sector_ratings
-                        .get(&RatingSector::Midfield)
-                        .copied()
-                        .unwrap_or(0.0),
-                    crate::rating::types::Sector::Wing => result
-                        .sector_ratings
-                        .get(&RatingSector::Midfield)
-                        .copied()
-                        .unwrap_or(0.0),
-                    crate::rating::types::Sector::Forward => result
-                        .sector_ratings
-                        .get(&RatingSector::AttackCentral)
-                        .copied()
-                        .unwrap_or(0.0),
-                };
-                sector_rating
+            let sector_rating = match pos.role_id.sector() {
+                crate::rating::types::Sector::Goal => result
+                    .sector_ratings
+                    .get(&RatingSector::Midfield)
+                    .copied()
+                    .unwrap_or(0.0),
+                crate::rating::types::Sector::CentralDefence
+                | crate::rating::types::Sector::Back => result
+                    .sector_ratings
+                    .get(&RatingSector::DefenceCentral)
+                    .copied()
+                    .unwrap_or(0.0),
+                crate::rating::types::Sector::InnerMidfield => result
+                    .sector_ratings
+                    .get(&RatingSector::Midfield)
+                    .copied()
+                    .unwrap_or(0.0),
+                crate::rating::types::Sector::Wing => result
+                    .sector_ratings
+                    .get(&RatingSector::Midfield)
+                    .copied()
+                    .unwrap_or(0.0),
+                crate::rating::types::Sector::Forward => result
+                    .sector_ratings
+                    .get(&RatingSector::AttackCentral)
+                    .copied()
+                    .unwrap_or(0.0),
+            };
+
+            pitch_players.push(PitchPlayer {
+                id: pos.player.PlayerID,
+                first_name: pos.player.FirstName.clone(),
+                last_name: pos.player.LastName.clone(),
+                role: pos.role_id.clone(),
+                behaviour: pos.behaviour.clone(),
+                rating: Some(sector_rating),
             });
         }
 
-        let visual_box = Self::create_pitch_visualisation(Some(&player_map), Some(&rating_map));
+        let visual_box = Self::create_pitch_visualisation(Some(&pitch_players));
         card.append(&visual_box);
 
         card.upcast()

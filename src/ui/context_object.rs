@@ -259,7 +259,7 @@ impl ContextObject {
             glib::Type::STRING, // 10 Loyalty
             glib::Type::STRING, // 11 Best Position
             glib::Type::STRING, // 12 Last Position
-            glib::Type::STRING, // 13 BG Color
+            glib::Type::STRING, // 13 BG Colour
             glib::Type::STRING, // 14 Stamina
             glib::Type::STRING, // 15 Injured
             glib::Type::STRING, // 16 Cards
@@ -278,17 +278,17 @@ impl ContextObject {
 
             let display = PlayerDisplay::new(p, &locale, Some(&preferred_pos));
 
-            // Get the actual background color from CSS by creating a styled widget
+            // Get the actual background colour from CSS by creating a styled widget
             let bg = if p.MotherClubBonus {
-                // Create a temporary widget with the CSS class to extract the color
+                // Create a temporary widget with the CSS class to extract the colour
                 let temp_widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
                 temp_widget.add_css_class("mother-club");
 
                 // Force style resolution
                 #[allow(deprecated)]
-                let style_context = temp_widget.style_context();
+                let _style_context = temp_widget.style_context();
 
-                // Try to get background-color property
+                // Try to get background-colour property
                 // Since we can't easily query CSS properties in GTK4, use the hardcoded value
                 // that matches the CSS definition
                 // FIXME: is there really no way to avoid this hardcoded value??!

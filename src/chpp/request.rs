@@ -27,8 +27,8 @@ use std::collections::BTreeMap;
 use crate::chpp::error::Error;
 use crate::chpp::metadata::ChppEndpoints;
 use crate::chpp::model::{
-    AvatarsData, ChppErrorResponse, HattrickData, LeagueDetailsData, MatchesData, Player,
-    PlayerDetailsData, PlayersData, WorldDetails,
+    AvatarsData, ChppErrorResponse, HattrickData, LeagueDetailsData, MatchDetailsData,
+    MatchLineupData, MatchesData, Player, PlayerDetailsData, PlayersData, WorldDetails,
 };
 use crate::chpp::{CHPP_URL, NUTMEG_USER_AGENT};
 
@@ -373,6 +373,54 @@ pub async fn matches_archive_request(
     chpp_request::<MatchesData>(
         ChppEndpoints::MATCHES_ARCHIVE.name,
         ChppEndpoints::MATCHES_ARCHIVE.version,
+        Some(&params),
+        data,
+        key,
+    )
+    .await
+}
+
+pub async fn match_details_request(
+    data: OAuthData,
+    key: SigningKey,
+    match_id: u32,
+    source_system: &str,
+) -> Result<MatchDetailsData, Error> {
+    let mid_str = match_id.to_string();
+    let params = vec![
+        ("matchID", mid_str.as_str()),
+        ("sourceSystem", source_system),
+        ("matchEvents", "true"),
+    ];
+
+    chpp_request::<MatchDetailsData>(
+        ChppEndpoints::MATCH_DETAILS.name,
+        ChppEndpoints::MATCH_DETAILS.version,
+        Some(&params),
+        data,
+        key,
+    )
+    .await
+}
+
+pub async fn match_lineup_request(
+    data: OAuthData,
+    key: SigningKey,
+    match_id: u32,
+    team_id: u32,
+    source_system: &str,
+) -> Result<MatchLineupData, Error> {
+    let mid_str = match_id.to_string();
+    let tid_str = team_id.to_string();
+    let params = vec![
+        ("matchID", mid_str.as_str()),
+        ("teamID", tid_str.as_str()),
+        ("sourceSystem", source_system),
+    ];
+
+    chpp_request::<MatchLineupData>(
+        ChppEndpoints::MATCH_LINEUP.name,
+        ChppEndpoints::MATCH_LINEUP.version,
         Some(&params),
         data,
         key,

@@ -20,12 +20,13 @@
 
 use crate::chpp::error::Error;
 use crate::chpp::model::{
-    AvatarsData, HattrickData, LeagueDetailsData, MatchesData, Player, PlayersData, WorldDetails,
+    AvatarsData, HattrickData, LeagueDetailsData, MatchDetailsData, MatchLineupData, MatchesData,
+    Player, PlayersData, WorldDetails,
 };
 use crate::chpp::oauth::{OAuthData, SigningKey};
 use crate::chpp::request::{
-    league_details_request, matches_request, player_details_request, players_request,
-    team_details_request, world_details_request,
+    league_details_request, match_details_request, match_lineup_request, matches_request,
+    player_details_request, players_request, team_details_request, world_details_request,
 };
 use async_trait::async_trait;
 
@@ -74,6 +75,23 @@ pub trait ChppClient: Send + Sync {
         key: SigningKey,
         team_id: Option<u32>,
     ) -> Result<MatchesData, Error>;
+
+    async fn match_details(
+        &self,
+        data: OAuthData,
+        key: SigningKey,
+        match_id: u32,
+        source_system: &str,
+    ) -> Result<MatchDetailsData, Error>;
+
+    async fn match_lineup(
+        &self,
+        data: OAuthData,
+        key: SigningKey,
+        match_id: u32,
+        team_id: u32,
+        source_system: &str,
+    ) -> Result<MatchLineupData, Error>;
 }
 
 pub struct HattrickClient;
@@ -142,5 +160,26 @@ impl ChppClient for HattrickClient {
         team_id: Option<u32>,
     ) -> Result<MatchesData, Error> {
         matches_request(data, key, team_id).await
+    }
+
+    async fn match_details(
+        &self,
+        data: OAuthData,
+        key: SigningKey,
+        match_id: u32,
+        source_system: &str,
+    ) -> Result<MatchDetailsData, Error> {
+        match_details_request(data, key, match_id, source_system).await
+    }
+
+    async fn match_lineup(
+        &self,
+        data: OAuthData,
+        key: SigningKey,
+        match_id: u32,
+        team_id: u32,
+        source_system: &str,
+    ) -> Result<MatchLineupData, Error> {
+        match_lineup_request(data, key, match_id, team_id, source_system).await
     }
 }

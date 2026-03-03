@@ -20,5 +20,6 @@
 
 pub mod auth;
 pub mod avatar;
+pub mod opponent_analysis;
 pub mod secret;
 pub mod sync;

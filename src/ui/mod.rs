@@ -1,6 +1,8 @@
+pub mod components;
 pub mod context_object;
 pub mod controllers;
 pub mod oauth_dialog;
+pub mod opponent_analysis;
 pub mod player_display;
 pub mod player_object;
 

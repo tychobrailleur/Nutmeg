@@ -108,6 +108,18 @@
                  <property name="use-underline">True</property>
                </object>
             </child>
+
+            <!-- Opponent Analysis Tab -->
+            <child>
+              <object class="OpponentAnalysis" id="opponent_analysis">
+              </object>
+            </child>
+            <child type="tab">
+               <object class="GtkLabel">
+                 <property name="label" translatable="yes">_Opponent Analysis</property>
+                 <property name="use-underline">True</property>
+               </object>
+            </child>
           </object>
         </child>
         <child>

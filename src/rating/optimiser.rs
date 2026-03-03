@@ -475,13 +475,13 @@ impl<'a> LineupOptimiser<'a> {
         best_player
     }
 
-    fn try_swap_bench(&self, lineup: &Lineup, slots: &[PositionId]) -> Option<Lineup> {
+    fn try_swap_bench(&self, lineup: &Lineup, _slots: &[PositionId]) -> Option<Lineup> {
         // Randomly pick a slot in lineup
         if lineup.positions.is_empty() {
             return None;
         }
         let idx = fastrand::usize(0..lineup.positions.len());
-        let current_pos = &lineup.positions[idx];
+        let _current_pos = &lineup.positions[idx];
 
         // Find bench players
         let lineup_ids: HashSet<u32> = lineup.positions.iter().map(|p| p.player.PlayerID).collect();
@@ -643,7 +643,7 @@ mod tests {
             // ... need 11 players for full test, but unit test can check partial logic
         ];
 
-        let optimiser = LineupOptimiser::new(&model, &players);
+        let _optimiser = LineupOptimiser::new(&model, &players);
         // Optimization check would require more logic setup
     }
 }
