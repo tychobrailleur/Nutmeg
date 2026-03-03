@@ -35,7 +35,7 @@ use crate::ui::team_object::TeamObject;
 use crate::series::page::SeriesPage;
 use crate::squad::player_details::SquadPlayerDetails;
 use crate::squad::player_list::SquadPlayerList;
-
+use crate::ui::opponent_analysis::OpponentAnalysis;
 mod imp {
     use super::*;
 
@@ -77,6 +77,9 @@ mod imp {
         #[template_child]
         pub training_planner: TemplateChild<TrainingPlannerPage>,
 
+        #[template_child]
+        pub opponent_analysis: TemplateChild<OpponentAnalysis>,
+
         pub context_object: ContextObject,
     }
 
@@ -89,6 +92,7 @@ mod imp {
         fn class_init(klass: &mut Self::Class) {
             FormationOptimiserWidget::ensure_type();
             TrainingPlannerPage::ensure_type();
+            OpponentAnalysis::ensure_type();
             klass.bind_template();
         }
 
@@ -213,6 +217,12 @@ impl NutmegWindow {
         model.connect_notify_local(Some("selected-team"), move |_, _| {
             window.load_current_team_series_data();
         });
+
+        // Bind ContextObject selected-team to OpponentAnalysis
+        model
+            .bind_property("selected-team", &*imp.opponent_analysis, "selected-team")
+            .sync_create()
+            .build();
 
         // Bind combo_teams selected item to ContextObject selected-team.
         // sync_create immediately fires the "selected-team" notify, which is why

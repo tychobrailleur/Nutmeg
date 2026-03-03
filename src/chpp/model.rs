@@ -374,8 +374,9 @@ where
 }
 
 #[allow(non_snake_case)]
-#[derive(Serialize, Debug, PartialEq, Clone, Copy)]
+#[derive(Serialize, Debug, PartialEq, Clone, Copy, Default)]
 pub enum SupporterTier {
+    #[default]
     None,
     Silver,
     Gold,
@@ -404,14 +405,14 @@ impl<'de> Deserialize<'de> for SupporterTier {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Language {
     pub LanguageID: u32,
     pub LanguageName: String,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct User {
     #[allow(dead_code)]
     pub UserID: u32,
@@ -428,7 +429,7 @@ pub struct User {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Arena {
     pub ArenaID: u32,
     pub ArenaName: String,
@@ -476,14 +477,14 @@ pub struct Currency {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Region {
     pub RegionID: u32,
     pub RegionName: String,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Trainer {
     pub PlayerID: u32,
 }
@@ -497,7 +498,7 @@ pub struct Fanclub {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Cup {
     #[serde(
         deserialize_with = "deserialize_option_bool",
@@ -515,7 +516,7 @@ pub struct Cup {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct LeagueLevelUnit {
     pub LeagueLevelUnitID: u32,
     pub LeagueLevelUnitName: String,
@@ -523,7 +524,7 @@ pub struct LeagueLevelUnit {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct PowerRating {
     pub GlobalRanking: u32,
     pub LeagueRanking: u32,
@@ -539,7 +540,7 @@ pub struct TeamColors {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct BotStatus {
     #[serde(
         deserialize_with = "deserialize_bool",
@@ -565,7 +566,7 @@ pub struct Trophy {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct TrophyListWrapper {
     #[serde(rename = "Trophy", default)]
     pub trophies: Vec<Trophy>,
@@ -801,7 +802,7 @@ pub struct MotherClub {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct PlayerList {
     #[serde(rename = "Player")]
     pub players: Vec<Player>,
@@ -1009,25 +1010,50 @@ pub struct MatchDetails {
     pub AwayGoals: Option<u32>,
     #[serde(deserialize_with = "deserialize_option_bool", default)]
     pub OrdersGiven: Option<bool>,
+    #[serde(default)]
     pub Status: String, // Whether match is FINISHED, UPCOMING or ONGOING
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct MatchHomeTeam {
     #[serde(deserialize_with = "deserialize_team_id")]
     pub HomeTeamID: String,
     pub HomeTeamName: String,
     pub HomeTeamNameShortName: Option<String>,
+    pub Formation: Option<String>,
+    pub TacticType: Option<u32>,
+    pub TacticSkill: Option<u32>,
+    pub RatingMidfield: Option<u32>,
+    pub RatingRightDef: Option<u32>,
+    pub RatingMidDef: Option<u32>,
+    pub RatingLeftDef: Option<u32>,
+    pub RatingRightAtt: Option<u32>,
+    pub RatingMidAtt: Option<u32>,
+    pub RatingLeftAtt: Option<u32>,
+    pub RatingIndirectSetPiecesDef: Option<u32>,
+    pub RatingIndirectSetPiecesAtt: Option<u32>,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct MatchAwayTeam {
     #[serde(deserialize_with = "deserialize_team_id")]
     pub AwayTeamID: String,
     pub AwayTeamName: String,
     pub AwayTeamNameShortName: Option<String>,
+    pub Formation: Option<String>,
+    pub TacticType: Option<u32>,
+    pub TacticSkill: Option<u32>,
+    pub RatingMidfield: Option<u32>,
+    pub RatingRightDef: Option<u32>,
+    pub RatingMidDef: Option<u32>,
+    pub RatingLeftDef: Option<u32>,
+    pub RatingRightAtt: Option<u32>,
+    pub RatingMidAtt: Option<u32>,
+    pub RatingLeftAtt: Option<u32>,
+    pub RatingIndirectSetPiecesDef: Option<u32>,
+    pub RatingIndirectSetPiecesAtt: Option<u32>,
 }
 
 #[allow(non_snake_case)]
@@ -1071,6 +1097,48 @@ pub struct MatchesData {
 pub struct MatchesListWrapper {
     #[serde(rename = "Match", default)]
     pub Matches: Vec<MatchDetails>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename = "HattrickData")]
+pub struct MatchDetailsData {
+    #[serde(rename = "Match")]
+    pub Match: MatchDetails,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename = "HattrickData")]
+pub struct MatchLineupData {
+    pub MatchID: u32,
+    #[serde(rename = "Team")]
+    pub Team: MatchLineupTeam,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct MatchLineupTeam {
+    pub TeamID: u32,
+    pub TeamName: String,
+    pub StartingLineup: Option<StartingLineup>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct StartingLineup {
+    #[serde(rename = "Player", default)]
+    pub Players: Vec<MatchLineupPlayer>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct MatchLineupPlayer {
+    pub PlayerID: u32,
+    pub RoleID: u32,
+    pub FirstName: Option<String>,
+    pub LastName: Option<String>,
+    pub Behaviour: Option<u32>,
 }
 
 #[allow(non_snake_case)]
@@ -1258,7 +1326,7 @@ mod tests {
         assert_eq!(team.IsDeactivated, Some(false));
     }
     #[test]
-    fn test_deserialize_team_without_colors() {
+    fn test_deserialize_team_without_colours() {
         let xml = r#"
         <HattrickData>
             <Teams>
@@ -1341,7 +1409,7 @@ mod tests {
         "#;
 
         let res: HattrickData =
-            from_str(xml).expect("Failed to deserialize team XML without colors");
+            from_str(xml).expect("Failed to deserialize team XML without colours");
         let team = &res.Teams.Teams[0];
 
         assert_eq!(team.TeamID, "2000");

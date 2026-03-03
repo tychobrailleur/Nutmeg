@@ -1146,6 +1146,27 @@ mod tests {
                 },
             })
         }
+
+        async fn match_details(
+            &self,
+            _data: OAuthData,
+            _key: SigningKey,
+            _match_id: u32,
+            _source_system: &str,
+        ) -> Result<MatchDetailsData, Error> {
+            unimplemented!()
+        }
+
+        async fn match_lineup(
+            &self,
+            _data: OAuthData,
+            _key: SigningKey,
+            _match_id: u32,
+            _team_id: u32,
+            _source_system: &str,
+        ) -> Result<MatchLineupData, Error> {
+            unimplemented!()
+        }
     }
 
     #[tokio::test]

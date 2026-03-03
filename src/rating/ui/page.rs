@@ -167,7 +167,6 @@ impl FormationOptimiserWidget {
                     location: Location::default(),
                 },
                 sector_ratings: HashMap::new(),
-                player_ratings: HashMap::new(),
                 hatstats: 0.0,
                 captain: None,
                 set_pieces_taker: None,

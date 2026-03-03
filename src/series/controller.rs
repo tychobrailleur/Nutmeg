@@ -303,12 +303,12 @@ mod tests {
             HomeTeam: MatchHomeTeam {
                 HomeTeamID: "1".to_string(),
                 HomeTeamName: "Home".to_string(),
-                HomeTeamNameShortName: None,
+                ..Default::default()
             },
             AwayTeam: MatchAwayTeam {
                 AwayTeamID: "2".to_string(),
                 AwayTeamName: "Away".to_string(),
-                AwayTeamNameShortName: None,
+                ..Default::default()
             },
             MatchDate: date.to_string(),
             SourceSystem: None,

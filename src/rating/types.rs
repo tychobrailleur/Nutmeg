@@ -86,6 +86,19 @@ impl From<u8> for Behaviour {
     }
 }
 
+impl From<u32> for Behaviour {
+    fn from(value: u32) -> Self {
+        match value {
+            0 => Self::Normal,
+            1 => Self::Offensive,
+            2 => Self::Defensive,
+            3 => Self::TowardsMiddle,
+            4 => Self::TowardsWing,
+            _ => Self::Normal,
+        }
+    }
+}
+
 impl Behaviour {
     /// Returns a Unicode symbol representing the behaviour direction.
     pub fn symbol(&self, position: &PositionId) -> &'static str {
@@ -163,6 +176,29 @@ pub enum PositionId {
 
     // Special
     SetPieces = 17,
+}
+
+impl From<u32> for PositionId {
+    fn from(value: u32) -> Self {
+        match value {
+            100 => Self::Keeper,
+            101 => Self::LeftBack,
+            102 => Self::LeftCentralDefender,
+            103 => Self::MiddleCentralDefender,
+            104 => Self::RightCentralDefender,
+            105 => Self::RightBack,
+            106 => Self::LeftWinger,
+            107 => Self::LeftInnerMidfield,
+            108 => Self::CentralInnerMidfield,
+            109 => Self::RightInnerMidfield,
+            110 => Self::RightWinger,
+            111 => Self::LeftForward,
+            112 => Self::CentralForward,
+            113 => Self::RightForward,
+            17 => Self::SetPieces,
+            _ => Self::Keeper, // Fallback
+        }
+    }
 }
 
 impl PositionId {

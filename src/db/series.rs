@@ -312,12 +312,12 @@ pub fn get_latest_matches(
                 HomeTeam: crate::chpp::model::MatchHomeTeam {
                     HomeTeamID: match_entity.home_team_id.to_string(),
                     HomeTeamName: match_entity.home_team_name,
-                    HomeTeamNameShortName: None,
+                    ..Default::default()
                 },
                 AwayTeam: crate::chpp::model::MatchAwayTeam {
                     AwayTeamID: match_entity.away_team_id.to_string(),
                     AwayTeamName: match_entity.away_team_name,
-                    AwayTeamNameShortName: None,
+                    ..Default::default()
                 },
                 MatchDate: match_entity.match_date,
                 SourceSystem: None,
@@ -439,12 +439,12 @@ mod tests {
                         HomeTeam: crate::chpp::model::MatchHomeTeam {
                             HomeTeamID: "1".to_string(),
                             HomeTeamName: "Team A".to_string(),
-                            HomeTeamNameShortName: None,
+                            ..Default::default()
                         },
                         AwayTeam: crate::chpp::model::MatchAwayTeam {
                             AwayTeamID: "2".to_string(),
                             AwayTeamName: "Team B".to_string(),
-                            AwayTeamNameShortName: None,
+                            ..Default::default()
                         },
                         MatchDate: "2026-02-15 14:00:00".to_string(),
                         SourceSystem: None,
