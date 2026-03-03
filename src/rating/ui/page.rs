@@ -23,6 +23,7 @@ mod imp {
 
         pub players: RefCell<Vec<Player>>,
         pub card_size_group: gtk::SizeGroup,
+        pub context: RefCell<Option<crate::ui::context_object::ContextObject>>,
     }
 
     impl Default for FormationOptimiserWidget {
@@ -32,6 +33,7 @@ mod imp {
                 formations_flowbox: Default::default(),
                 players: RefCell::new(Vec::new()),
                 card_size_group: gtk::SizeGroup::new(gtk::SizeGroupMode::Both),
+                context: RefCell::new(None),
             }
         }
     }
@@ -56,6 +58,40 @@ mod imp {
             self.parent_constructed();
             self.obj().setup_callbacks();
             self.obj().populate_empty_cards();
+        }
+
+        fn properties() -> &'static [glib::ParamSpec] {
+            use std::sync::OnceLock;
+            static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
+            PROPERTIES.get_or_init(|| {
+                vec![
+                    glib::ParamSpecObject::builder::<crate::ui::context_object::ContextObject>(
+                        "context",
+                    )
+                    .explicit_notify()
+                    .build(),
+                ]
+            })
+        }
+
+        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            match pspec.name() {
+                "context" => self.context.borrow().to_value(),
+                _ => unimplemented!(),
+            }
+        }
+
+        fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
+            match pspec.name() {
+                "context" => {
+                    let ctx = value
+                        .get::<Option<crate::ui::context_object::ContextObject>>()
+                        .expect("Value must be ContextObject");
+                    self.context.replace(ctx);
+                    self.obj().notify("context");
+                }
+                _ => unimplemented!(),
+            }
         }
     }
 
@@ -136,13 +172,67 @@ impl FormationOptimiserWidget {
 
     fn display_results(&self, results: Vec<OptimisedLineup>) {
         let imp = self.imp();
-        let flowbox = imp.formations_flowbox.get();
-        flowbox.remove_all();
+        imp.formations_flowbox.remove_all();
 
-        for result in results {
-            let card = self.create_formation_card(&result);
+        // Calculate best formation score if opponent ratings are available
+        let mut best_index = None;
+        if let Some(ctx) = imp.context.borrow().as_ref() {
+            if let Some(opp_ratings) = ctx.get_opponent_avg_ratings() {
+                let opp_att_avg = (opp_ratings[0] + opp_ratings[1] + opp_ratings[2]) / 3.0;
+                let opp_mid = opp_ratings[3];
+                let opp_def_avg = (opp_ratings[4] + opp_ratings[5] + opp_ratings[6]) / 3.0;
+
+                let mut max_score = -1.0;
+
+                for (idx, result) in results.iter().enumerate() {
+                    let our_mid = *result
+                        .sector_ratings
+                        .get(&RatingSector::Midfield)
+                        .unwrap_or(&0.0);
+                    let our_def_avg = (*result
+                        .sector_ratings
+                        .get(&RatingSector::DefenceLeft)
+                        .unwrap_or(&0.0)
+                        + *result
+                            .sector_ratings
+                            .get(&RatingSector::DefenceCentral)
+                            .unwrap_or(&0.0)
+                        + *result
+                            .sector_ratings
+                            .get(&RatingSector::DefenceRight)
+                            .unwrap_or(&0.0))
+                        / 3.0;
+                    let our_att_avg = (*result
+                        .sector_ratings
+                        .get(&RatingSector::AttackLeft)
+                        .unwrap_or(&0.0)
+                        + *result
+                            .sector_ratings
+                            .get(&RatingSector::AttackCentral)
+                            .unwrap_or(&0.0)
+                        + *result
+                            .sector_ratings
+                            .get(&RatingSector::AttackRight)
+                            .unwrap_or(&0.0))
+                        / 3.0;
+
+                    // Score calculation: Midfield control + defense/attack ratios
+                    let score = (our_mid as f32 / opp_mid.max(0.1))
+                        + (our_def_avg as f32 / opp_att_avg.max(0.1))
+                        + (our_att_avg as f32 / opp_def_avg.max(0.1));
+
+                    if score > max_score {
+                        max_score = score;
+                        best_index = Some(idx);
+                    }
+                }
+            }
+        }
+
+        for (idx, result) in results.into_iter().enumerate() {
+            let card = self.create_formation_card(&result, best_index == Some(idx));
             imp.card_size_group.add_widget(&card);
-            flowbox.append(&card);
+            imp.formations_flowbox.append(&card);
         }
     }
 
@@ -311,9 +401,12 @@ impl FormationOptimiserWidget {
     }
 
     /// Creates a populated formation card with all data filled in.
-    fn create_formation_card(&self, result: &OptimisedLineup) -> gtk::Widget {
+    fn create_formation_card(&self, result: &OptimisedLineup, highlight: bool) -> gtk::Widget {
         let card = gtk::Box::new(gtk::Orientation::Vertical, 6);
         card.add_css_class("card");
+        if highlight {
+            card.add_css_class("highlighted-formation");
+        }
         card.set_margin_top(6);
         card.set_margin_bottom(6);
         card.set_margin_start(6);

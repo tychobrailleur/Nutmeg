@@ -20,6 +20,7 @@
 
 pub mod download_entries;
 pub mod manager;
+pub mod match_ratings;
 pub mod schema;
 pub mod series;
 pub mod teams;
