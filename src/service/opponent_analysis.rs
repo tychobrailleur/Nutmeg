@@ -581,6 +581,15 @@ mod tests {
         ) -> Result<MatchLineupData, Error> {
             unimplemented!()
         }
+
+        async fn staff_list(
+            &self,
+            _data: OAuthData,
+            _key: SigningKey,
+            _team_id: Option<u32>,
+        ) -> Result<StaffListData, Error> {
+            unimplemented!()
+        }
     }
 
     #[tokio::test]
