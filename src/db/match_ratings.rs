@@ -25,7 +25,8 @@ pub struct NewMatchRating {
     pub rating_left_att: Option<f64>,
 }
 
-#[derive(Queryable, Debug, Clone)]
+#[derive(Queryable, Insertable, AsChangeset, Debug, Clone)]
+#[diesel(table_name = match_ratings)]
 pub struct MatchRating {
     pub match_id: i32,
     pub team_id: i32,
@@ -43,7 +44,7 @@ pub struct MatchRating {
 /// Upsert match ratings for a specific team.
 pub fn save_match_ratings(
     conn: &mut SqliteConnection,
-    ratings: &[NewMatchRating],
+    ratings: &[MatchRating],
 ) -> Result<(), Error> {
     diesel::replace_into(match_ratings::table)
         .values(ratings)

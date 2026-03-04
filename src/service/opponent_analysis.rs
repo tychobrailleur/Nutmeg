@@ -8,10 +8,13 @@
 use crate::chpp::client::ChppClient;
 use crate::chpp::error::Error;
 use crate::chpp::model::Player;
+use crate::db::manager::DbManager;
+use crate::db::match_ratings::MatchRating;
 use crate::rating::types::{Behaviour, PositionId};
 use crate::ui::components::pitch_view::PitchPlayer;
 use oauth_1a::{OAuthData, SigningKey};
 use std::collections::HashMap;
+use std::error::Error as StdError;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Default)]
@@ -72,8 +75,6 @@ impl OpponentAnalysisService {
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
         let (data, key) = get_auth();
-
-        let (data, key) = get_auth();
         let matches_data = self.client.matches(data, key, Some(our_team_id)).await?;
         let match_list = matches_data.Team.MatchList.Matches;
 
@@ -118,7 +119,7 @@ impl OpponentAnalysisService {
     {
         let (data, key) = get_auth();
         let matches_data = self.client.matches(data, key, Some(team_id)).await?;
-        let mut match_list = matches_data.Team.MatchList.Matches;
+        let mut match_list = matches_data.Team.MatchList.Matches.clone();
 
         // Sort descending by date
         match_list.sort_by(|a, b| b.MatchDate.cmp(&a.MatchDate));
@@ -135,6 +136,14 @@ impl OpponentAnalysisService {
             })
             .take(limit)
             .collect();
+
+        // Persist the matches to DB so they are available without re-analysis
+        if let Ok(mut conn) = DbManager::new().get_connection() {
+            if let Ok(download_id) = crate::db::download_entries::get_latest_download_id(&mut conn)
+            {
+                let _ = crate::db::series::save_matches(&mut conn, download_id, &matches_data);
+            }
+        }
 
         let mut opponent_matches = Vec::new();
         let mut formation_frequencies = HashMap::new();
@@ -274,6 +283,43 @@ impl OpponentAnalysisService {
         }
 
         Ok(pitch_players)
+    }
+
+    pub fn get_stored_match_ratings(
+        &self,
+        team_id: u32,
+    ) -> Result<Vec<MatchRating>, Box<dyn StdError>> {
+        let db_manager = DbManager::new();
+        let mut conn = db_manager.get_connection()?;
+        let ratings = crate::db::match_ratings::get_match_ratings(&mut conn, team_id)?;
+        Ok(ratings)
+    }
+
+    pub fn save_match_ratings(&self, ratings: &[MatchRating]) -> Result<(), Box<dyn StdError>> {
+        let db_manager = DbManager::new();
+        let mut conn = db_manager.get_connection()?;
+        crate::db::match_ratings::save_match_ratings(&mut conn, ratings)?;
+        Ok(())
+    }
+
+    pub fn get_latest_matches_from_db(
+        &self,
+        team_id: u32,
+    ) -> Result<Option<crate::chpp::model::MatchesData>, Box<dyn StdError>> {
+        let db_manager = DbManager::new();
+        let mut conn = db_manager.get_connection()?;
+        let matches = crate::db::series::get_latest_matches(&mut conn, team_id)?;
+        Ok(matches)
+    }
+
+    pub fn get_upcoming_opponents_from_db(
+        &self,
+        our_team_id: u32,
+    ) -> Result<Vec<UpcomingOpponent>, Box<dyn StdError>> {
+        let db_manager = DbManager::new();
+        let mut conn = db_manager.get_connection()?;
+        let opponents = crate::db::series::get_upcoming_opponents_from_db(&mut conn, our_team_id)?;
+        Ok(opponents)
     }
 }
 
@@ -453,6 +499,26 @@ mod tests {
                     League: None,
                     LeagueLevelUnit: None,
                     MatchList: MatchesListWrapper { Matches: matches },
+                },
+            })
+        }
+
+        async fn matches_archive(
+            &self,
+            _data: OAuthData,
+            _key: SigningKey,
+            _team_id: Option<u32>,
+            _first_match_date: Option<String>,
+            _last_match_date: Option<String>,
+        ) -> Result<MatchesData, Error> {
+            Ok(MatchesData {
+                Team: MatchesTeamWrapper {
+                    TeamID: "0".to_string(),
+                    TeamName: "".to_string(),
+                    ShortTeamName: None,
+                    League: None,
+                    LeagueLevelUnit: None,
+                    MatchList: MatchesListWrapper { Matches: vec![] },
                 },
             })
         }

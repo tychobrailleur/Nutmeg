@@ -280,72 +280,117 @@ pub fn get_latest_matches(
 ) -> Result<Option<MatchesData>, Error> {
     use crate::db::schema::matches;
 
-    // We retrieve the latest matches download for the specified team.
-    // This assumes that the `matches` endpoint was called for this team specifically.
-    // We look for the most recent download_id in the matches table where the team participated.
-
-    let latest_download_id_opt: Option<i32> = matches::table
+    // Fetch all matches involving the team
+    let db_matches: Vec<Match> = matches::table
         .filter(
             matches::home_team_id
                 .eq(team_id as i32)
                 .or(matches::away_team_id.eq(team_id as i32)),
         )
-        .select(matches::download_id)
         .order(matches::download_id.desc())
-        .first::<i32>(conn)
-        .optional()
-        .map_err(|e| Error::Io(format!("Failed to find latest matches download: {}", e)))?;
+        .load(conn)
+        .map_err(|e| Error::Io(format!("Failed to load matches: {}", e)))?;
 
-    if let Some(download_id) = latest_download_id_opt {
-        let db_matches: Vec<Match> = matches::table
-            .filter(matches::download_id.eq(download_id))
-            .order(matches::match_date.asc()) // CHPP returns sorted by date usually
-            .load(conn)
-            .map_err(|e| Error::Io(format!("Failed to load matches: {}", e)))?;
-
-        let matches_list: Vec<crate::chpp::model::MatchDetails> = db_matches
-            .into_iter()
-            .map(|match_entity| crate::chpp::model::MatchDetails {
-                MatchID: match_entity.match_id as u32,
-                HomeTeam: crate::chpp::model::MatchHomeTeam {
-                    HomeTeamID: match_entity.home_team_id.to_string(),
-                    HomeTeamName: match_entity.home_team_name,
-                    ..Default::default()
-                },
-                AwayTeam: crate::chpp::model::MatchAwayTeam {
-                    AwayTeamID: match_entity.away_team_id.to_string(),
-                    AwayTeamName: match_entity.away_team_name,
-                    ..Default::default()
-                },
-                MatchDate: match_entity.match_date,
-                SourceSystem: None,
-                MatchType: match_entity.match_type as u32,
-                MatchContextId: match_entity.match_context_id.map(|v| v as u32),
-                CupLevel: None,
-                CupLevelIndex: None,
-                HomeGoals: match_entity.home_goals.map(|v| v as u32),
-                AwayGoals: match_entity.away_goals.map(|v| v as u32),
-                OrdersGiven: None,
-                Status: match_entity.status,
-            })
-            .collect();
-
-        // Reconstruct MatchesData with Team wrapper
-        Ok(Some(MatchesData {
-            Team: crate::chpp::model::MatchesTeamWrapper {
-                TeamID: team_id.to_string(),
-                TeamName: "Unknown".to_string(),
-                ShortTeamName: None,
-                League: None,
-                LeagueLevelUnit: None,
-                MatchList: crate::chpp::model::MatchesListWrapper {
-                    Matches: matches_list,
-                },
-            },
-        }))
-    } else {
-        Ok(None)
+    if db_matches.is_empty() {
+        return Ok(None);
     }
+
+    // Deduplicate by match_id, keeping the latest download version
+    let mut unique_matches = std::collections::HashMap::new();
+    for m in db_matches {
+        unique_matches.entry(m.match_id).or_insert(m);
+    }
+
+    let mut matches_list: Vec<crate::chpp::model::MatchDetails> = unique_matches
+        .into_values()
+        .map(|match_entity| crate::chpp::model::MatchDetails {
+            MatchID: match_entity.match_id as u32,
+            HomeTeam: crate::chpp::model::MatchHomeTeam {
+                HomeTeamID: match_entity.home_team_id.to_string(),
+                HomeTeamName: match_entity.home_team_name,
+                ..Default::default()
+            },
+            AwayTeam: crate::chpp::model::MatchAwayTeam {
+                AwayTeamID: match_entity.away_team_id.to_string(),
+                AwayTeamName: match_entity.away_team_name,
+                ..Default::default()
+            },
+            MatchDate: match_entity.match_date,
+            SourceSystem: None,
+            MatchType: match_entity.match_type as u32,
+            MatchContextId: match_entity.match_context_id.map(|v| v as u32),
+            CupLevel: None,
+            CupLevelIndex: None,
+            HomeGoals: match_entity.home_goals.map(|v| v as u32),
+            AwayGoals: match_entity.away_goals.map(|v| v as u32),
+            OrdersGiven: None,
+            Status: match_entity.status,
+        })
+        .collect();
+
+    // Sort by date descending
+    matches_list.sort_by(|a, b| b.MatchDate.cmp(&a.MatchDate));
+
+    // Reconstruct MatchesData with Team wrapper
+    Ok(Some(MatchesData {
+        Team: crate::chpp::model::MatchesTeamWrapper {
+            TeamID: team_id.to_string(),
+            TeamName: "Unknown".to_string(),
+            ShortTeamName: None,
+            League: None,
+            LeagueLevelUnit: None,
+            MatchList: crate::chpp::model::MatchesListWrapper {
+                Matches: matches_list,
+            },
+        },
+    }))
+}
+
+pub fn get_upcoming_opponents_from_db(
+    conn: &mut SqliteConnection,
+    our_team_id: u32,
+) -> Result<Vec<crate::service::opponent_analysis::UpcomingOpponent>, Error> {
+    use crate::db::schema::matches;
+
+    // Find all upcoming matches involving our team
+    let db_matches: Vec<Match> = matches::table
+        .filter(matches::status.eq("UPCOMING"))
+        .filter(
+            matches::home_team_id
+                .eq(our_team_id as i32)
+                .or(matches::away_team_id.eq(our_team_id as i32)),
+        )
+        .order(matches::download_id.desc())
+        .load(conn)
+        .map_err(|e| Error::Io(format!("Failed to load upcoming matches: {}", e)))?;
+
+    // Deduplicate by match_id
+    let mut unique_matches = std::collections::HashMap::new();
+    for m in db_matches {
+        unique_matches.entry(m.match_id).or_insert(m);
+    }
+
+    let mut opponents = Vec::new();
+    for m in unique_matches.into_values() {
+        let home_id = m.home_team_id as u32;
+        let (opp_id, opp_name) = if home_id == our_team_id {
+            (m.away_team_id as u32, m.away_team_name)
+        } else {
+            (home_id, m.home_team_name)
+        };
+
+        opponents.push(crate::service::opponent_analysis::UpcomingOpponent {
+            team_id: opp_id,
+            team_name: opp_name,
+            match_date: m.match_date,
+            match_id: m.match_id as u32,
+        });
+    }
+
+    // Sort ascending by date for upcoming matches
+    opponents.sort_by(|a, b| a.match_date.cmp(&b.match_date));
+
+    Ok(opponents)
 }
 
 #[cfg(test)]
@@ -416,7 +461,7 @@ mod tests {
         assert_eq!(fetched_league.Teams.len(), 1);
         assert_eq!(fetched_league.Teams[0].TeamName, "Team A");
 
-        // Mock Match Data
+        // Mock Match Data - Download 1
         let match_data = MatchesData {
             Team: crate::chpp::model::MatchesTeamWrapper {
                 TeamID: "1".to_string(),
@@ -454,17 +499,138 @@ mod tests {
 
         save_matches(&mut conn, 1, &match_data).expect("Failed to save matches");
 
-        // Verify Match Data
+        // Mock Match Data - Download 2 (Updated goals for same match_id 500)
+        let match_data_v2 = MatchesData {
+            Team: crate::chpp::model::MatchesTeamWrapper {
+                TeamID: "1".to_string(),
+                TeamName: "Team A Updated".to_string(),
+                ShortTeamName: None,
+                League: None,
+                LeagueLevelUnit: None,
+                MatchList: crate::chpp::model::MatchesListWrapper {
+                    Matches: vec![
+                        crate::chpp::model::MatchDetails {
+                            MatchID: 500,
+                            HomeTeam: crate::chpp::model::MatchHomeTeam {
+                                HomeTeamID: "1".to_string(),
+                                HomeTeamName: "Team A Updated".to_string(),
+                                ..Default::default()
+                            },
+                            AwayTeam: crate::chpp::model::MatchAwayTeam {
+                                AwayTeamID: "2".to_string(),
+                                AwayTeamName: "Team B".to_string(),
+                                ..Default::default()
+                            },
+                            MatchDate: "2026-02-15 14:00:00".to_string(),
+                            SourceSystem: None,
+                            MatchType: 1,
+                            Status: "FINISHED".to_string(),
+                            MatchContextId: None,
+                            CupLevel: None,
+                            CupLevelIndex: None,
+                            HomeGoals: Some(3), // Updated
+                            AwayGoals: Some(1),
+                            OrdersGiven: None,
+                        },
+                        crate::chpp::model::MatchDetails {
+                            MatchID: 501, // New match
+                            HomeTeam: crate::chpp::model::MatchHomeTeam {
+                                HomeTeamID: "1".to_string(),
+                                HomeTeamName: "Team A Updated".to_string(),
+                                ..Default::default()
+                            },
+                            AwayTeam: crate::chpp::model::MatchAwayTeam {
+                                AwayTeamID: "3".to_string(),
+                                AwayTeamName: "Team C".to_string(),
+                                ..Default::default()
+                            },
+                            MatchDate: "2026-02-22 14:00:00".to_string(),
+                            SourceSystem: None,
+                            MatchType: 1,
+                            Status: "FINISHED".to_string(),
+                            MatchContextId: None,
+                            CupLevel: None,
+                            CupLevelIndex: None,
+                            HomeGoals: Some(1),
+                            AwayGoals: Some(1),
+                            OrdersGiven: None,
+                        },
+                    ],
+                },
+            },
+        };
+
+        save_matches(&mut conn, 2, &match_data_v2).expect("Failed to save matches v2");
+
+        // Verify Match Data - Should get 2 matches, with match 500 being the one from download 2
         let fetched_matches = get_latest_matches(&mut conn, 1)
             .expect("Failed to fetch matches")
             .unwrap();
-        assert_eq!(fetched_matches.Team.MatchList.Matches.len(), 1);
-        assert_eq!(fetched_matches.Team.MatchList.Matches[0].MatchID, 500);
-        assert_eq!(
-            fetched_matches.Team.MatchList.Matches[0]
-                .HomeTeam
-                .HomeTeamName,
-            "Team A"
-        );
+        assert_eq!(fetched_matches.Team.MatchList.Matches.len(), 2);
+
+        let m500 = fetched_matches
+            .Team
+            .MatchList
+            .Matches
+            .iter()
+            .find(|m| m.MatchID == 500)
+            .unwrap();
+        assert_eq!(m500.HomeGoals, Some(3));
+        assert_eq!(m500.HomeTeam.HomeTeamName, "Team A Updated");
+
+        let m501 = fetched_matches
+            .Team
+            .MatchList
+            .Matches
+            .iter()
+            .find(|m| m.MatchID == 501)
+            .unwrap();
+        assert_eq!(m501.MatchID, 501);
+
+        // Verify upcoming opponents from DB
+        // Add an UPCOMING match
+        let upcoming_data = MatchesData {
+            Team: crate::chpp::model::MatchesTeamWrapper {
+                TeamID: "1".to_string(),
+                TeamName: "Team A".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // Explicitly constructing as MatchesListWrapper is easier for the test helper
+        let mut m_list = Vec::new();
+        m_list.push(crate::chpp::model::MatchDetails {
+            MatchID: 600,
+            HomeTeam: crate::chpp::model::MatchHomeTeam {
+                HomeTeamID: "1".to_string(),
+                HomeTeamName: "Team A".to_string(),
+                ..Default::default()
+            },
+            AwayTeam: crate::chpp::model::MatchAwayTeam {
+                AwayTeamID: "4".to_string(),
+                AwayTeamName: "Team D".to_string(),
+                ..Default::default()
+            },
+            MatchDate: "2026-03-01 14:00:00".to_string(),
+            Status: "UPCOMING".to_string(),
+            ..crate::chpp::model::MatchDetails::default()
+        });
+
+        let full_upcoming_data = MatchesData {
+            Team: crate::chpp::model::MatchesTeamWrapper {
+                TeamID: "1".to_string(),
+                TeamName: "Team A".to_string(),
+                MatchList: crate::chpp::model::MatchesListWrapper { Matches: m_list },
+                ..Default::default()
+            },
+        };
+
+        save_matches(&mut conn, 3, &full_upcoming_data).expect("Failed to save upcoming match");
+
+        let upcoming =
+            get_upcoming_opponents_from_db(&mut conn, 1).expect("Failed to get upcoming");
+        assert_eq!(upcoming.len(), 1);
+        assert_eq!(upcoming[0].team_id, 4);
+        assert_eq!(upcoming[0].team_name, "Team D");
     }
 }

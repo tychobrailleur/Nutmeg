@@ -17,7 +17,7 @@
 
         <child>
           <object class="GtkLabel">
-            <property name="label">Team ID:</property>
+            <property name="label" translatable="yes">Team:</property>
           </object>
         </child>
         <child>
@@ -28,7 +28,7 @@
 
         <child>
           <object class="GtkLabel">
-            <property name="label">Matches Limit:</property>
+            <property name="label" translatable="yes">Num. of Matches:</property>
           </object>
         </child>
         <child>
@@ -187,6 +187,14 @@
                             <property name="orientation">vertical</property>
                             <property name="vexpand">true</property>
                             <property name="hexpand">true</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="lbl_tactical_summary">
+                            <property name="label">Calculating tendencies...</property>
+                            <property name="use-markup">true</property>
+                            <property name="xalign">0</property>
+                            <property name="wrap">true</property>
                           </object>
                         </child>
                       </object>

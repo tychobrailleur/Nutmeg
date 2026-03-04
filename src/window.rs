@@ -31,10 +31,10 @@ use crate::ui::context_object::ContextObject;
 use crate::ui::player_object::PlayerObject;
 use crate::ui::team_object::TeamObject;
 
-use crate::series::page::SeriesPage;
-use crate::squad::player_details::SquadPlayerDetails;
-use crate::squad::player_list::SquadPlayerList;
-use crate::ui::opponent_analysis::OpponentAnalysis;
+use crate::opponent_analysis::ui::OpponentAnalysis;
+use crate::series::ui::page::SeriesPage;
+use crate::squad::ui::player_details::SquadPlayerDetails;
+use crate::squad::ui::player_list::SquadPlayerList;
 mod imp {
     use super::*;
 
@@ -162,7 +162,7 @@ impl NutmegWindow {
             let window_weak = self.downgrade();
 
             glib::MainContext::default().spawn_local(async move {
-                use crate::series::controller::SeriesController;
+                use crate::series::ui::controller::SeriesController;
 
                 match SeriesController::load_series_data(team_id).await {
                     Ok((league_data, matches_data)) => {
@@ -194,7 +194,7 @@ impl NutmegWindow {
             window.update_optimiser_players(model.property("players"));
         });
 
-        // Initialize optimiser with current players (if any already loaded)
+        // Initialise optimiser with current players (if any already loaded)
         if let Some(store) = model.property::<Option<gtk::ListStore>>("players") {
             self.update_optimiser_players(Some(store));
         }

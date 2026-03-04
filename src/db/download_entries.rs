@@ -136,6 +136,12 @@ pub fn get_entries_for_download(
         .load::<DownloadEntry>(conn)
 }
 
+/// Get the latest download ID from the downloads table
+pub fn get_latest_download_id(conn: &mut SqliteConnection) -> QueryResult<i32> {
+    use crate::db::schema::downloads::dsl::*;
+    downloads.select(id).order(id.desc()).first(conn)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
