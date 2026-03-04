@@ -981,7 +981,7 @@ pub struct LeagueTeam {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct MatchDetails {
     pub MatchID: u32,
     pub HomeTeam: MatchHomeTeam,
@@ -1057,7 +1057,7 @@ pub struct MatchAwayTeam {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct MatchesTeamWrapper {
     #[serde(deserialize_with = "deserialize_team_id")]
     pub TeamID: String,
@@ -1085,7 +1085,7 @@ pub struct MatchLeagueLevelUnitInfo {
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 #[serde(rename = "HattrickData")]
 pub struct MatchesData {
     #[serde(rename = "Team")]

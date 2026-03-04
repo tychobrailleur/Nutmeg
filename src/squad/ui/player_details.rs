@@ -11,7 +11,7 @@ mod imp {
     use super::*;
 
     #[derive(Debug, Default, CompositeTemplate)]
-    #[template(resource = "/org/gnome/Nutmeg/squad/player_details.ui")]
+    #[template(resource = "/org/gnome/Nutmeg/squad/ui/player_details.ui")]
     pub struct SquadPlayerDetails {
         #[template_child]
         pub details_name: TemplateChild<gtk::Label>,

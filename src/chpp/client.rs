@@ -25,8 +25,9 @@ use crate::chpp::model::{
 };
 use crate::chpp::oauth::{OAuthData, SigningKey};
 use crate::chpp::request::{
-    league_details_request, match_details_request, match_lineup_request, matches_request,
-    player_details_request, players_request, team_details_request, world_details_request,
+    league_details_request, match_details_request, match_lineup_request, matches_archive_request,
+    matches_request, player_details_request, players_request, team_details_request,
+    world_details_request,
 };
 use async_trait::async_trait;
 
@@ -82,6 +83,15 @@ pub trait ChppClient: Send + Sync {
         key: SigningKey,
         team_id: Option<u32>,
     ) -> Result<StaffListData, Error>;
+
+    async fn matches_archive(
+        &self,
+        data: OAuthData,
+        key: SigningKey,
+        team_id: Option<u32>,
+        first_match_date: Option<String>,
+        last_match_date: Option<String>,
+    ) -> Result<MatchesData, Error>;
 
     async fn match_details(
         &self,
@@ -176,6 +186,17 @@ impl ChppClient for HattrickClient {
         team_id: Option<u32>,
     ) -> Result<StaffListData, Error> {
         crate::chpp::request::staff_list_request(data, key, team_id).await
+    }
+
+    async fn matches_archive(
+        &self,
+        data: OAuthData,
+        key: SigningKey,
+        team_id: Option<u32>,
+        first_match_date: Option<String>,
+        last_match_date: Option<String>,
+    ) -> Result<MatchesData, Error> {
+        matches_archive_request(data, key, team_id, first_match_date, last_match_date).await
     }
 
     async fn match_details(

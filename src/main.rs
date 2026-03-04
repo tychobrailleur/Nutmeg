@@ -22,6 +22,7 @@ mod application;
 mod chpp;
 mod config;
 mod db;
+mod opponent_analysis;
 mod rating;
 mod series;
 mod service;
@@ -81,7 +82,7 @@ fn main() -> glib::ExitCode {
 
     let app = NutmegApplication::new("org.gnome.Nutmeg", &gio::ApplicationFlags::NON_UNIQUE);
 
-    // Initialize Tokio Runtime to support async features in the GTK loop
+    // Initialise Tokio Runtime to support async features in the GTK loop
     let runtime = Runtime::new().expect("Unable to create Tokio runtime");
     let _guard = runtime.enter();
 

@@ -8,7 +8,7 @@
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gio, glib, Button, Label, SpinButton, Spinner};
-use log::error;
+use log::{debug, error};
 use std::sync::Arc;
 
 use crate::chpp::client::HattrickClient;
@@ -16,17 +16,15 @@ use crate::config::{consumer_key, consumer_secret};
 use crate::service::opponent_analysis::OpponentAnalysisService;
 use crate::service::secret::SystemSecretService;
 use gettextrs::gettext;
-use gio::prelude::*;
-use glib::Object;
 
-mod model;
+pub mod model;
 
 mod imp {
     use super::*;
     use gtk::CompositeTemplate;
 
     #[derive(Debug, Default, CompositeTemplate)]
-    #[template(resource = "/org/gnome/Nutmeg/ui/opponent_analysis/opponent_analysis.ui")]
+    #[template(resource = "/org/gnome/Nutmeg/opponent_analysis/ui/opponent_analysis.ui")]
     pub struct OpponentAnalysis {
         #[template_child]
         pub dropdown_team: TemplateChild<gtk::DropDown>,
@@ -54,9 +52,14 @@ mod imp {
         pub check_friendly: TemplateChild<gtk::CheckButton>,
         #[template_child]
         pub check_international: TemplateChild<gtk::CheckButton>,
+        #[template_child]
+        pub lbl_tactical_summary: TemplateChild<Label>,
 
         pub selected_team: std::cell::RefCell<Option<crate::ui::team_object::TeamObject>>,
+        pub selected_opponent: std::cell::RefCell<Option<model::OpponentItem>>,
         pub context: std::cell::RefCell<Option<crate::ui::context_object::ContextObject>>,
+        pub latest_matches:
+            std::cell::RefCell<Vec<crate::service::opponent_analysis::OpponentMatchData>>,
     }
 
     #[glib::object_subclass]
@@ -90,6 +93,9 @@ mod imp {
                     )
                     .explicit_notify()
                     .build(),
+                    glib::ParamSpecObject::builder::<model::OpponentItem>("selected-opponent")
+                        .explicit_notify()
+                        .build(),
                 ]
             })
         }
@@ -98,6 +104,7 @@ mod imp {
             match pspec.name() {
                 "selected-team" => self.selected_team.borrow().to_value(),
                 "context" => self.context.borrow().to_value(),
+                "selected-opponent" => self.selected_opponent.borrow().to_value(),
                 _ => unimplemented!(),
             }
         }
@@ -119,6 +126,13 @@ mod imp {
                     self.context.replace(ctx);
                     self.obj().notify("context");
                 }
+                "selected-opponent" => {
+                    let item = value
+                        .get::<Option<model::OpponentItem>>()
+                        .expect("Value must be Option<OpponentItem>");
+                    self.selected_opponent.replace(item);
+                    self.obj().notify("selected-opponent");
+                }
                 _ => unimplemented!(),
             }
         }
@@ -128,7 +142,7 @@ mod imp {
 
             // Set an expression to extract display-text for the DropDown
             let expression = gtk::PropertyExpression::new(
-                super::model::OpponentItem::static_type(),
+                model::OpponentItem::static_type(),
                 None::<&gtk::Expression>,
                 "display-text",
             );
@@ -176,7 +190,7 @@ mod imp {
                     .expect("Needs to be ListItem");
                 let match_item = list_item
                     .item()
-                    .and_downcast::<super::model::MatchItem>()
+                    .and_downcast::<model::MatchItem>()
                     .expect("Item is not a MatchItem");
                 let vbox = list_item
                     .child()
@@ -210,7 +224,7 @@ mod imp {
                 let ag = match_item.away_goals();
 
                 let score_str = format!(
-                    "{} {} – {} {}",
+                    "{} {} – {} {}", //FIXME: Make this localisable.
                     match_item.home_team_name(),
                     hg.unwrap_or(0),
                     ag.unwrap_or(0),
@@ -228,10 +242,21 @@ mod imp {
                     8 => gettext("Long shots"),
                     _ => gettext("Normal"),
                 };
+                let match_type_str = match match_item.match_type() {
+                    1 | 2 => gettext("League"),
+                    3 | 7 | 8 => gettext("Cup"),
+                    4 | 5 | 9 => gettext("Friendly"),
+                    50 | 51 => gettext("Tournament"),
+                    62 | 63 => gettext("Ladder"),
+                    _ => gettext("Other"),
+                };
 
                 lbl_date.set_text(&match_item.match_date());
                 lbl_score.set_text(&score_str);
-                lbl_desc.set_text(&format!("{} | {}", tactic_name, form_str));
+                lbl_desc.set_text(&format!(
+                    "{} | {} | {}",
+                    match_type_str, tactic_name, form_str
+                ));
 
                 // Format Sector Ratings
                 // Extracting as (Midfield, Defense, Attack) total approximations.
@@ -258,7 +283,7 @@ mod imp {
 
             self.match_list_view.set_factory(Some(&factory));
 
-            let store = gio::ListStore::new::<super::model::MatchItem>();
+            let store = gio::ListStore::new::<model::MatchItem>();
             let selection_model = gtk::SingleSelection::new(Some(store));
             self.match_list_view.set_model(Some(&selection_model));
 
@@ -267,21 +292,21 @@ mod imp {
             let team_dropdown = self.dropdown_team.clone();
             selection_model.connect_selected_item_notify(move |sel| {
                 if let Some(item) = sel.selected_item() {
-                    if let Ok(match_item) = item.downcast::<super::model::MatchItem>() {
+                    if let Ok(match_item) = item.downcast::<model::MatchItem>() {
                         let match_id = match_item.match_id();
 
                         let selected_team = team_dropdown.selected_item();
-                        let team_id = if let Some(t) =
-                            selected_team.and_downcast::<super::model::OpponentItem>()
-                        {
-                            t.team_id()
-                        } else {
-                            return;
-                        };
+                        let team_id =
+                            if let Some(t) = selected_team.and_downcast::<model::OpponentItem>() {
+                                t.team_id()
+                            } else {
+                                return;
+                            };
 
                         let pitch_container_clone = pitch_container.clone();
 
                         glib::MainContext::default().spawn_local(async move {
+                            // TODO Check whether this should be in a service
                             let secret_service = crate::service::secret::SystemSecretService::new();
                             use crate::service::secret::SecretStorageService;
 
@@ -325,151 +350,20 @@ mod imp {
                 }
             });
 
-            // Preload matches from DB when opponent is selected in the dropdown
-            let match_list_view_preload = self.match_list_view.clone();
-            let avg_pitch_preload = self.average_ratings_pitch.clone();
-            let obj_for_preload = self.obj().clone();
+            // Bind selected opponent item to property
             self.dropdown_team
-                .connect_selected_item_notify(move |dropdown| {
-                    let selected = dropdown.selected_item();
-                    let team_id =
-                        if let Some(item) = selected.and_downcast::<super::model::OpponentItem>() {
-                            item.team_id()
-                        } else {
-                            return;
-                        };
+                .bind_property("selected-item", &*self.obj(), "selected-opponent")
+                .sync_create()
+                .build();
 
-                    let match_list_view_clone = match_list_view_preload.clone();
-                    let avg_pitch_clone = avg_pitch_preload.clone();
-                    let _obj_clone = obj_for_preload.clone();
-
-                    glib::MainContext::default().spawn_local(async move {
-                        let db_manager = crate::db::manager::DbManager::new();
-                        if let Ok(mut conn) = db_manager.get_connection() {
-                            if let Ok(Some(matches_data)) =
-                                crate::db::series::get_latest_matches(&mut conn, team_id)
-                            {
-                                let finished: Vec<_> = matches_data
-                                    .Team
-                                    .MatchList
-                                    .Matches
-                                    .iter()
-                                    .filter(|m| m.Status == "FINISHED")
-                                    .cloned()
-                                    .collect();
-
-                                if !finished.is_empty() {
-                                    if let Some(selection_model) = match_list_view_clone.model() {
-                                        if let Some(single_sel) =
-                                            selection_model.downcast_ref::<gtk::SingleSelection>()
-                                        {
-                                            if let Some(store) = single_sel.model() {
-                                                if let Some(list_store) =
-                                                    store.downcast_ref::<gio::ListStore>()
-                                                {
-                                                    list_store.remove_all();
-                                                    for m in &finished {
-                                                        let item = model::MatchItem::new(
-                                                            m.MatchID,
-                                                            &m.MatchDate,
-                                                            m.HomeTeam
-                                                                .HomeTeamID
-                                                                .parse::<u32>()
-                                                                .unwrap_or(0)
-                                                                == team_id,
-                                                            &m.HomeTeam.HomeTeamName,
-                                                            &m.AwayTeam.AwayTeamName,
-                                                            // opponent name: whoever is NOT team_id
-                                                            if m.HomeTeam
-                                                                .HomeTeamID
-                                                                .parse::<u32>()
-                                                                .unwrap_or(0)
-                                                                == team_id
-                                                            {
-                                                                &m.AwayTeam.AwayTeamName
-                                                            } else {
-                                                                &m.HomeTeam.HomeTeamName
-                                                            },
-                                                            m.MatchType,
-                                                            m.HomeGoals,
-                                                            m.AwayGoals,
-                                                            None, // formation
-                                                            None, // tactic_type
-                                                            None, // rating_midfield
-                                                            None, // rating_right_def
-                                                            None, // rating_mid_def
-                                                            None, // rating_left_def
-                                                            None, // rating_right_att
-                                                            None, // rating_mid_att
-                                                            None, // rating_left_att
-                                                        );
-                                                        list_store.append(&item);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // Load stored ratings and compute sector viz from them
-                                    if let Ok(stored_ratings) =
-                                        crate::db::match_ratings::get_match_ratings(&mut conn, team_id)
-                                    {
-                                        use std::collections::HashMap;
-                                        let ratings_map: HashMap<i32, &crate::db::match_ratings::MatchRating> =
-                                            stored_ratings.iter().map(|r| (r.match_id, r)).collect();
-
-                                        let matched: Vec<_> = finished
-                                            .iter()
-                                            .filter_map(|m| ratings_map.get(&(m.MatchID as i32)).copied())
-                                            .collect();
-
-                                        if !matched.is_empty() {
-                                            let n = matched.len() as f64;
-                                            let mid_avg = matched.iter().filter_map(|r| r.rating_midfield).sum::<f64>() / n;
-                                            let rd_avg = matched.iter().filter_map(|r| r.rating_right_def).sum::<f64>() / n;
-                                            let cd_avg = matched.iter().filter_map(|r| r.rating_mid_def).sum::<f64>() / n;
-                                            let ld_avg = matched.iter().filter_map(|r| r.rating_left_def).sum::<f64>() / n;
-                                            let ra_avg = matched.iter().filter_map(|r| r.rating_right_att).sum::<f64>() / n;
-                                            let ca_avg = matched.iter().filter_map(|r| r.rating_mid_att).sum::<f64>() / n;
-                                            let la_avg = matched.iter().filter_map(|r| r.rating_left_att).sum::<f64>() / n;
-
-                                            use crate::ui::components::sector_ratings_view::SectorRatingsView;
-                                            let ratings = [la_avg, ca_avg, ra_avg, mid_avg, ld_avg, cd_avg, rd_avg];
-                                            let sector_view = SectorRatingsView::create(&ratings);
-
-                                            if let Some(ctx) = _obj_clone.imp().context.borrow().as_ref() {
-                                                let ratings_f32 = [
-                                                    la_avg as f32,
-                                                    ca_avg as f32,
-                                                    ra_avg as f32,
-                                                    mid_avg as f32,
-                                                    ld_avg as f32,
-                                                    cd_avg as f32,
-                                                    rd_avg as f32,
-                                                ];
-                                                ctx.set_opponent_avg_ratings(Some(ratings_f32));
-                                            }
-
-                                            while let Some(child) = avg_pitch_clone.first_child() {
-                                                avg_pitch_clone.remove(&child);
-                                            }
-                                            avg_pitch_clone.append(&sector_view);
-                                        } else {
-                                            // No stored ratings yet — just clear the sector viz
-                                            while let Some(child) = avg_pitch_clone.first_child() {
-                                                avg_pitch_clone.remove(&child);
-                                            }
-                                        }
-                                    } else {
-                                        while let Some(child) = avg_pitch_clone.first_child() {
-                                            avg_pitch_clone.remove(&child);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
+            // Preload matches from DB when opponent is selected (reactive property notification)
+            let obj_for_notify = self.obj().clone();
+            self.obj()
+                .connect_notify_local(Some("selected-opponent"), move |obj, _| {
+                    obj.handle_opponent_selected();
                 });
+
+            // Handle match selection
 
             self.obj().setup_handlers();
         }
@@ -492,6 +386,252 @@ impl OpponentAnalysis {
             .build()
     }
 
+    fn handle_opponent_selected(&self) {
+        let item = self.property::<Option<model::OpponentItem>>("selected-opponent");
+        let team_id = if let Some(i) = item {
+            i.team_id()
+        } else {
+            return;
+        };
+
+        let self_clone = self.clone();
+        glib::MainContext::default().spawn_local(async move {
+            let client = std::sync::Arc::new(crate::chpp::client::HattrickClient::new());
+            let service = OpponentAnalysisService::new(client);
+            let local_imp = self_clone.imp();
+
+            // 1. Load stored ratings (the tactical analysis summary)
+            let stored = service
+                .get_stored_match_ratings(team_id)
+                .unwrap_or_default();
+
+            if !stored.is_empty() {
+                self_clone.update_tactical_analysis(&stored);
+            } else {
+                while let Some(child) = local_imp.average_ratings_pitch.first_child() {
+                    local_imp.average_ratings_pitch.remove(&child);
+                }
+                local_imp.lbl_formations.set_text("");
+                local_imp.lbl_tactical_summary.set_text("");
+            }
+
+            // 2. Load matches from DB for the list view
+            match service.get_latest_matches_from_db(team_id) {
+                Ok(Some(matches_data)) => {
+                    let finished: Vec<_> = matches_data
+                        .Team
+                        .MatchList
+                        .Matches
+                        .into_iter()
+                        .filter(|m| m.Status == "FINISHED")
+                        .map(|m| {
+                            let is_home =
+                                m.HomeTeam.HomeTeamID.parse::<u32>().unwrap_or(0) == team_id;
+                            let rating = stored.iter().find(|r| r.match_id as u32 == m.MatchID);
+                            crate::service::opponent_analysis::OpponentMatchData {
+                                match_id: m.MatchID,
+                                match_date: m.MatchDate,
+                                is_home,
+                                home_team_name: m.HomeTeam.HomeTeamName.clone(),
+                                away_team_name: m.AwayTeam.AwayTeamName.clone(),
+                                opponent_team_name: if is_home {
+                                    m.AwayTeam.AwayTeamName
+                                } else {
+                                    m.HomeTeam.HomeTeamName
+                                },
+                                match_type: m.MatchType,
+                                home_goals: m.HomeGoals,
+                                away_goals: m.AwayGoals,
+                                formation: rating.and_then(|r| r.formation.clone()),
+                                tactic_type: rating.and_then(|r| r.tactic_type.map(|t| t as u32)),
+                                rating_midfield: rating
+                                    .and_then(|r| r.rating_midfield.map(|v| v as u32)),
+                                rating_right_def: rating
+                                    .and_then(|r| r.rating_right_def.map(|v| v as u32)),
+                                rating_mid_def: rating
+                                    .and_then(|r| r.rating_mid_def.map(|v| v as u32)),
+                                rating_left_def: rating
+                                    .and_then(|r| r.rating_left_def.map(|v| v as u32)),
+                                rating_right_att: rating
+                                    .and_then(|r| r.rating_right_att.map(|v| v as u32)),
+                                rating_mid_att: rating
+                                    .and_then(|r| r.rating_mid_att.map(|v| v as u32)),
+                                rating_left_att: rating
+                                    .and_then(|r| r.rating_left_att.map(|v| v as u32)),
+                            }
+                        })
+                        .collect();
+
+                    local_imp.latest_matches.replace(finished);
+                }
+                _ => {
+                    local_imp.latest_matches.replace(Vec::new());
+                }
+            }
+            self_clone.populate_match_list();
+        });
+    }
+
+    fn update_tactical_analysis(&self, stored: &[crate::db::match_ratings::MatchRating]) {
+        let imp = self.imp();
+        let avg_pitch = imp.average_ratings_pitch.clone();
+        let lbl_formations = imp.lbl_formations.clone();
+        let lbl_tactical_summary = imp.lbl_tactical_summary.clone();
+
+        if !stored.is_empty() {
+            let n = stored.len() as f64;
+
+            // Calculate averages
+            let mid_avg = stored.iter().filter_map(|r| r.rating_midfield).sum::<f64>() / n;
+            let rd_avg = stored
+                .iter()
+                .filter_map(|r| r.rating_right_def)
+                .sum::<f64>()
+                / n;
+            let cd_avg = stored.iter().filter_map(|r| r.rating_mid_def).sum::<f64>() / n;
+            let ld_avg = stored.iter().filter_map(|r| r.rating_left_def).sum::<f64>() / n;
+            let ra_avg = stored
+                .iter()
+                .filter_map(|r| r.rating_right_att)
+                .sum::<f64>()
+                / n;
+            let ca_avg = stored.iter().filter_map(|r| r.rating_mid_att).sum::<f64>() / n;
+            let la_avg = stored.iter().filter_map(|r| r.rating_left_att).sum::<f64>() / n;
+
+            // Calculate Formation Frequencies
+            let mut formation_counts = std::collections::HashMap::new();
+            for r in stored {
+                if let Some(f) = &r.formation {
+                    *formation_counts.entry(f.clone()).or_insert(0) += 1;
+                }
+            }
+            let mut frequencies: Vec<_> = formation_counts.into_iter().collect();
+            frequencies.sort_by(|a, b| b.1.cmp(&a.1));
+
+            let mut formations_str = String::new();
+            for (f, count) in frequencies {
+                let percent = (count as f64 / n * 100.0).round();
+                formations_str.push_str(&format!("{}: {} ({}%)\n", f, count, percent));
+            }
+            lbl_formations.set_text(&formations_str);
+
+            // Identify strongest/weakest sectors
+            // Sectors: 0:LD, 1:CD, 2:RD, 3:LA, 4:CA, 5:RA
+            let def_sectors = [
+                ("Left Defense", ld_avg),
+                ("Central Defense", cd_avg),
+                ("Right Defense", rd_avg),
+            ];
+            let att_sectors = [
+                ("Left Attack", la_avg),
+                ("Central Attack", ca_avg),
+                ("Right Attack", ra_avg),
+            ];
+
+            let weakest_def = def_sectors
+                .iter()
+                .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                .unwrap();
+            let strongest_att = att_sectors
+                .iter()
+                .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                .unwrap();
+
+            let summary = format!(
+                "<b>{}</b>: {} ({:.1})\n<b>{}</b>: {} ({:.1})",
+                gettext("Weakest Defense"),
+                gettext(weakest_def.0),
+                weakest_def.1,
+                gettext("Strongest Attack"),
+                gettext(strongest_att.0),
+                strongest_att.1
+            );
+            lbl_tactical_summary.set_markup(&summary);
+
+            // Update Pitch Visualization
+            use crate::ui::components::sector_ratings_view::SectorRatingsView;
+            let ratings = [la_avg, ca_avg, ra_avg, mid_avg, ld_avg, cd_avg, rd_avg];
+            let sector_view = SectorRatingsView::create(&ratings);
+
+            if let Some(ctx) = imp.context.borrow().as_ref() {
+                let ratings_f32 = [
+                    la_avg as f32,
+                    ca_avg as f32,
+                    ra_avg as f32,
+                    mid_avg as f32,
+                    ld_avg as f32,
+                    cd_avg as f32,
+                    rd_avg as f32,
+                ];
+                ctx.set_opponent_avg_ratings(Some(ratings_f32));
+            }
+
+            while let Some(child) = avg_pitch.first_child() {
+                avg_pitch.remove(&child);
+            }
+            avg_pitch.append(&sector_view);
+        } else {
+            lbl_formations.set_text(&gettext("No data yet."));
+            lbl_tactical_summary.set_text(&gettext("No data yet."));
+            while let Some(child) = avg_pitch.first_child() {
+                avg_pitch.remove(&child);
+            }
+        }
+    }
+
+    fn populate_match_list(&self) {
+        let imp = self.imp();
+        let matches = imp.latest_matches.borrow();
+
+        let filtered: Vec<_> = matches
+            .iter()
+            .filter(|m| {
+                match m.match_type {
+                    1 | 2 => imp.check_league.is_active(),
+                    3 | 7 => imp.check_cup.is_active(),
+                    4 | 5 | 8 | 9 => imp.check_friendly.is_active(),
+                    // 62 is ladder, 50/51 are tournaments... maybe keep them if international or league?
+                    // For now, if no category matches, we default to whatever 'International' might mean or just hide.
+                    _ => imp.check_international.is_active(),
+                }
+            })
+            .collect();
+
+        if let Some(selection_model) = imp.match_list_view.model() {
+            if let Some(list_model) = selection_model.downcast_ref::<gtk::SingleSelection>() {
+                if let Some(store) = list_model.model() {
+                    if let Some(list_store) = store.downcast_ref::<gio::ListStore>() {
+                        list_store.remove_all();
+
+                        for m in filtered {
+                            let item = model::MatchItem::new(
+                                m.match_id,
+                                &m.match_date,
+                                m.is_home,
+                                &m.home_team_name,
+                                &m.away_team_name,
+                                &m.opponent_team_name,
+                                m.match_type,
+                                m.home_goals,
+                                m.away_goals,
+                                m.formation.clone(),
+                                m.tactic_type,
+                                m.rating_midfield,
+                                m.rating_right_def,
+                                m.rating_mid_def,
+                                m.rating_left_def,
+                                m.rating_right_att,
+                                m.rating_mid_att,
+                                m.rating_left_att,
+                            );
+                            list_store.append(&item);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fn setup_handlers(&self) {
         let imp = self.imp();
         let btn = imp.btn_analyze.clone();
@@ -507,6 +647,16 @@ impl OpponentAnalysis {
         let check_friendly = imp.check_friendly.clone();
         let check_international = imp.check_international.clone();
         let obj_clone = self.clone();
+
+        // Connect filter toggles to refresh list
+        let obj_filter = self.clone();
+        check_league.connect_toggled(move |_| obj_filter.populate_match_list());
+        let obj_filter = self.clone();
+        check_cup.connect_toggled(move |_| obj_filter.populate_match_list());
+        let obj_filter = self.clone();
+        check_friendly.connect_toggled(move |_| obj_filter.populate_match_list());
+        let obj_filter = self.clone();
+        check_international.connect_toggled(move |_| obj_filter.populate_match_list());
 
         btn.connect_clicked(move |btn_ref| {
             let selected_item = dropdown.selected_item();
@@ -553,7 +703,6 @@ impl OpponentAnalysis {
             let lbl_unavailable_clone = lbl_unavailable.clone();
             let spinner_clone = spinner.clone();
             let btn_clone = btn_ref.clone();
-            let match_list_view_clone = match_list_view.clone();
             let pitch_container_clone = pitch_container.clone();
             let local_obj = obj_clone.clone();
 
@@ -579,50 +728,9 @@ impl OpponentAnalysis {
                         .await
                     {
                         Ok(analysis) => {
-                            // Populate list model
-                            if let Some(selection_model) = match_list_view_clone.model() {
-                                if let Some(list_model) =
-                                    selection_model.downcast_ref::<gtk::SingleSelection>()
-                                {
-                                    if let Some(store) = list_model.model() {
-                                        if let Some(list_store) =
-                                            store.downcast_ref::<gio::ListStore>()
-                                        {
-                                            list_store.remove_all();
-
-                                            // Clear existing pitch when loading a new team
-                                            while let Some(child) =
-                                                pitch_container_clone.first_child()
-                                            {
-                                                pitch_container_clone.remove(&child);
-                                            }
-
-                                            for m in &analysis.matches {
-                                                let item = model::MatchItem::new(
-                                                    m.match_id,
-                                                    &m.match_date,
-                                                    m.is_home,
-                                                    &m.home_team_name,
-                                                    &m.away_team_name,
-                                                    &m.opponent_team_name,
-                                                    m.match_type,
-                                                    m.home_goals,
-                                                    m.away_goals,
-                                                    m.formation.clone(),
-                                                    m.tactic_type,
-                                                    m.rating_midfield,
-                                                    m.rating_right_def,
-                                                    m.rating_mid_def,
-                                                    m.rating_left_def,
-                                                    m.rating_right_att,
-                                                    m.rating_mid_att,
-                                                    m.rating_left_att,
-                                                );
-                                                list_store.append(&item);
-                                            }
-                                        }
-                                    }
-                                }
+                            // Clear existing pitch when loading a new team
+                            while let Some(child) = pitch_container_clone.first_child() {
+                                pitch_container_clone.remove(&child);
                             }
 
                             // Format Formations
@@ -682,7 +790,6 @@ impl OpponentAnalysis {
 
                                 // Build sector ratings visualization
                                 use crate::ui::components::sector_ratings_view::SectorRatingsView;
-
                                 let ratings =
                                     [la_avg, ca_avg, ra_avg, mid_avg, ld_avg, cd_avg, rd_avg];
                                 let sector_view = SectorRatingsView::create(&ratings);
@@ -700,7 +807,6 @@ impl OpponentAnalysis {
                                     ctx.set_opponent_avg_ratings(Some(ratings_f32));
                                 }
 
-                                // Clear existing average pitch
                                 while let Some(child) =
                                     local_imp.average_ratings_pitch.first_child()
                                 {
@@ -708,44 +814,44 @@ impl OpponentAnalysis {
                                 }
                                 local_imp.average_ratings_pitch.append(&sector_view);
 
-                                // Persist ratings to DB for future preloads
-                                let db_manager = crate::db::manager::DbManager::new();
-                                if let Ok(mut conn) = db_manager.get_connection() {
-                                    use crate::db::match_ratings::NewMatchRating;
-                                    let new_ratings: Vec<NewMatchRating> = analysis
-                                        .matches
-                                        .iter()
-                                        .filter(|m| m.rating_midfield.is_some())
-                                        .map(|m| NewMatchRating {
-                                            match_id: m.match_id as i32,
-                                            team_id: team_id as i32,
-                                            formation: m.formation.clone(),
-                                            tactic_type: m.tactic_type.map(|t| t as i32),
-                                            rating_midfield: m.rating_midfield.map(|v| v as f64),
-                                            rating_right_def: m.rating_right_def.map(|v| v as f64),
-                                            rating_mid_def: m.rating_mid_def.map(|v| v as f64),
-                                            rating_left_def: m.rating_left_def.map(|v| v as f64),
-                                            rating_right_att: m.rating_right_att.map(|v| v as f64),
-                                            rating_mid_att: m.rating_mid_att.map(|v| v as f64),
-                                            rating_left_att: m.rating_left_att.map(|v| v as f64),
-                                        })
-                                        .collect();
-                                    if !new_ratings.is_empty() {
-                                        let _ = crate::db::match_ratings::save_match_ratings(
-                                            &mut conn,
-                                            &new_ratings,
-                                        );
-                                    }
+                                // Persist ratings to DB
+                                use crate::db::match_ratings::MatchRating;
+                                let new_ratings: Vec<MatchRating> = analysis
+                                    .matches
+                                    .iter()
+                                    .filter(|m| m.rating_midfield.is_some())
+                                    .map(|m| MatchRating {
+                                        match_id: m.match_id as i32,
+                                        team_id: team_id as i32,
+                                        formation: m.formation.clone(),
+                                        tactic_type: m.tactic_type.map(|t| t as i32),
+                                        rating_midfield: m.rating_midfield.map(|v| v as f64),
+                                        rating_right_def: m.rating_right_def.map(|v| v as f64),
+                                        rating_mid_def: m.rating_mid_def.map(|v| v as f64),
+                                        rating_left_def: m.rating_left_def.map(|v| v as f64),
+                                        rating_right_att: m.rating_right_att.map(|v| v as f64),
+                                        rating_mid_att: m.rating_mid_att.map(|v| v as f64),
+                                        rating_left_att: m.rating_left_att.map(|v| v as f64),
+                                    })
+                                    .collect();
+
+                                if !new_ratings.is_empty() {
+                                    let _ = service.save_match_ratings(&new_ratings);
+                                }
+
+                                if let Ok(stored_ratings) =
+                                    service.get_stored_match_ratings(team_id)
+                                {
+                                    local_obj.update_tactical_analysis(&stored_ratings);
                                 }
                             } else {
-                                while let Some(child) =
-                                    local_imp.average_ratings_pitch.first_child()
-                                {
-                                    local_imp.average_ratings_pitch.remove(&child);
-                                }
+                                local_obj.update_tactical_analysis(&[]);
                                 let msg = gtk::Label::new(Some(&gettext("No matches found.")));
                                 local_imp.average_ratings_pitch.append(&msg);
                             }
+
+                            local_imp.latest_matches.replace(analysis.matches);
+                            local_obj.populate_match_list();
                         }
                         Err(_e) => {
                             let msg = "Error communicating with CHPP API".to_string();
@@ -755,7 +861,6 @@ impl OpponentAnalysis {
                 } else {
                     lbl_formations_clone.set_text(&gettext("OAuth secrets not found!"));
                 }
-
                 spinner_clone.set_spinning(false);
                 btn_clone.set_sensitive(true);
             });
@@ -774,6 +879,18 @@ impl OpponentAnalysis {
         let list_store = gio::ListStore::new::<model::OpponentItem>();
         dropdown.set_model(Some(&list_store));
 
+        let client = Arc::new(HattrickClient::new());
+        let service = OpponentAnalysisService::new(client);
+
+        // 1. Populate from DB immediately
+        if let Ok(opponents) = service.get_upcoming_opponents_from_db(our_team_id) {
+            for opp in opponents {
+                let item = model::OpponentItem::new(opp.team_id, &opp.team_name, &opp.match_date);
+                list_store.append(&item);
+            }
+        }
+
+        // 2. Then try to refresh from API in background if secrets available
         glib::MainContext::default().spawn_local(async move {
             let secret_service = SystemSecretService::new();
             use crate::service::secret::SecretStorageService;
@@ -782,8 +899,6 @@ impl OpponentAnalysis {
             let secret_res = secret_service.get_secret("access_secret").await;
 
             if let (Ok(Some(token)), Ok(Some(secret))) = (token_res, secret_res) {
-                let client = Arc::new(HattrickClient::new());
-                let service = OpponentAnalysisService::new(client);
                 let ck = consumer_key();
                 let cs = consumer_secret();
 
@@ -792,6 +907,9 @@ impl OpponentAnalysis {
 
                 match service.get_upcoming_opponents(&get_auth, our_team_id).await {
                     Ok(opponents) => {
+                        // Clear and repopulate if we got fresh data
+                        // This ensures we have the latest names/dates if they changed
+                        list_store.remove_all();
                         for opp in opponents {
                             let item = model::OpponentItem::new(
                                 opp.team_id,
@@ -800,9 +918,11 @@ impl OpponentAnalysis {
                             );
                             list_store.append(&item);
                         }
+                        // Note: Matches from get_upcoming_opponents are NOT automatically saved to DB here
+                        // but they will be saved when a full sync happens or if we add persistence logic here.
                     }
                     Err(_e) => {
-                        error!("Failed to fetch upcoming opponents: {}", _e);
+                        debug!("Failed to refresh upcoming opponents from API: {}", _e);
                     }
                 }
             }

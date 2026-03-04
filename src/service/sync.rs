@@ -436,6 +436,31 @@ impl SyncService {
             }
         }
 
+        // Also fetch archived (already-played) matches so the full season is available in the DB
+        let (data, key) = get_auth();
+        match client
+            .matches_archive(data, key, Some(team_id), None, None)
+            .await
+        {
+            Ok(archived_data) => {
+                log::debug!(
+                    "Fetched {} archived matches during sync",
+                    archived_data.Team.MatchList.Matches.len()
+                );
+                let db = db_manager.clone();
+                tokio::task::spawn_blocking(move || {
+                    let mut conn = db.get_connection()?;
+                    save_matches(&mut conn, download_id, &archived_data)
+                })
+                .await
+                .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+            }
+            Err(e) => {
+                log::warn!("Failed to fetch archived matches during sync: {}", e);
+                // Non-fatal: upcoming matches are already saved
+            }
+        }
+
         Ok(())
     }
 
@@ -1143,6 +1168,27 @@ mod tests {
                     StaffMembers: None,
                     TotalStaffMembers: Some(0),
                     TotalCost: Some(0),
+                },
+            })
+        }
+
+        async fn matches_archive(
+            &self,
+            _data: OAuthData,
+            _key: SigningKey,
+            _team_id: Option<u32>,
+            _first_match_date: Option<String>,
+            _last_match_date: Option<String>,
+        ) -> Result<MatchesData, Error> {
+            // Return empty archive in tests
+            Ok(MatchesData {
+                Team: MatchesTeamWrapper {
+                    TeamID: "54321".to_string(),
+                    TeamName: "Test Team".to_string(),
+                    ShortTeamName: None,
+                    League: None,
+                    LeagueLevelUnit: None,
+                    MatchList: MatchesListWrapper { Matches: vec![] },
                 },
             })
         }

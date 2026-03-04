@@ -87,18 +87,6 @@
               </object>
             </child>
 
-            <!-- Optimizer Tab -->
-            <child>
-              <object class="FormationOptimiserWidget" id="optimiser">
-              </object>
-            </child>
-            <child type="tab">
-               <object class="GtkLabel">
-                 <property name="label" translatable="yes">_Lineup Optimiser</property>
-                 <property name="use-underline">True</property>
-               </object>
-            </child>
-
             <!-- Series Tab -->
             <child>
               <object class="SeriesPage" id="series_page">
@@ -122,6 +110,19 @@
                  <property name="use-underline">True</property>
                </object>
              </child>
+
+            <!-- Optimizer Tab -->
+            <child>
+              <object class="FormationOptimiserWidget" id="optimiser">
+              </object>
+            </child>
+            <child type="tab">
+               <object class="GtkLabel">
+                 <property name="label" translatable="yes">_Lineup Optimiser</property>
+                 <property name="use-underline">True</property>
+               </object>
+            </child>
+
             <!-- Opponent Analysis Tab -->
             <child>
               <object class="OpponentAnalysis" id="opponent_analysis">

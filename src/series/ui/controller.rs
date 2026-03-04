@@ -7,6 +7,7 @@
 
 use crate::chpp::model::{LeagueDetailsData, MatchesData};
 use crate::chpp::request::{league_details_request, matches_request, team_details_request};
+use crate::series::ui::page::SeriesPage;
 use crate::service::secret::{SecretStorageService, SystemSecretService};
 
 use std::error::Error;
@@ -263,16 +264,12 @@ fn filter_matches_for_season(
         .into_iter()
         .partition(|m| m.Status == "FINISHED");
 
-    // Sort finished matches by date descending to get the most recent ones
+    // Sort finished matches by date descending
     finished.sort_by(|a, b| b.MatchDate.cmp(&a.MatchDate));
 
-    // Keep only the matches for the current season (based on round)
-    // If we represent a season, we expect a maximum of 'current_round' finished matches
-    let matches_to_keep = std::cmp::min(finished.len(), current_round as usize);
-    let mut relevant_matches: Vec<crate::chpp::model::MatchDetails> =
-        finished.into_iter().take(matches_to_keep).collect();
-
-    // Add all upcoming matches (they belong to this season)
+    // Show up to 14 matches for the season (Hattrick season length)
+    // We keep all relevant finished matches, up to 14 total including upcoming.
+    let mut relevant_matches = finished;
     relevant_matches.extend(upcoming);
 
     // Sort everything by date ascending for display
@@ -382,12 +379,12 @@ mod tests {
         // - No Wrong Unit match (ID 3)
         // - 5 Finished matches (IDs 11-15), ID 1 should be dropped as it's the 6th oldest
         // - 1 Upcoming match (ID 16)
-        // Total = 6
+        // Total = 7
 
-        assert_eq!(result_matches.len(), 6);
+        assert_eq!(result_matches.len(), 7);
 
-        // Check if ID 1 is gone (oldest finished)
-        assert!(!result_matches.iter().any(|m| m.MatchID == 1));
+        // Check if ID 1 is present (it should no longer be filtered out by current_round)
+        assert!(result_matches.iter().any(|m| m.MatchID == 1));
 
         // Check if ID 2 is gone (Cup)
         assert!(!result_matches.iter().any(|m| m.MatchID == 2));

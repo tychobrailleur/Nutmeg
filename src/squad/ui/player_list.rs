@@ -7,7 +7,7 @@ mod imp {
     use super::*;
 
     #[derive(Debug, Default, CompositeTemplate)]
-    #[template(resource = "/org/gnome/Nutmeg/squad/player_list.ui")]
+    #[template(resource = "/org/gnome/Nutmeg/squad/ui/player_list.ui")]
     pub struct SquadPlayerList {
         #[template_child]
         pub view_players: TemplateChild<gtk::TreeView>,
