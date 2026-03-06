@@ -66,7 +66,14 @@ INSERT INTO matches_new
     SELECT match_id, download_id, home_team_id, home_team_name, away_team_id,
            away_team_name, match_date, match_type, status, home_goals, away_goals,
            match_context_id
-    FROM matches;
+    FROM matches
+    WHERE id IN (
+        -- Keep only the row with the highest surrogate id (= most recent download)
+        -- for each (match_id, download_id) pair to satisfy the new composite PK.
+        SELECT MAX(id)
+        FROM matches
+        GROUP BY match_id, download_id
+    );
 
 -- ── Drop old tables (child tables first) and rename new ones ─────────────────
 DROP TABLE league_unit_teams;

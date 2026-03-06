@@ -79,6 +79,7 @@ mod imp {
 
         pub players: RefCell<Vec<Player>>,
         pub card_size_group: gtk::SizeGroup,
+        pub context: RefCell<Option<crate::ui::context_object::ContextObject>>,
     }
 
     impl Default for FormationOptimiserWidget {
@@ -88,6 +89,7 @@ mod imp {
                 formations_flowbox: Default::default(),
                 players: RefCell::new(Vec::new()),
                 card_size_group: gtk::SizeGroup::new(gtk::SizeGroupMode::Both),
+                context: RefCell::new(None),
             }
         }
     }
@@ -112,6 +114,40 @@ mod imp {
             self.parent_constructed();
             self.obj().setup_callbacks();
             self.obj().populate_initial_cards();
+        }
+
+        fn properties() -> &'static [glib::ParamSpec] {
+            use std::sync::OnceLock;
+            static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
+            PROPERTIES.get_or_init(|| {
+                vec![
+                    glib::ParamSpecObject::builder::<crate::ui::context_object::ContextObject>(
+                        "context",
+                    )
+                    .explicit_notify()
+                    .build(),
+                ]
+            })
+        }
+
+        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            match pspec.name() {
+                "context" => self.context.borrow().to_value(),
+                _ => unimplemented!(),
+            }
+        }
+
+        fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
+            match pspec.name() {
+                "context" => {
+                    let ctx = value
+                        .get::<Option<crate::ui::context_object::ContextObject>>()
+                        .expect("Value must be ContextObject");
+                    self.context.replace(ctx);
+                    self.obj().notify("context");
+                }
+                _ => unimplemented!(),
+            }
         }
     }
 
