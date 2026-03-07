@@ -594,77 +594,114 @@ impl SyncService {
                 }
             };
 
+            use futures::stream::{self, StreamExt};
+
             let mut merged_players = Vec::new();
             let mut avatars_to_save = Vec::new();
-            for basic_player in &player_list.players {
-                info!("Fetching details for player ID: {}", basic_player.PlayerID);
 
-                let player_id = basic_player.PlayerID;
-                let operation_name = format!("player_details({})", player_id);
+            let futures = player_list.players.into_iter().map(|basic_player| {
+                let db_manager = db_manager.clone();
+                let client = client.clone();
+                let avatar_map = &avatar_map;
 
-                // Log download entry for this player_details call
-                let entry_id = Self::log_download_entry(
-                    db_manager.clone(),
-                    download_id,
-                    ChppEndpoints::PLAYER_DETAILS.name,
-                    ChppEndpoints::PLAYER_DETAILS.version,
-                    None,
-                )
-                .await?;
+                async move {
+                    let player_id = basic_player.PlayerID;
+                    info!("Fetching details for player ID: {}", player_id);
 
-                // Use retry utility for player details fetching
-                let result = retry_with_default_config(&operation_name, get_auth, |data, key| {
-                    client.player_details(data, key, player_id)
-                })
-                .await;
+                    let operation_name = format!("player_details({})", player_id);
 
-                // Update entry status based on result
-                match &result {
-                    Ok(_) => {
-                        Self::update_download_entry(db_manager.clone(), entry_id, "success", None)
-                            .await?;
-                    }
-                    Err(e) => {
-                        Self::update_download_entry(
-                            db_manager.clone(),
-                            entry_id,
-                            "error",
-                            Some(e.to_string()),
-                        )
-                        .await?;
-                    }
-                }
-
-                // Merge detailed data with basic data
-                let mut merged = match result {
-                    Ok(detailed_player) => {
-                        debug!(
-                            "Successfully fetched detailed data for player {}",
-                            player_id
-                        );
-                        basic_player.merge_player_data(Some(detailed_player))
-                    }
-                    Err(e) => {
-                        log::warn!(
-                            "Failed to fetch details for player {}: {}. Using basic data only.",
-                            player_id,
-                            e
-                        );
-                        basic_player.merge_player_data(None)
-                    }
-                };
-
-                if let Some(layers) = avatar_map.get(&player_id) {
-                    if let Some(avatar_blob) =
-                        AvatarService::fetch_and_composite_avatar(player_id, layers).await
+                    // Log download entry for this player_details call
+                    let entry_id = match Self::log_download_entry(
+                        db_manager.clone(),
+                        download_id,
+                        ChppEndpoints::PLAYER_DETAILS.name,
+                        ChppEndpoints::PLAYER_DETAILS.version,
+                        None,
+                    )
+                    .await
                     {
-                        merged.AvatarBlob = Some(avatar_blob.clone());
-                        avatars_to_save.push((player_id, avatar_blob));
-                    }
-                }
+                        Ok(id) => id,
+                        Err(e) => {
+                            warn!("Failed to log download entry: {}", e);
+                            0
+                        }
+                    };
 
+                    // Use retry utility for player details fetching
+                    let result =
+                        retry_with_default_config(&operation_name, get_auth, |data, key| {
+                            client.player_details(data, key, player_id)
+                        })
+                        .await;
+
+                    // Update entry status based on result
+                    if entry_id != 0 {
+                        match &result {
+                            Ok(_) => {
+                                let _ = Self::update_download_entry(
+                                    db_manager.clone(),
+                                    entry_id,
+                                    "success",
+                                    None,
+                                )
+                                .await;
+                            }
+                            Err(e) => {
+                                let _ = Self::update_download_entry(
+                                    db_manager.clone(),
+                                    entry_id,
+                                    "error",
+                                    Some(e.to_string()),
+                                )
+                                .await;
+                            }
+                        }
+                    }
+
+                    // Merge detailed data with basic data
+                    let mut merged = match result {
+                        Ok(detailed_player) => {
+                            debug!(
+                                "Successfully fetched detailed data for player {}",
+                                player_id
+                            );
+                            basic_player
+                                .clone()
+                                .merge_player_data(Some(detailed_player))
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "Failed to fetch details for player {}: {}. Using basic data only.",
+                                player_id,
+                                e
+                            );
+                            basic_player.clone().merge_player_data(None)
+                        }
+                    };
+
+                    let mut avatar_tuple = None;
+                    if let Some(layers) = avatar_map.get(&player_id) {
+                        if let Some(avatar_blob) =
+                            AvatarService::fetch_and_composite_avatar(player_id, layers).await
+                        {
+                            merged.AvatarBlob = Some(avatar_blob.clone());
+                            avatar_tuple = Some((player_id, avatar_blob));
+                        }
+                    }
+
+                    (merged, avatar_tuple)
+                }
+            });
+
+            // Execute concurrently with a limit of 4
+            let mut stream = stream::iter(futures).buffer_unordered(4);
+            while let Some((merged, avatar_tuple)) = stream.next().await {
                 merged_players.push(merged);
+                if let Some(avatar) = avatar_tuple {
+                    avatars_to_save.push(avatar);
+                }
             }
+
             (merged_players, avatars_to_save)
         };
 

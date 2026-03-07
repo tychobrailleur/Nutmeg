@@ -175,12 +175,14 @@ impl NutmegWindow {
                 use crate::series::ui::controller::SeriesController;
 
                 match SeriesController::load_series_data(team_id).await {
-                    Ok((league_data, matches_data)) => {
+                    Ok((league_data, matches_data, all_series_matches, logo_urls)) => {
                         if let Some(window) = window_weak.upgrade() {
-                            window
-                                .imp()
-                                .series_page
-                                .set_data(Some(&league_data), Some(&matches_data));
+                            window.imp().series_page.set_data(
+                                Some(&league_data),
+                                Some(&matches_data),
+                                &all_series_matches,
+                                &logo_urls,
+                            );
                         }
                     }
                     Err(e) => {
@@ -190,7 +192,8 @@ impl NutmegWindow {
                 }
             });
         } else {
-            imp.series_page.set_data(None, None);
+            imp.series_page
+                .set_data(None, None, &[], &std::collections::HashMap::new());
         }
     }
 

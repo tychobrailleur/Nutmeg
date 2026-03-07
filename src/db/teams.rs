@@ -1197,7 +1197,7 @@ pub fn get_team(conn: &mut SqliteConnection, team_id: u32) -> Result<Option<Team
     match result {
         Some(entity) => {
             let team: Team = serde_json::from_str(&entity.raw_data).map_err(|e| {
-                Error::Parse(format!("Failed to deserialize team data from DB: {}", e))
+                Error::Parse(format!("Failed to deserialise team data from DB: {}", e))
             })?;
             Ok(Some(team))
         }
@@ -1205,7 +1205,35 @@ pub fn get_team(conn: &mut SqliteConnection, team_id: u32) -> Result<Option<Team
     }
 }
 
-#[cfg(test)]
+/// Returns a map of `team_id → logo_url` for the given team IDs, using the
+/// latest available download for each team.  Teams with no stored logo URL are
+/// omitted from the map (the caller should treat a missing key as `None`).
+pub fn get_logo_urls_for_teams(
+    conn: &mut SqliteConnection,
+    team_ids: &[i32],
+) -> Result<std::collections::HashMap<i32, String>, Error> {
+    if team_ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+
+    // For each team_id, pick the row with the highest download_id (latest data).
+    let rows: Vec<(i32, Option<String>)> = teams::table
+        .filter(teams::id.eq_any(team_ids))
+        .order((teams::id.asc(), teams::download_id.desc()))
+        .select((teams::id, teams::logo_url))
+        .load::<(i32, Option<String>)>(conn)
+        .map_err(|e| Error::Db(format!("Failed to load logo URLs: {}", e)))?;
+
+    // Dedup: the first row per team_id is the most recent (ORDER BY download_id DESC).
+    let mut map = std::collections::HashMap::new();
+    for (tid, url_opt) in rows {
+        if let Some(url) = url_opt {
+            map.entry(tid).or_insert(url);
+        }
+    }
+    Ok(map)
+}
+
 mod tests {
     use super::*;
     use crate::chpp::model::Language;

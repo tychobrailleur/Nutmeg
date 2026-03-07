@@ -17,7 +17,15 @@ pub struct SeriesController;
 impl SeriesController {
     pub async fn load_series_data(
         team_id: u32,
-    ) -> Result<(LeagueDetailsData, MatchesData), Box<dyn Error>> {
+    ) -> Result<
+        (
+            LeagueDetailsData,
+            MatchesData,
+            Vec<crate::chpp::model::MatchDetails>,
+            std::collections::HashMap<i32, String>,
+        ),
+        Box<dyn Error>,
+    > {
         let key = crate::config::consumer_key();
         let secret = crate::config::consumer_secret();
 
@@ -42,8 +50,21 @@ impl SeriesController {
 
                 if let (Some(league_details), Some(matches_data)) = (db_league, db_matches) {
                     log::info!("Loaded Series and Matches data from Database.");
+
+                    let team_ids: Vec<i32> = league_details
+                        .Teams
+                        .iter()
+                        .filter_map(|t| t.TeamID.parse::<i32>().ok())
+                        .collect();
+
+                    let all_series_matches =
+                        crate::db::series::get_matches_for_teams(&mut conn, &team_ids)
+                            .unwrap_or_default();
+                    let logo_urls = crate::db::teams::get_logo_urls_for_teams(&mut conn, &team_ids)
+                        .unwrap_or_default();
+
                     let filtered = filter_matches_for_season(&league_details, matches_data);
-                    return Ok((league_details, filtered));
+                    return Ok((league_details, filtered, all_series_matches, logo_urls));
                 }
             }
         }
@@ -98,7 +119,63 @@ impl SeriesController {
         .await?;
 
         let filtered_matches = filter_matches_for_season(&league_details, matches);
-        Ok((league_details, filtered_matches))
+
+        // Fetch all-team matches and logo URLs (if any logos are missing, we might fetch team details, but for now just DB)
+        let team_ids: Vec<i32> = league_details
+            .Teams
+            .iter()
+            .filter_map(|t| t.TeamID.parse::<i32>().ok())
+            .collect();
+
+        // Fetch missing archived matches for opponents
+        for &tid in &team_ids {
+            if tid as u32 == team_id {
+                continue;
+            }
+            
+            // First perform team_details_request to fetch and update logos
+            let (oauth_data1, signing_key1) =
+                crate::chpp::oauth::create_oauth_context(&key, &secret, &token, &token_secret);
+            
+            if let Ok(team_data) = crate::chpp::request::team_details_request(
+                oauth_data1,
+                signing_key1,
+                Some(tid as u32),
+            )
+            .await
+            {
+                if let Some(team) = team_data.Teams.Teams.first() {
+                    let _ = crate::db::teams::save_team(&mut conn, team, &team_data.User, download_id);
+                }
+            }
+
+            let (oauth_data2, signing_key2) =
+                crate::chpp::oauth::create_oauth_context(&key, &secret, &token, &token_secret);
+            if let Ok(archived) = crate::chpp::request::matches_archive_request(
+                oauth_data2,
+                signing_key2,
+                Some(tid as u32),
+                None,
+                None,
+            )
+            .await
+            {
+                // Save to DB so get_matches_for_teams will find them
+                let _ = crate::db::series::save_matches(&mut conn, download_id, &archived);
+            }
+        }
+
+        let all_series_matches =
+            crate::db::series::get_matches_for_teams(&mut conn, &team_ids).unwrap_or_default();
+        let logo_urls =
+            crate::db::teams::get_logo_urls_for_teams(&mut conn, &team_ids).unwrap_or_default();
+
+        Ok((
+            league_details,
+            filtered_matches,
+            all_series_matches,
+            logo_urls,
+        ))
     }
 
     async fn get_league_unit_id(

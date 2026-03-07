@@ -27,6 +27,7 @@ gdk-pixbuf = "0.21"
 num-format = { version = "0.4.4", features = ["with-system-locale"] }
 image = "0.24"
 fastrand = "2.3.0"
+futures = "0.3.32"
 
 [dependencies.adw]
 package = "libadwaita"

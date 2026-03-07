@@ -40,12 +40,18 @@ impl MatchOutcome {
 /// Computes the last `max_results` finished league outcomes for `team_id` from
 /// a flat list of match details, ordered from oldest to newest so the Form bar
 /// reads left-to-right in chronological order.
-fn compute_form(team_id: &str, matches: &[MatchDetails], max_results: usize) -> Vec<MatchOutcome> {
+fn compute_form(
+    team_id: &str,
+    matches: &[MatchDetails],
+    league_unit_id: u32,
+    max_results: usize,
+) -> Vec<MatchOutcome> {
     let mut finished: Vec<&MatchDetails> = matches
         .iter()
         .filter(|m| {
             m.Status.to_uppercase() == "FINISHED"
                 && m.MatchType == 1 // league only
+                && (m.MatchContextId.is_none() || m.MatchContextId == Some(league_unit_id))
                 && (m.HomeTeam.HomeTeamID == team_id || m.AwayTeam.AwayTeamID == team_id)
                 && m.HomeGoals.is_some()
                 && m.AwayGoals.is_some()
@@ -140,6 +146,7 @@ mod imp_model {
         pub data: RefCell<Option<LeagueTeam>>,
         /// Last ≤5 league outcomes, oldest-first for display.
         pub form: RefCell<Vec<MatchOutcome>>,
+        pub logo_url: RefCell<Option<String>>,
     }
 
     impl Default for LeagueTeamObject {
@@ -147,6 +154,7 @@ mod imp_model {
             Self {
                 data: RefCell::new(None),
                 form: RefCell::new(Vec::new()),
+                logo_url: RefCell::new(None),
             }
         }
     }
@@ -166,10 +174,11 @@ glib::wrapper! {
 }
 
 impl LeagueTeamObject {
-    pub fn new(team: LeagueTeam, form: Vec<MatchOutcome>) -> Self {
+    pub fn new(team: LeagueTeam, form: Vec<MatchOutcome>, logo_url: Option<String>) -> Self {
         let obj: Self = glib::Object::builder().build();
         *obj.imp().data.borrow_mut() = Some(team);
         *obj.imp().form.borrow_mut() = form;
+        *obj.imp().logo_url.borrow_mut() = logo_url;
         obj
     }
 }
@@ -266,13 +275,24 @@ impl SeriesPage {
         glib::Object::builder().build()
     }
 
-    pub fn set_data(&self, league: Option<&LeagueDetailsData>, matches: Option<&MatchesData>) {
+    pub fn set_data(
+        &self,
+        league: Option<&LeagueDetailsData>,
+        matches: Option<&MatchesData>,
+        all_series_matches: &[MatchDetails],
+        logo_urls: &std::collections::HashMap<i32, String>,
+    ) {
         let imp = self.imp();
 
-        // Collect all finished match details for form computation
-        let all_matches: Vec<MatchDetails> = matches
-            .map(|m| m.Team.MatchList.Matches.clone())
-            .unwrap_or_default();
+        // Use the all_series_matches dataset to compute forms so we have data for all teams
+        let match_dataset = if all_series_matches.is_empty() {
+            // Fallback just in case
+            matches
+                .map(|m| &m.Team.MatchList.Matches[..])
+                .unwrap_or_default()
+        } else {
+            all_series_matches
+        };
 
         if let Some(league_data) = league {
             log::debug!(
@@ -284,10 +304,13 @@ impl SeriesPage {
                 league_data.LeagueLevelUnitName, league_data.LeagueLevelUnitID
             ));
 
+            let league_unit_id = league_data.LeagueLevelUnitID;
             let store = gtk::gio::ListStore::new::<LeagueTeamObject>();
             for team in &league_data.Teams {
-                let form = compute_form(&team.TeamID, &all_matches, 5);
-                store.append(&LeagueTeamObject::new(team.clone(), form));
+                let form = compute_form(&team.TeamID, match_dataset, league_unit_id, 5);
+                let tid = team.TeamID.parse::<i32>().unwrap_or(0);
+                let logo_url = logo_urls.get(&tid).cloned();
+                store.append(&LeagueTeamObject::new(team.clone(), form, logo_url));
             }
             log::debug!("Added {} teams to league store", league_data.Teams.len());
             let selection_model = gtk::NoSelection::new(Some(store));
@@ -388,67 +411,124 @@ impl SeriesPage {
             badge.set_content_height(18);
             badge.set_valign(gtk::Align::Center);
 
+            let badge_img = gtk::Image::new();
+            badge_img.set_pixel_size(18);
+            badge_img.set_valign(gtk::Align::Center);
+            badge_img.set_visible(false);
+
             let name_label = Label::new(None);
             name_label.set_halign(gtk::Align::Start);
 
             row.append(&badge);
+            row.append(&badge_img);
             row.append(&name_label);
             item.set_child(Some(&row));
         });
+
+        thread_local! {
+            static IMAGE_CACHE: std::cell::RefCell<std::collections::HashMap<String, gtk::gdk::Texture>> = Default::default();
+        }
 
         factory.connect_bind(move |_, item| {
             let item = item.downcast_ref::<ListItem>().unwrap();
             if let Some(obj) = item.item().and_downcast::<LeagueTeamObject>() {
                 let data = obj.imp().data.borrow();
+                let logo_url = obj.imp().logo_url.borrow().clone();
                 if let Some(team) = data.as_ref() {
                     let team_name = team.TeamName.clone();
                     let team_id = team.TeamID.clone();
 
                     if let Some(row) = item.child().and_downcast::<gtk::Box>() {
-                        // Update badge draw function
-                        if let Some(badge) = row.first_child().and_downcast::<DrawingArea>() {
-                            let first_char = team_name
-                                .chars()
-                                .next()
-                                .unwrap_or('?')
-                                .to_uppercase()
-                                .next()
-                                .unwrap_or('?');
-                            let (br, bg, bb) = badge_colour(&team_id);
-                            badge.set_draw_func(move |_, cr, w, h| {
-                                let cx = w as f64 / 2.0;
-                                let cy = h as f64 / 2.0;
-                                let r = (w.min(h) as f64 / 2.0) - 0.5;
+                        let badge_draw = row.first_child().and_downcast::<DrawingArea>().unwrap();
+                        let badge_img = badge_draw.next_sibling().and_downcast::<gtk::Image>().unwrap();
+                        let name_label = badge_img.next_sibling().and_downcast::<Label>().unwrap();
 
-                                // Filled circle
-                                cr.arc(cx, cy, r, 0.0, std::f64::consts::TAU);
-                                cr.set_source_rgb(br, bg, bb);
-                                let _ = cr.fill();
+                        name_label.set_text(&team_name);
+                        badge_img.set_widget_name(&team_id); // Tag image widget with team_id for async validation
 
-                                // White initial letter
-                                cr.set_source_rgb(1.0, 1.0, 1.0);
-                                cr.select_font_face(
-                                    "Sans",
-                                    gtk::cairo::FontSlant::Normal,
-                                    gtk::cairo::FontWeight::Bold,
+                        // Update fallback badge draw function
+                        let first_char = team_name
+                            .chars()
+                            .next()
+                            .unwrap_or('?')
+                            .to_uppercase()
+                            .next()
+                            .unwrap_or('?');
+                        let (br, bg, bb) = badge_colour(&team_id);
+                        badge_draw.set_draw_func(move |_, cr, w, h| {
+                            let cx = w as f64 / 2.0;
+                            let cy = h as f64 / 2.0;
+                            let r = (w.min(h) as f64 / 2.0) - 0.5;
+
+                            // Filled circle
+                            cr.arc(cx, cy, r, 0.0, std::f64::consts::TAU);
+                            cr.set_source_rgb(br, bg, bb);
+                            let _ = cr.fill();
+
+                            // White initial letter
+                            cr.set_source_rgb(1.0, 1.0, 1.0);
+                            cr.select_font_face(
+                                "Sans",
+                                gtk::cairo::FontSlant::Normal,
+                                gtk::cairo::FontWeight::Bold,
+                            );
+                            cr.set_font_size(10.0);
+                            let letter = first_char.to_string();
+                            if let Ok(ext) = cr.text_extents(&letter) {
+                                cr.move_to(
+                                    cx - ext.width() / 2.0 - ext.x_bearing(),
+                                    cy - ext.height() / 2.0 - ext.y_bearing(),
                                 );
-                                cr.set_font_size(10.0);
-                                let letter = first_char.to_string();
-                                if let Ok(ext) = cr.text_extents(&letter) {
-                                    cr.move_to(
-                                        cx - ext.width() / 2.0 - ext.x_bearing(),
-                                        cy - ext.height() / 2.0 - ext.y_bearing(),
-                                    );
-                                    let _ = cr.show_text(&letter);
-                                }
-                            });
-                        }
-
-                        // Update team name label
-                        if let Some(badge) = row.first_child() {
-                            if let Some(label) = badge.next_sibling().and_downcast::<Label>() {
-                                label.set_text(&team_name);
+                                let _ = cr.show_text(&letter);
                             }
+                        });
+
+                        if let Some(url_str) = logo_url {
+                            let fixed_url = if url_str.starts_with("//") { format!("https:{}", url_str) } else { url_str };
+
+                            let cached_texture = IMAGE_CACHE.with(|cache| cache.borrow().get(&fixed_url).cloned());
+                            if let Some(texture) = cached_texture {
+                                badge_draw.set_visible(false);
+                                badge_img.set_visible(true);
+                                badge_img.set_paintable(Some(&texture));
+                            } else {
+                                // Show fallback while loading
+                                badge_draw.set_visible(true);
+                                badge_img.set_visible(false);
+                                badge_img.set_paintable(None::<&gtk::gdk::Texture>);
+
+                                // Fetch async
+                                let img_weak = badge_img.downgrade();
+                                let draw_weak = badge_draw.downgrade();
+                                let target_id = team_id.clone();
+                                glib::MainContext::default().spawn_local(async move {
+                                    if IMAGE_CACHE.with(|c| c.borrow().contains_key(&fixed_url)) { return; }
+
+                                    if let Ok(resp) = reqwest::get(&fixed_url).await {
+                                        if let Ok(bytes) = resp.bytes().await {
+                                            let stream = gtk::gio::MemoryInputStream::from_bytes(&glib::Bytes::from(&bytes));
+                                            if let Ok(pixbuf) = gtk::gdk_pixbuf::Pixbuf::from_stream(&stream, gtk::gio::Cancellable::NONE) {
+                                                let texture = gtk::gdk::Texture::for_pixbuf(&pixbuf);
+                                                IMAGE_CACHE.with(|c| c.borrow_mut().insert(fixed_url.clone(), texture.clone()));
+
+                                                if let Some(img) = img_weak.upgrade() {
+                                                    // Ensure the list item is still showing the same team
+                                                    if img.widget_name() == target_id {
+                                                        img.set_paintable(Some(&texture));
+                                                        img.set_visible(true);
+                                                        if let Some(draw) = draw_weak.upgrade() {
+                                                            draw.set_visible(false);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                        } else {
+                            badge_img.set_visible(false);
+                            badge_draw.set_visible(true);
                         }
                     }
                 }
@@ -604,7 +684,7 @@ mod tests {
             make_match(2, "20", "10", 1, 1, "2026-01-08 20:00:00"), // draw
             make_match(3, "10", "30", 0, 2, "2026-01-15 20:00:00"), // team 10 loses
         ];
-        let form = compute_form("10", &matches, 5);
+        let form = compute_form("10", &matches, 123, 5);
         assert_eq!(
             form,
             vec![MatchOutcome::Win, MatchOutcome::Draw, MatchOutcome::Loss]
@@ -616,7 +696,7 @@ mod tests {
         let matches: Vec<MatchDetails> = (1..=8)
             .map(|i| make_match(i, "10", "20", 1, 0, &format!("2026-01-{:02} 20:00:00", i)))
             .collect();
-        let form = compute_form("10", &matches, 5);
+        let form = compute_form("10", &matches, 123, 5);
         assert_eq!(form.len(), 5);
         assert!(form.iter().all(|&o| o == MatchOutcome::Win));
     }
@@ -625,7 +705,7 @@ mod tests {
     fn test_compute_form_excludes_cup_matches() {
         let mut m = make_match(1, "10", "20", 3, 1, "2026-01-01 20:00:00");
         m.MatchType = 3; // cup — must be excluded
-        let form = compute_form("10", &[m], 5);
+        let form = compute_form("10", &[m], 123, 5);
         assert!(form.is_empty());
     }
 

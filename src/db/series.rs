@@ -348,6 +348,68 @@ pub fn get_latest_matches(
     }))
 }
 
+/// Load all matches involving any of the given team IDs from the local DB,
+/// returning one `MatchDetails` per unique `match_id` (latest download wins).
+///
+/// Used by the series controller to gather enough data for form computation
+/// across *all* teams in a league unit rather than just the user's own team.
+pub fn get_matches_for_teams(
+    conn: &mut SqliteConnection,
+    team_ids: &[i32],
+) -> Result<Vec<crate::chpp::model::MatchDetails>, Error> {
+    use crate::db::schema::matches;
+
+    if team_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let db_matches: Vec<Match> = matches::table
+        .filter(
+            matches::home_team_id
+                .eq_any(team_ids)
+                .or(matches::away_team_id.eq_any(team_ids)),
+        )
+        .order(matches::download_id.desc())
+        .load(conn)
+        .map_err(|e| Error::Io(format!("Failed to load team matches: {}", e)))?;
+
+    // Keep only the most recent download per match_id
+    let mut unique_matches: std::collections::HashMap<i32, Match> =
+        std::collections::HashMap::new();
+    for m in db_matches {
+        unique_matches.entry(m.match_id).or_insert(m);
+    }
+
+    let details: Vec<crate::chpp::model::MatchDetails> = unique_matches
+        .into_values()
+        .map(|m| crate::chpp::model::MatchDetails {
+            MatchID: m.match_id as u32,
+            HomeTeam: crate::chpp::model::MatchHomeTeam {
+                HomeTeamID: m.home_team_id.to_string(),
+                HomeTeamName: m.home_team_name,
+                ..Default::default()
+            },
+            AwayTeam: crate::chpp::model::MatchAwayTeam {
+                AwayTeamID: m.away_team_id.to_string(),
+                AwayTeamName: m.away_team_name,
+                ..Default::default()
+            },
+            MatchDate: m.match_date,
+            SourceSystem: None,
+            MatchType: m.match_type as u32,
+            MatchContextId: m.match_context_id.map(|v| v as u32),
+            CupLevel: None,
+            CupLevelIndex: None,
+            HomeGoals: m.home_goals.map(|v| v as u32),
+            AwayGoals: m.away_goals.map(|v| v as u32),
+            OrdersGiven: None,
+            Status: m.status,
+        })
+        .collect();
+
+    Ok(details)
+}
+
 pub fn get_upcoming_opponents_from_db(
     conn: &mut SqliteConnection,
     our_team_id: u32,

@@ -288,7 +288,6 @@ diesel::table! {
     }
 }
 
-
 diesel::table! {
     match_ratings (match_id, team_id) {
         match_id         -> Integer,
@@ -322,7 +321,7 @@ diesel::joinable!(users -> downloads (download_id));
 diesel::joinable!(staff -> downloads (download_id));
 
 diesel::table! {
-    staff (staff_id) {
+    staff (staff_id, download_id) {
         staff_id -> Integer,
         team_id -> Integer,
         staff_type -> Integer,
