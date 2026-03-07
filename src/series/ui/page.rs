@@ -374,6 +374,9 @@ impl SeriesPage {
             let item = item.downcast_ref::<ListItem>().unwrap();
             let label = Label::new(None);
             label.set_halign(gtk::Align::Start);
+            label.set_valign(gtk::Align::Center);
+            label.set_margin_top(8);
+            label.set_margin_bottom(8);
             item.set_child(Some(&label));
         });
 
@@ -404,20 +407,25 @@ impl SeriesPage {
         factory.connect_setup(|_, item| {
             let item = item.downcast_ref::<ListItem>().unwrap();
 
-            let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            row.set_margin_top(6);
+            row.set_margin_bottom(6);
 
+            // Fallback: coloured letter-badge disc drawn with Cairo.
             let badge = DrawingArea::new();
-            badge.set_content_width(18);
-            badge.set_content_height(18);
+            badge.set_content_width(28);
+            badge.set_content_height(28);
             badge.set_valign(gtk::Align::Center);
 
+            // Preferred: the actual team logo image.
             let badge_img = gtk::Image::new();
-            badge_img.set_pixel_size(18);
+            badge_img.set_pixel_size(28);
             badge_img.set_valign(gtk::Align::Center);
             badge_img.set_visible(false);
 
             let name_label = Label::new(None);
             name_label.set_halign(gtk::Align::Start);
+            name_label.set_valign(gtk::Align::Center);
 
             row.append(&badge);
             row.append(&badge_img);
@@ -484,44 +492,55 @@ impl SeriesPage {
                         });
 
                         if let Some(url_str) = logo_url {
-                            let fixed_url = if url_str.starts_with("//") { format!("https:{}", url_str) } else { url_str };
+                            let fixed_url = if url_str.starts_with("//") {
+                                format!("https:{}", url_str)
+                            } else {
+                                url_str
+                            };
 
+                            // Serve from in-memory cache when available.
                             let cached_texture = IMAGE_CACHE.with(|cache| cache.borrow().get(&fixed_url).cloned());
                             if let Some(texture) = cached_texture {
                                 badge_draw.set_visible(false);
                                 badge_img.set_visible(true);
                                 badge_img.set_paintable(Some(&texture));
                             } else {
-                                // Show fallback while loading
+                                // Show the letter-badge fallback while the logo is loading.
                                 badge_draw.set_visible(true);
                                 badge_img.set_visible(false);
                                 badge_img.set_paintable(None::<&gtk::gdk::Texture>);
 
-                                // Fetch async
                                 let img_weak = badge_img.downgrade();
                                 let draw_weak = badge_draw.downgrade();
                                 let target_id = team_id.clone();
                                 glib::MainContext::default().spawn_local(async move {
-                                    if IMAGE_CACHE.with(|c| c.borrow().contains_key(&fixed_url)) { return; }
+                                    // Another concurrent task may have already loaded this URL.
+                                    if IMAGE_CACHE.with(|c| c.borrow().contains_key(&fixed_url)) {
+                                        return;
+                                    }
 
-                                    if let Ok(resp) = reqwest::get(&fixed_url).await {
-                                        if let Ok(bytes) = resp.bytes().await {
-                                            let stream = gtk::gio::MemoryInputStream::from_bytes(&glib::Bytes::from(&bytes));
-                                            if let Ok(pixbuf) = gtk::gdk_pixbuf::Pixbuf::from_stream(&stream, gtk::gio::Cancellable::NONE) {
-                                                let texture = gtk::gdk::Texture::for_pixbuf(&pixbuf);
-                                                IMAGE_CACHE.with(|c| c.borrow_mut().insert(fixed_url.clone(), texture.clone()));
-
-                                                if let Some(img) = img_weak.upgrade() {
-                                                    // Ensure the list item is still showing the same team
-                                                    if img.widget_name() == target_id {
-                                                        img.set_paintable(Some(&texture));
-                                                        img.set_visible(true);
-                                                        if let Some(draw) = draw_weak.upgrade() {
-                                                            draw.set_visible(false);
-                                                        }
+                                    match crate::utils::image::load_image_from_url(&fixed_url).await {
+                                        Ok(texture) => {
+                                            IMAGE_CACHE.with(|c| {
+                                                c.borrow_mut().insert(fixed_url.clone(), texture.clone());
+                                            });
+                                            if let Some(img) = img_weak.upgrade() {
+                                                // Guard against the row being recycled for a
+                                                // different team before the download finished.
+                                                if img.widget_name() == target_id {
+                                                    img.set_paintable(Some(&texture));
+                                                    img.set_visible(true);
+                                                    if let Some(draw) = draw_weak.upgrade() {
+                                                        draw.set_visible(false);
                                                     }
                                                 }
                                             }
+                                        }
+                                        Err(e) => {
+                                            log::warn!(
+                                                "Failed to load team logo from '{}': {}",
+                                                fixed_url, e
+                                            );
                                         }
                                     }
                                 });
@@ -551,6 +570,9 @@ impl SeriesPage {
         factory.connect_setup(move |_, item| {
             let item = item.downcast_ref::<ListItem>().unwrap();
             let row = gtk::Box::new(gtk::Orientation::Horizontal, 3);
+            row.set_margin_top(8);
+            row.set_margin_bottom(8);
+            row.set_valign(gtk::Align::Center);
             for _ in 0..DISC_COUNT {
                 let disc = DrawingArea::new();
                 disc.set_content_width(DISC_SIZE);
@@ -605,6 +627,9 @@ impl SeriesPage {
             let item = item.downcast_ref::<ListItem>().unwrap();
             let label = Label::new(None);
             label.set_halign(gtk::Align::Start);
+            label.set_valign(gtk::Align::Center);
+            label.set_margin_top(8);
+            label.set_margin_bottom(8);
             item.set_child(Some(&label));
         });
 

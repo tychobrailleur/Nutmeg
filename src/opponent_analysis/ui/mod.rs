@@ -8,7 +8,7 @@
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gio, glib, Button, Label, SpinButton, Spinner};
-use log::{debug, error};
+use log::debug;
 use std::sync::Arc;
 
 use crate::chpp::client::HattrickClient;
@@ -140,13 +140,73 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
 
-            // Set an expression to extract display-text for the DropDown
-            let expression = gtk::PropertyExpression::new(
-                model::OpponentItem::static_type(),
-                None::<&gtk::Expression>,
-                "display-text",
-            );
-            self.dropdown_team.set_expression(Some(expression));
+            // Setup the Team DropDown Factory
+            let team_factory = gtk::SignalListItemFactory::new();
+            team_factory.connect_setup(|_, list_item| {
+                let list_item = list_item
+                    .downcast_ref::<gtk::ListItem>()
+                    .expect("Needs to be ListItem");
+                let hbox = gtk::Box::builder()
+                    .orientation(gtk::Orientation::Horizontal)
+                    .spacing(8)
+                    .margin_start(4)
+                    .margin_end(4)
+                    .margin_top(4)
+                    .margin_bottom(4)
+                    .build();
+
+                let img = gtk::Image::builder()
+                    .pixel_size(24)
+                    .halign(gtk::Align::Center)
+                    .valign(gtk::Align::Center)
+                    .build();
+
+                let lbl = gtk::Label::builder().halign(gtk::Align::Start).build();
+
+                hbox.append(&img);
+                hbox.append(&lbl);
+                list_item.set_child(Some(&hbox));
+            });
+
+            team_factory.connect_bind(|_, list_item| {
+                let list_item = list_item
+                    .downcast_ref::<gtk::ListItem>()
+                    .expect("Needs to be ListItem");
+                let team_item = list_item
+                    .item()
+                    .and_downcast::<model::OpponentItem>()
+                    .expect("Item is not an OpponentItem");
+                let hbox = list_item
+                    .child()
+                    .and_downcast::<gtk::Box>()
+                    .expect("Child is not a GtkBox");
+
+                let img = hbox
+                    .first_child()
+                    .unwrap()
+                    .downcast::<gtk::Image>()
+                    .unwrap();
+                let lbl = img
+                    .next_sibling()
+                    .unwrap()
+                    .downcast::<gtk::Label>()
+                    .unwrap();
+
+                let img_clone = img.clone();
+                let url = team_item.team_logo_url();
+                
+                // Set a placeholder while loading
+                img.set_icon_name(Some("image-missing"));
+                
+                glib::MainContext::default().spawn_local(async move {
+                    if let Ok(texture) = crate::utils::image::load_image_from_url(&url).await {
+                        img_clone.set_paintable(Some(&texture));
+                    }
+                });
+                lbl.set_text(&team_item.property::<String>("display-text"));
+            });
+
+            self.dropdown_team.set_factory(Some(&team_factory));
 
             // Setup the Match List Factory
             let factory = gtk::SignalListItemFactory::new();
@@ -579,23 +639,136 @@ impl OpponentAnalysis {
         }
     }
 
+    fn on_filters_changed(&self) {
+        let item = self.property::<Option<model::OpponentItem>>("selected-opponent");
+        let team_id = if let Some(i) = item {
+            i.team_id()
+        } else {
+            return;
+        };
+
+        let imp = self.imp();
+        let limit = imp.spin_limit.value_as_int() as usize;
+
+        // Build match type filter from checkboxes
+        let mut match_type_filter: Vec<u32> = Vec::new();
+        if imp.check_league.is_active() {
+            match_type_filter.push(1); // League
+            match_type_filter.push(2); // Qualifier
+        }
+        if imp.check_cup.is_active() {
+            match_type_filter.push(3); // Cup
+            match_type_filter.push(7); // Masters Cup
+            match_type_filter.push(8); // International Cup
+        }
+        if imp.check_friendly.is_active() {
+            match_type_filter.push(4); // Friendly by challenge
+            match_type_filter.push(5); // Friendly international
+        }
+        if imp.check_international.is_active() {
+            match_type_filter.push(7); // Masters Cup
+            match_type_filter.push(8); // International Cup
+        }
+
+        let self_clone = self.clone();
+        glib::MainContext::default().spawn_local(async move {
+            let client = std::sync::Arc::new(crate::chpp::client::HattrickClient::new());
+            let service = OpponentAnalysisService::new(client);
+            let local_imp = self_clone.imp();
+
+            // Load matches from DB
+            if let Ok(Some(matches_data)) = service.get_latest_matches_from_db(team_id) {
+                let finished: Vec<_> = matches_data
+                    .Team
+                    .MatchList
+                    .Matches
+                    .into_iter()
+                    .filter(|m| m.Status == "FINISHED")
+                    .filter(|m| {
+                        if match_type_filter.is_empty() {
+                            true
+                        } else {
+                            match_type_filter.contains(&m.MatchType)
+                        }
+                    })
+                    .collect();
+
+                let stored = service
+                    .get_stored_match_ratings(team_id)
+                    .unwrap_or_default();
+
+                let mut mapped_matches: Vec<_> = finished
+                    .into_iter()
+                    .map(|m| {
+                        let is_home = m.HomeTeam.HomeTeamID.parse::<u32>().unwrap_or(0) == team_id;
+                        let rating = stored.iter().find(|r| r.match_id as u32 == m.MatchID);
+                        crate::service::opponent_analysis::OpponentMatchData {
+                            match_id: m.MatchID,
+                            match_date: m.MatchDate,
+                            is_home,
+                            home_team_name: m.HomeTeam.HomeTeamName.clone(),
+                            away_team_name: m.AwayTeam.AwayTeamName.clone(),
+                            opponent_team_name: if is_home {
+                                m.AwayTeam.AwayTeamName
+                            } else {
+                                m.HomeTeam.HomeTeamName
+                            },
+                            match_type: m.MatchType,
+                            home_goals: m.HomeGoals,
+                            away_goals: m.AwayGoals,
+                            formation: rating.and_then(|r| r.formation.clone()),
+                            tactic_type: rating.and_then(|r| r.tactic_type.map(|t| t as u32)),
+                            rating_midfield: rating
+                                .and_then(|r| r.rating_midfield.map(|v| v as u32)),
+                            rating_right_def: rating
+                                .and_then(|r| r.rating_right_def.map(|v| v as u32)),
+                            rating_mid_def: rating
+                                .and_then(|r| r.rating_mid_def.map(|v| v as u32)),
+                            rating_left_def: rating
+                                .and_then(|r| r.rating_left_def.map(|v| v as u32)),
+                            rating_right_att: rating
+                                .and_then(|r| r.rating_right_att.map(|v| v as u32)),
+                            rating_mid_att: rating
+                                .and_then(|r| r.rating_mid_att.map(|v| v as u32)),
+                            rating_left_att: rating
+                                .and_then(|r| r.rating_left_att.map(|v| v as u32)),
+                        }
+                    })
+                    .take(limit)
+                    .collect();
+
+                local_imp.latest_matches.replace(mapped_matches);
+
+                // If we don't have enough matches AND it's not because they haven't played enough yet..
+                // For safety, let the Analysis button fetch from the API. The user requested automatic fetching on DB limit miss.
+                let db_count = local_imp.latest_matches.borrow().len();
+                if db_count < limit {
+                    // Try fetch from API in background quietly
+                    let secret_service = crate::service::secret::SystemSecretService::new();
+                    use crate::service::secret::SecretStorageService;
+                    if let (Ok(Some(token)), Ok(Some(secret))) = (secret_service.get_secret("access_token").await, secret_service.get_secret("access_secret").await) {
+                        let filter_clone = if match_type_filter.is_empty() { None } else { Some(match_type_filter.clone()) };
+                        let ck = crate::config::consumer_key();
+                        let cs = crate::config::consumer_secret();
+                        let get_auth = || crate::chpp::oauth::create_oauth_context(&ck, &cs, &token, &secret);
+                        if let Ok(analysis) = service.analyze_opponent(&get_auth, team_id, limit, filter_clone).await {
+                             local_imp.latest_matches.replace(analysis.matches);
+                        }
+                    }
+                }
+            } else {
+                local_imp.latest_matches.replace(Vec::new());
+            }
+            self_clone.populate_match_list();
+        });
+    }
+
     fn populate_match_list(&self) {
         let imp = self.imp();
         let matches = imp.latest_matches.borrow();
 
-        let filtered: Vec<_> = matches
-            .iter()
-            .filter(|m| {
-                match m.match_type {
-                    1 | 2 => imp.check_league.is_active(),
-                    3 | 7 => imp.check_cup.is_active(),
-                    4 | 5 | 8 | 9 => imp.check_friendly.is_active(),
-                    // 62 is ladder, 50/51 are tournaments... maybe keep them if international or league?
-                    // For now, if no category matches, we default to whatever 'International' might mean or just hide.
-                    _ => imp.check_international.is_active(),
-                }
-            })
-            .collect();
+        // Already filtered in on_filters_changed
+        let filtered: Vec<_> = matches.clone();
 
         if let Some(selection_model) = imp.match_list_view.model() {
             if let Some(list_model) = selection_model.downcast_ref::<gtk::SingleSelection>() {
@@ -650,13 +823,15 @@ impl OpponentAnalysis {
 
         // Connect filter toggles to refresh list
         let obj_filter = self.clone();
-        check_league.connect_toggled(move |_| obj_filter.populate_match_list());
+        check_league.connect_toggled(move |_| obj_filter.on_filters_changed());
         let obj_filter = self.clone();
-        check_cup.connect_toggled(move |_| obj_filter.populate_match_list());
+        check_cup.connect_toggled(move |_| obj_filter.on_filters_changed());
         let obj_filter = self.clone();
-        check_friendly.connect_toggled(move |_| obj_filter.populate_match_list());
+        check_friendly.connect_toggled(move |_| obj_filter.on_filters_changed());
         let obj_filter = self.clone();
-        check_international.connect_toggled(move |_| obj_filter.populate_match_list());
+        check_international.connect_toggled(move |_| obj_filter.on_filters_changed());
+        let obj_filter = self.clone();
+        spin.connect_value_changed(move |_| obj_filter.on_filters_changed());
 
         btn.connect_clicked(move |btn_ref| {
             let selected_item = dropdown.selected_item();
@@ -844,6 +1019,44 @@ impl OpponentAnalysis {
                                 {
                                     local_obj.update_tactical_analysis(&stored_ratings);
                                 }
+
+                                local_imp.latest_matches.replace(analysis.matches.clone());
+                                local_obj.populate_match_list();
+
+                                // Calculate and display the best counter formation
+                                if let Some(ctx) = local_imp.context.borrow().as_ref() {
+                                    if let Some(lineups) = ctx.best_lineups() {
+                                        use crate::rating::types::RatingSector;
+                                        
+                                        let mut best_lineup_name = String::new();
+                                        let mut best_score = -9999.0;
+                                        
+                                        for lineup in lineups {
+                                            let m = lineup.sector_ratings.get(&RatingSector::Midfield).unwrap_or(&0.0) - mid_avg;
+                                            
+                                            let al = lineup.sector_ratings.get(&RatingSector::AttackLeft).unwrap_or(&0.0) - rd_avg;
+                                            let ac = lineup.sector_ratings.get(&RatingSector::AttackCentral).unwrap_or(&0.0) - cd_avg;
+                                            let ar = lineup.sector_ratings.get(&RatingSector::AttackRight).unwrap_or(&0.0) - ld_avg;
+                                            
+                                            let dl = lineup.sector_ratings.get(&RatingSector::DefenceLeft).unwrap_or(&0.0) - ra_avg;
+                                            let dc = lineup.sector_ratings.get(&RatingSector::DefenceCentral).unwrap_or(&0.0) - ca_avg;
+                                            let dr = lineup.sector_ratings.get(&RatingSector::DefenceRight).unwrap_or(&0.0) - la_avg;
+                                            
+                                            let score = (m * 3.0) + al + ac + ar + dl + dc + dr;
+                                            
+                                            if score > best_score {
+                                                best_score = score;
+                                                best_lineup_name = lineup.formation.name().to_string();
+                                            }
+                                        }
+                                        
+                                        if !best_lineup_name.is_empty() {
+                                            let current = local_imp.lbl_tactical_summary.label().to_string();
+                                            let summary = format!("{}\n\n<b>{}</b>: {}", current, gettext("Recommended Counter"), best_lineup_name);
+                                            local_imp.lbl_tactical_summary.set_markup(&summary);
+                                        }
+                                    }
+                                }
                             } else {
                                 local_obj.update_tactical_analysis(&[]);
                                 let msg = gtk::Label::new(Some(&gettext("No matches found.")));
@@ -885,7 +1098,20 @@ impl OpponentAnalysis {
         // 1. Populate from DB immediately
         if let Ok(opponents) = service.get_upcoming_opponents_from_db(our_team_id) {
             for opp in opponents {
-                let item = model::OpponentItem::new(opp.team_id, &opp.team_name, &opp.match_date);
+                let logo_url = format!(
+                    "//res.hattrick.org/teamlogo/{}/{}/{}/{}/{}.png",
+                    opp.team_id % 10,
+                    opp.team_id % 100,
+                    opp.team_id % 1000,
+                    opp.team_id,
+                    opp.team_id
+                );
+                let item = model::OpponentItem::new(
+                    opp.team_id,
+                    &opp.team_name,
+                    &opp.match_date,
+                    &logo_url,
+                );
                 list_store.append(&item);
             }
         }
@@ -911,10 +1137,19 @@ impl OpponentAnalysis {
                         // This ensures we have the latest names/dates if they changed
                         list_store.remove_all();
                         for opp in opponents {
+                            let logo_url = format!(
+                                "//res.hattrick.org/teamlogo/{}/{}/{}/{}/{}.png",
+                                opp.team_id % 10,
+                                opp.team_id % 100,
+                                opp.team_id % 1000,
+                                opp.team_id,
+                                opp.team_id
+                            );
                             let item = model::OpponentItem::new(
                                 opp.team_id,
                                 &opp.team_name,
                                 &opp.match_date,
+                                &logo_url,
                             );
                             list_store.append(&item);
                         }

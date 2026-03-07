@@ -285,6 +285,8 @@ diesel::table! {
         has_manager_license -> Nullable<Bool>,
         language_id -> Nullable<Integer>,
         language_name -> Nullable<Text>,
+        is_current_authenticated_user -> Nullable<Bool>,
+        is_bot -> Nullable<Bool>,
     }
 }
 

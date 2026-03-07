@@ -20,7 +20,8 @@
 
 use crate::chpp::error::Error;
 use crate::chpp::model::{
-    Country, Cup, Currency, Language, League, Region, SupporterTier, Team, User, WorldDetails,
+    Country, Cup, Currency, Language, League, Player, Region, SupporterTier, Team, User,
+    WorldDetails,
 };
 use crate::db::schema::{
     avatars, countries, cups, currencies, downloads, languages, leagues, players, regions, teams,
@@ -61,6 +62,8 @@ struct UserEntity {
     has_manager_license: Option<bool>,
     language_id: Option<i32>,
     language_name: Option<String>,
+    is_current_authenticated_user: Option<bool>,
+    is_bot: Option<bool>,
 }
 
 #[derive(Queryable, Insertable)]
@@ -579,9 +582,17 @@ pub fn save_currency(
 
 // Persists a User and their associated Language.
 // This function acts as an aggregate root saver for User data.
-fn save_user(conn: &mut SqliteConnection, user: &User, download_id: i32) -> Result<(), Error> {
+fn save_user(
+    conn: &mut SqliteConnection,
+    user: &User,
+    download_id: i32,
+    is_current_authenticated_user: bool,
+    is_bot: bool,
+) -> Result<(), Error> {
     // Save Language first to ensure the Foreign Key in 'users' is valid.
-    save_language(conn, &user.Language, download_id)?;
+    if let Some(lang) = &user.Language {
+        save_language(conn, lang, download_id)?;
+    }
 
     let supporter_tier_str = format!("{:?}", user.SupporterTier);
 
@@ -595,8 +606,10 @@ fn save_user(conn: &mut SqliteConnection, user: &User, download_id: i32) -> Resu
         activation_date: Some(user.ActivationDate.clone()),
         last_login_date: Some(user.LastLoginDate.clone()),
         has_manager_license: Some(user.HasManagerLicense),
-        language_id: Some(user.Language.LanguageID as i32),
-        language_name: Some(user.Language.LanguageName.clone()),
+        language_id: user.Language.as_ref().map(|l| l.LanguageID as i32),
+        language_name: user.Language.as_ref().map(|l| l.LanguageName.clone()),
+        is_current_authenticated_user: Some(is_current_authenticated_user),
+        is_bot: Some(is_bot),
     };
 
     diesel::insert_into(users::table)
@@ -732,8 +745,10 @@ pub fn save_team(
     team: &Team,
     user: &User,
     download_id: i32,
+    is_current_authenticated_user: bool,
 ) -> Result<(), Error> {
-    save_user(conn, user, download_id)?;
+    let is_bot = team.BotStatus.as_ref().map(|b| b.IsBot).unwrap_or(false);
+    save_user(conn, user, download_id, is_current_authenticated_user, is_bot)?;
 
     if let Some(cup) = &team.Cup {
         save_cup(conn, cup, download_id)?;
@@ -886,21 +901,46 @@ pub fn get_latest_download_id(conn: &mut SqliteConnection) -> Result<Option<i32>
 pub fn get_teams_summary(
     conn: &mut SqliteConnection,
 ) -> Result<Vec<(u32, String, Option<String>)>, Error> {
-    let latest_download = get_latest_download_id(conn)?;
-    if latest_download.is_none() {
-        return Ok(Vec::new());
-    }
-    let download_id_filter = latest_download.unwrap();
+    use diesel::sql_query;
+    use diesel::prelude::*;
+    use diesel::sql_types::{Integer, Nullable, Text};
 
-    let results = teams::table
-        .filter(teams::download_id.eq(download_id_filter))
-        .select((teams::id, teams::name, teams::logo_url))
-        .load::<(i32, String, Option<String>)>(conn)
-        .map_err(|e| Error::Db(format!("Failed to load teams: {}", e)))?;
+    // We must find all teams belonging to a user where is_current_authenticated_user = 1.
+    // However, because the database is append-only, there are multiple rows for the same team
+    // across different download_ids. We must only select the row for each unique team
+    // that has the MAXIMUM download_id to get its most recent name and logo.
+    
+    #[derive(QueryableByName)]
+    struct TeamSummaryRow {
+        #[diesel(sql_type = Integer)]
+        id: i32,
+        #[diesel(sql_type = Text)]
+        name: String,
+        #[diesel(sql_type = Nullable<Text>)]
+        logo_url: Option<String>,
+    }
+
+    let query = "
+        SELECT t.id, t.name, t.logo_url
+        FROM teams t
+        INNER JOIN (
+            SELECT id, MAX(download_id) as max_dl
+            FROM teams
+            WHERE user_id IN (
+                SELECT id FROM users WHERE is_current_authenticated_user = 1
+            )
+            GROUP BY id
+        ) latest_teams ON t.id = latest_teams.id AND t.download_id = latest_teams.max_dl
+        ORDER BY t.name ASC
+    ";
+
+    let results = sql_query(query)
+        .load::<TeamSummaryRow>(conn)
+        .map_err(|e| Error::Db(format!("Failed to load authenticated teams summary: {}", e)))?;
 
     Ok(results
         .into_iter()
-        .map(|(id, name, logo)| (id as u32, name, logo))
+        .map(|row| (row.id as u32, row.name, row.logo_url))
         .collect())
 }
 
@@ -1021,7 +1061,7 @@ pub fn get_latest_user(
             ActivationDate: e.activation_date.unwrap_or_default(),
             LastLoginDate: e.last_login_date.unwrap_or_default(),
             HasManagerLicense: e.has_manager_license.unwrap_or(false),
-            Language: lang,
+            Language: Some(lang),
         }))
     } else {
         Ok(None)
@@ -1049,20 +1089,51 @@ pub fn get_players_for_team(
     conn: &mut SqliteConnection,
     team_id_in: u32,
 ) -> Result<Vec<crate::chpp::model::Player>, Error> {
-    let latest_download = get_latest_download_id(conn)?;
-    if latest_download.is_none() {
-        return Ok(Vec::new());
-    }
-    let download_id_filter = latest_download.unwrap();
+    use diesel::prelude::*;
+
+    // Find the latest download_id for which players of this specific team exist.
+    // This is decoupled from the global latest download_id, which may be from
+    // a different endpoint (e.g. opponent analysis) that didn't fetch players.
+    let player_download_id_opt: Option<i32> = players::table
+        .filter(players::team_id.eq(team_id_in as i32))
+        .select(diesel::dsl::max(players::download_id))
+        .first::<Option<i32>>(conn)
+        .map_err(|e| Error::Db(format!("Failed to get max player download_id: {}", e)))?;
+
+    let download_id_filter = match player_download_id_opt {
+        Some(id) => id,
+        None => return Ok(Vec::new()),
+    };
 
     // Fetch all countries for this download to map flags
     let country_list = countries::table
         .filter(countries::download_id.eq(download_id_filter))
         .select((countries::id, countries::flag.nullable()))
         .load::<(i32, Option<String>)>(conn)
-        .map_err(|e| Error::Db(format!("Failed to load countries: {}", e)))?;
+        .unwrap_or_default();
 
-    let country_map: std::collections::HashMap<i32, String> = country_list
+    let country_list_latest = if country_list.is_empty() {
+        // The worlddetails download_id can differ from the players download_id.
+        // Fall back to the latest country data we have.
+        use diesel::dsl::max;
+        let latest_country_dl: Option<i32> = countries::table
+            .select(max(countries::download_id))
+            .first::<Option<i32>>(conn)
+            .unwrap_or(None);
+        if let Some(latest) = latest_country_dl {
+            countries::table
+                .filter(countries::download_id.eq(latest))
+                .select((countries::id, countries::flag.nullable()))
+                .load::<(i32, Option<String>)>(conn)
+                .unwrap_or_default()
+        } else {
+            vec![]
+        }
+    } else {
+        country_list
+    };
+
+    let country_map: std::collections::HashMap<i32, String> = country_list_latest
         .into_iter()
         .filter_map(|(id, flag)| flag.map(|flag_emoji| (id, flag_emoji)))
         .collect();
@@ -1205,6 +1276,25 @@ pub fn get_team(conn: &mut SqliteConnection, team_id: u32) -> Result<Option<Team
     }
 }
 
+/// Returns the subset of `team_ids` that exist in the `teams` table.
+pub fn get_existing_team_ids(
+    conn: &mut SqliteConnection,
+    team_ids: &[i32],
+) -> Result<std::collections::HashSet<i32>, Error> {
+    if team_ids.is_empty() {
+        return Ok(std::collections::HashSet::new());
+    }
+
+    let rows: Vec<i32> = teams::table
+        .filter(teams::id.eq_any(team_ids))
+        .select(teams::id)
+        .distinct()
+        .load::<i32>(conn)
+        .map_err(|e| Error::Db(format!("Failed to load team IDs: {}", e)))?;
+
+    Ok(rows.into_iter().collect())
+}
+
 /// Returns a map of `team_id → logo_url` for the given team IDs, using the
 /// latest available download for each team.  Teams with no stored logo URL are
 /// omitted from the map (the caller should treat a missing key as `None`).
@@ -1236,7 +1326,6 @@ pub fn get_logo_urls_for_teams(
 
 mod tests {
     use super::*;
-    use crate::chpp::model::Language;
     use diesel::sqlite::SqliteConnection;
     use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 
@@ -1263,10 +1352,10 @@ mod tests {
             ActivationDate: "2000-01-02".to_string(),
             LastLoginDate: "2023-01-01".to_string(),
             HasManagerLicense: true,
-            Language: Language {
+            Language: Some(Language {
                 LanguageID: 1,
                 LanguageName: "English".to_string(),
-            },
+            }),
         };
 
         let team_xml = r#"
@@ -1315,7 +1404,7 @@ mod tests {
             .execute(&mut conn)
             .expect("Failed to create download");
 
-        save_team(&mut conn, &team, &user, 0).expect("Failed to save team");
+        save_team(&mut conn, &team, &user, 0, true).expect("Failed to save team");
 
         let saved_team = get_team(&mut conn, 99999)
             .expect("Failed to get team")
@@ -1340,10 +1429,10 @@ mod tests {
             ActivationDate: "2020-01-02".to_string(),
             LastLoginDate: "2023-01-01".to_string(),
             HasManagerLicense: true,
-            Language: Language {
+            Language: Some(Language {
                 LanguageID: 2,
                 LanguageName: "Swedish".to_string(),
-            },
+            }),
         };
 
         // Currency for Country
@@ -1409,7 +1498,7 @@ mod tests {
 
         save_country(&mut conn, team.Country.as_ref().unwrap(), 0).expect("Failed to save country");
 
-        save_team(&mut conn, &team, &user, 0).expect("Failed to save team");
+        save_team(&mut conn, &team, &user, 0, true).expect("Failed to save team");
 
         use crate::db::schema::languages::dsl::*;
         let langs = languages
@@ -1503,26 +1592,152 @@ mod tests {
             ActivationDate: "".to_string(),
             LastLoginDate: "".to_string(),
             HasManagerLicense: false,
-            Language: Language {
+            Language: Some(Language {
                 LanguageID: 1,
                 LanguageName: "en".to_string(),
-            },
+            }),
         };
 
         // Save Team version 1
         let mut team_v1 = Team::default();
         team_v1.TeamID = "99".to_string();
         team_v1.TeamName = "Team Version 1".to_string();
-        save_team(&mut conn, &team_v1, &user, 1).expect("Saved v1");
+        save_team(&mut conn, &team_v1, &user, 1, true).expect("Saved v1");
 
         // Save Team version 2
         let mut team_v2 = Team::default();
         team_v2.TeamID = "99".to_string();
         team_v2.TeamName = "Team Version 2".to_string();
-        save_team(&mut conn, &team_v2, &user, 2).expect("Saved v2");
+        save_team(&mut conn, &team_v2, &user, 2, true).expect("Saved v2");
 
         // Get latest should be v2
         let fetched = get_team(&mut conn, 99).expect("Fetch").unwrap();
         assert_eq!(fetched.TeamName, "Team Version 2");
+    }
+
+    #[test]
+    fn test_query_resilience_to_unrelated_downloads() {
+        let mut conn = establish_connection();
+
+        // 1. Initial Sync (Download 1)
+        let d1 = DownloadEntity {
+            id: 1,
+            timestamp: "2023-01-01T00:00:00Z".to_string(),
+            status: "completed".to_string(),
+        };
+        diesel::insert_into(crate::db::schema::downloads::table)
+            .values(&d1)
+            .execute(&mut conn)
+            .unwrap();
+
+        let user_xml = r#"
+            <User>
+                <UserID>100</UserID>
+                <Name>testuser</Name>
+                <Loginname>testuser</Loginname>
+                <SupporterTier>none</SupporterTier>
+                <SignupDate>2010-01-01</SignupDate>
+                <ActivationDate>2010-01-01</ActivationDate>
+                <LastLoginDate>2010-01-01</LastLoginDate>
+                <HasManagerLicense>True</HasManagerLicense>
+            </User>
+        "#;
+        let user: User = serde_xml_rs::from_str(user_xml).unwrap();
+        
+        let team_xml = r#"
+            <Team>
+                <TeamID>200</TeamID>
+                <TeamName>Test Team</TeamName>
+                <ShortName>TT</ShortName>
+                <IsPrimaryClub>True</IsPrimaryClub>
+            </Team>
+        "#;
+        let team: Team = serde_xml_rs::from_str(team_xml).unwrap();
+        save_team(&mut conn, &team, &user, 1, true).unwrap();
+
+        let player_xml = r#"
+            <Player>
+                <PlayerID>300</PlayerID>
+                <FirstName>John</FirstName>
+                <LastName>Doe</LastName>
+                <PlayerNumber>7</PlayerNumber>
+                <Age>20</Age>
+                <AgeDays>3</AgeDays>
+                <TSI>1000</TSI>
+                <PlayerForm>5</PlayerForm>
+                <Experience>1</Experience>
+                <Loyalty>1</Loyalty>
+                <MotherClubBonus>True</MotherClubBonus>
+                <Leadership>1</Leadership>
+                <Salary>10000</Salary>
+                <IsSpecialist>False</IsSpecialist>
+                <Specialty>0</Specialty>
+                <Agreeability>5</Agreeability>
+                <Aggressiveness>5</Aggressiveness>
+                <Honesty>5</Honesty>
+                <IsAbroad>False</IsAbroad>
+                <TransferListed>False</TransferListed>
+                <Caps>0</Caps>
+                <CapsYouth>0</CapsYouth>
+                <Cards>0</Cards>
+                <Goals>0</Goals>
+                <LeagueGoals>0</LeagueGoals>
+                <CupGoals>0</CupGoals>
+                <FriendliesGoals>0</FriendliesGoals>
+                <Matches>0</Matches>
+                <LastMatch>
+                    <MatchId>0</MatchId>
+                    <Date>2023-01-01</Date>
+                    <MatchType>1</MatchType>
+                    <Rating>50</Rating>
+                    <Position>100</Position>
+                    <PositionCode>1</PositionCode>
+                    <PlayedMinutes>90</PlayedMinutes>
+                </LastMatch>
+                <PlayerSkills>
+                    <StaminaSkill>5</StaminaSkill>
+                    <KeeperSkill>1</KeeperSkill>
+                    <DefenderSkill>1</DefenderSkill>
+                    <PlaymakerSkill>1</PlaymakerSkill>
+                    <WingerSkill>1</WingerSkill>
+                    <PassingSkill>1</PassingSkill>
+                    <ScorerSkill>1</ScorerSkill>
+                    <SetPiecesSkill>1</SetPiecesSkill>
+                </PlayerSkills>
+            </Player>
+        "#;
+        let p: Player = serde_xml_rs::from_str(player_xml).unwrap();
+        save_players(&mut conn, &[p], 200, 1).unwrap();
+
+        // Verify initial state
+        let teams = get_teams_summary(&mut conn).unwrap();
+        assert_eq!(teams.len(), 1);
+        assert_eq!(teams[0].0, 200);
+
+        let players = get_players_for_team(&mut conn, 200).unwrap();
+        assert_eq!(players.len(), 1);
+        assert_eq!(players[0].PlayerID, 300);
+
+        // 2. Unrelated Download (Download 2)
+        // This simulates an opponent analysis fetch or similar
+        let d2 = DownloadEntity {
+            id: 2,
+            timestamp: "2023-01-02T00:00:00Z".to_string(),
+            status: "completed".to_string(),
+        };
+        diesel::insert_into(crate::db::schema::downloads::table)
+            .values(&d2)
+            .execute(&mut conn)
+            .unwrap();
+
+        // 3. Verify resilience: queries still work for the authenticated user's data
+        // even though the global latest download_id is now 2.
+        let teams_post = get_teams_summary(&mut conn).unwrap();
+        assert_eq!(teams_post.len(), 1, "Teams should still be found even if global latest download changed");
+        assert_eq!(teams_post[0].0, 200);
+
+        let players_post = get_players_for_team(&mut conn, 200).unwrap();
+        assert_eq!(players_post.len(), 1, "Players should still be found even if global latest download changed");
+        assert_eq!(players_post[0].PlayerID, 300);
     }
 }

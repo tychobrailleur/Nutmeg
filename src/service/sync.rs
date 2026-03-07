@@ -328,7 +328,7 @@ impl SyncService {
             conn.transaction::<_, Error, _>(|conn| {
                 for team in &teams_clone {
                     log::info!("Saving team: {} ({})", team.TeamName, team.TeamID);
-                    save_team(conn, team, &user, download_id)?;
+                    save_team(conn, team, &user, download_id, true)?;
                 }
                 Ok(())
             })
@@ -932,10 +932,10 @@ mod tests {
                     LastLoginDate: "2020-01-01 00:00:00".to_string(),
                     HasManagerLicense: false,
                     SupporterTier: SupporterTier::None,
-                    Language: Language {
+                    Language: Some(Language {
                         LanguageID: 2,
                         LanguageName: "English".to_string(),
-                    },
+                    }),
                 },
                 Teams: Teams {
                     Teams: vec![Team {

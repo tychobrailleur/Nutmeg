@@ -7,7 +7,6 @@
 
 use crate::chpp::model::{LeagueDetailsData, MatchesData};
 use crate::chpp::request::{league_details_request, matches_request, team_details_request};
-use crate::series::ui::page::SeriesPage;
 use crate::service::secret::{SecretStorageService, SystemSecretService};
 
 use std::error::Error;
@@ -57,14 +56,20 @@ impl SeriesController {
                         .filter_map(|t| t.TeamID.parse::<i32>().ok())
                         .collect();
 
-                    let all_series_matches =
-                        crate::db::series::get_matches_for_teams(&mut conn, &team_ids)
-                            .unwrap_or_default();
-                    let logo_urls = crate::db::teams::get_logo_urls_for_teams(&mut conn, &team_ids)
+                    let existing_teams = crate::db::teams::get_existing_team_ids(&mut conn, &team_ids)
                         .unwrap_or_default();
+                    if existing_teams.len() == team_ids.len() {
+                        let all_series_matches =
+                            crate::db::series::get_matches_for_teams(&mut conn, &team_ids)
+                                .unwrap_or_default();
+                        let logo_urls = crate::db::teams::get_logo_urls_for_teams(&mut conn, &team_ids)
+                            .unwrap_or_default();
 
-                    let filtered = filter_matches_for_season(&league_details, matches_data);
-                    return Ok((league_details, filtered, all_series_matches, logo_urls));
+                        let filtered = filter_matches_for_season(&league_details, matches_data);
+                        return Ok((league_details, filtered, all_series_matches, logo_urls));
+                    } else {
+                        log::info!("Some opponent teams are missing from DB. Falling through to CHPP API.");
+                    }
                 }
             }
         }
@@ -145,7 +150,7 @@ impl SeriesController {
             .await
             {
                 if let Some(team) = team_data.Teams.Teams.first() {
-                    let _ = crate::db::teams::save_team(&mut conn, team, &team_data.User, download_id);
+                    let _ = crate::db::teams::save_team(&mut conn, team, &team_data.User, download_id, false);
                 }
             }
 

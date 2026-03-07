@@ -417,7 +417,7 @@ pub struct User {
     #[allow(dead_code)]
     pub UserID: u32,
     #[allow(dead_code)]
-    pub Language: Language,
+    pub Language: Option<Language>,
     pub Name: String,
     pub Loginname: String,
     pub SupporterTier: SupporterTier,
@@ -1229,8 +1229,6 @@ mod tests {
         assert_eq!(res.tier, SupporterTier::Silver);
     }
 
-    // TODO in the following tests, anonymise the following XML outputs,
-    // if not done already, and extract to test resources.
     #[test]
     fn test_deserialize_team() {
         let xml = r#"

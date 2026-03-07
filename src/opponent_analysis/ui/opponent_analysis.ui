@@ -36,7 +36,7 @@
             <property name="adjustment">
               <object class="GtkAdjustment">
                 <property name="lower">1</property>
-                <property name="upper">50</property>
+                <property name="upper">25</property>
                 <property name="value">10</property>
                 <property name="step-increment">1</property>
               </object>

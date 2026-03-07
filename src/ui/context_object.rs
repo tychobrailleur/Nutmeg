@@ -25,6 +25,7 @@ mod imp {
         pub selected_player: RefCell<Option<PlayerObject>>,
         pub players: RefCell<Option<gtk::ListStore>>,
         pub opponent_avg_ratings: RefCell<Option<[f32; 7]>>,
+        pub best_lineups: RefCell<Option<Vec<crate::rating::optimiser::OptimisedLineup>>>,
     }
 
     #[glib::object_subclass]
@@ -50,6 +51,9 @@ mod imp {
                     glib::ParamSpecBoolean::builder("has-opponent-ratings")
                         .explicit_notify()
                         .build(),
+                    glib::ParamSpecBoolean::builder("has-best-lineups")
+                        .explicit_notify()
+                        .build(),
                 ]
             })
         }
@@ -60,6 +64,7 @@ mod imp {
                 "selected-player" => self.selected_player.borrow().to_value(),
                 "players" => self.players.borrow().to_value(),
                 "has-opponent-ratings" => self.opponent_avg_ratings.borrow().is_some().to_value(),
+                "has-best-lineups" => self.best_lineups.borrow().is_some().to_value(),
                 _ => unimplemented!(),
             }
         }
@@ -127,6 +132,15 @@ impl ContextObject {
         *self.imp().opponent_avg_ratings.borrow()
     }
 
+    pub fn set_best_lineups(&self, lineups: Option<Vec<crate::rating::optimiser::OptimisedLineup>>) {
+        *self.imp().best_lineups.borrow_mut() = lineups;
+        self.notify("has-best-lineups");
+    }
+
+    pub fn best_lineups(&self) -> Option<Vec<crate::rating::optimiser::OptimisedLineup>> {
+        self.imp().best_lineups.borrow().clone()
+    }
+
     fn clear_context(&self) {
         // Clear players list
         let store = create_player_model(&[]);
@@ -134,6 +148,7 @@ impl ContextObject {
         self.notify("players");
 
         self.set_opponent_avg_ratings(None);
+        self.set_best_lineups(None);
 
         // Clear selected player
         self.set_selected_player(None::<PlayerObject>);

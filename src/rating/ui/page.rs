@@ -250,6 +250,11 @@ impl FormationOptimiserWidget {
         let flowbox = imp.formations_flowbox.get();
         flowbox.remove_all();
 
+        // Save results to ContextObject for sharing with other tabs (e.g. Opponent Analysis)
+        if let Some(ctx) = imp.context.borrow().as_ref() {
+            ctx.set_best_lineups(Some(results.clone()));
+        }
+
         for result in results {
             let card = self.create_formation_card(&result);
             imp.card_size_group.add_widget(&card);

@@ -11,6 +11,7 @@ mod imp {
         pub team_id: RefCell<u32>,
         pub team_name: RefCell<String>,
         pub match_date: RefCell<String>,
+        pub team_logo_url: RefCell<String>,
     }
 
     #[glib::object_subclass]
@@ -28,6 +29,7 @@ mod imp {
                     glib::ParamSpecUInt::builder("team-id").build(),
                     glib::ParamSpecString::builder("team-name").build(),
                     glib::ParamSpecString::builder("match-date").build(),
+                    glib::ParamSpecString::builder("team-logo-url").build(),
                     glib::ParamSpecString::builder("display-text")
                         .read_only()
                         .build(),
@@ -46,6 +48,9 @@ mod imp {
                 "match-date" => {
                     *self.match_date.borrow_mut() = value.get().unwrap();
                 }
+                "team-logo-url" => {
+                    *self.team_logo_url.borrow_mut() = value.get().unwrap();
+                }
                 _ => unimplemented!(),
             }
         }
@@ -55,6 +60,7 @@ mod imp {
                 "team-id" => self.team_id.borrow().to_value(),
                 "team-name" => self.team_name.borrow().to_value(),
                 "match-date" => self.match_date.borrow().to_value(),
+                "team-logo-url" => self.team_logo_url.borrow().to_value(),
                 "display-text" => {
                     let text =
                         format!("{} ({})", self.team_name.borrow(), self.match_date.borrow());
@@ -149,16 +155,21 @@ glib::wrapper! {
 }
 
 impl OpponentItem {
-    pub fn new(team_id: u32, team_name: &str, match_date: &str) -> Self {
+    pub fn new(team_id: u32, team_name: &str, match_date: &str, team_logo_url: &str) -> Self {
         glib::Object::builder()
             .property("team-id", team_id)
             .property("team-name", team_name)
             .property("match-date", match_date)
+            .property("team-logo-url", team_logo_url)
             .build()
     }
 
     pub fn team_id(&self) -> u32 {
         self.property("team-id")
+    }
+
+    pub fn team_logo_url(&self) -> String {
+        self.property("team-logo-url")
     }
 }
 

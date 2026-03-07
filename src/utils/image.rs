@@ -25,4 +25,19 @@ mod tests {
         let url = "https://example.com/image.png";
         assert!(url.starts_with("https://"));
     }
+
+    #[tokio::test]
+    async fn test_fetch_real_logo() {
+        let url = "https://res.hattrick.org/teamlogo/3/29/281/280747/280747.png";
+        println!("Fetching {}", url);
+        match crate::utils::image::load_image_from_url(url).await {
+            Ok(_) => {
+                println!("Loaded correctly!");
+            }
+            Err(e) => {
+                println!("Failed to load image: {:?}", e);
+                panic!("Failed to load");
+            }
+        }
+    }
 }
