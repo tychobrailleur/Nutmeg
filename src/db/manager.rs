@@ -161,9 +161,14 @@ impl DbManager {
         let mut conn = self.get_connection()?;
 
         conn.transaction::<_, diesel::result::Error, _>(|conn| {
-            // Delete from tables with foreign key constraints first (children before parents)
+            // Delete in dependency order: deepest children first, `downloads` last.
+            // Tables omitted here would cause "FOREIGN KEY constraint failed" when
+            // `downloads` is deleted because not all FKs carry ON DELETE CASCADE.
+            diesel::delete(match_ratings::table).execute(conn)?;
             diesel::delete(avatars::table).execute(conn)?;
             diesel::delete(players::table).execute(conn)?;
+            diesel::delete(staff::table).execute(conn)?;
+            diesel::delete(download_entries::table).execute(conn)?;
             diesel::delete(league_unit_teams::table).execute(conn)?;
             diesel::delete(league_units::table).execute(conn)?;
             diesel::delete(matches::table).execute(conn)?;
@@ -171,6 +176,8 @@ impl DbManager {
             diesel::delete(users::table).execute(conn)?;
             diesel::delete(cups::table).execute(conn)?;
             diesel::delete(regions::table).execute(conn)?;
+            diesel::delete(leagues::table).execute(conn)?;
+            diesel::delete(languages::table).execute(conn)?;
             diesel::delete(countries::table).execute(conn)?;
             diesel::delete(currencies::table).execute(conn)?;
             diesel::delete(downloads::table).execute(conn)?;
