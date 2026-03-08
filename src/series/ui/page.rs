@@ -448,7 +448,10 @@ impl SeriesPage {
 
                     if let Some(row) = item.child().and_downcast::<gtk::Box>() {
                         let badge_draw = row.first_child().and_downcast::<DrawingArea>().unwrap();
-                        let badge_img = badge_draw.next_sibling().and_downcast::<gtk::Image>().unwrap();
+                        let badge_img = badge_draw
+                            .next_sibling()
+                            .and_downcast::<gtk::Image>()
+                            .unwrap();
                         let name_label = badge_img.next_sibling().and_downcast::<Label>().unwrap();
 
                         name_label.set_text(&team_name);
@@ -499,7 +502,8 @@ impl SeriesPage {
                             };
 
                             // Serve from in-memory cache when available.
-                            let cached_texture = IMAGE_CACHE.with(|cache| cache.borrow().get(&fixed_url).cloned());
+                            let cached_texture =
+                                IMAGE_CACHE.with(|cache| cache.borrow().get(&fixed_url).cloned());
                             if let Some(texture) = cached_texture {
                                 badge_draw.set_visible(false);
                                 badge_img.set_visible(true);
@@ -519,10 +523,12 @@ impl SeriesPage {
                                         return;
                                     }
 
-                                    match crate::utils::image::load_image_from_url(&fixed_url).await {
+                                    match crate::utils::image::load_image_from_url(&fixed_url).await
+                                    {
                                         Ok(texture) => {
                                             IMAGE_CACHE.with(|c| {
-                                                c.borrow_mut().insert(fixed_url.clone(), texture.clone());
+                                                c.borrow_mut()
+                                                    .insert(fixed_url.clone(), texture.clone());
                                             });
                                             if let Some(img) = img_weak.upgrade() {
                                                 // Guard against the row being recycled for a
@@ -539,7 +545,8 @@ impl SeriesPage {
                                         Err(e) => {
                                             log::warn!(
                                                 "Failed to load team logo from '{}': {}",
-                                                fixed_url, e
+                                                fixed_url,
+                                                e
                                             );
                                         }
                                     }

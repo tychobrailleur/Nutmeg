@@ -23,7 +23,7 @@ impl SyncController {
         sender: tokio::sync::mpsc::UnboundedSender<(f64, String)>,
     ) {
         let db = Arc::new(DbManager::new());
-        let sync = SyncService::new(db);
+        let sync = SyncService::new(db.clone());
         let key = crate::config::consumer_key();
         let secret = crate::config::consumer_secret();
 
@@ -39,14 +39,42 @@ impl SyncController {
             .perform_sync_with_stored_secrets(key.clone(), secret.clone(), progress_cb.clone())
             .await
         {
-            Ok(true) => {
+            Ok(Some((team_id, download_id))) => {
                 info!("Sync completed successfully");
+
+                // Fire off lazy avatar fetch in the background
+                let sync_clone = Arc::new(SyncService::new(db.clone()));
+                let key_clone = key.clone();
+                let secret_clone = secret.clone();
+
+                tokio::spawn(async move {
+                    if let Err(e) = sync_clone
+                        .perform_avatar_sync_with_stored_secrets(
+                            key_clone,
+                            secret_clone,
+                            team_id,
+                            download_id,
+                        )
+                        .await
+                    {
+                        warn!("Background avatar fetch failed: {}", e);
+                    } else {
+                        info!("Background avatar fetch completed.");
+                    }
+                });
             }
-            Ok(false) => {
+            Ok(None) => {
                 warn!("Sync failed: No credentials found, starting OAuth flow...");
                 // OAuth Flow
-                if let Err(e) =
-                    Self::start_oauth_flow(window_weak, &key, &secret, &sync, progress_cb).await
+                if let Err(e) = Self::start_oauth_flow(
+                    window_weak,
+                    &key,
+                    &secret,
+                    &sync,
+                    db.clone(),
+                    progress_cb,
+                )
+                .await
                 {
                     error!("OAuth flow failed: {}", e);
                     initial_fail_msg = Some(format!("Auth failed: {}", e));
@@ -68,6 +96,7 @@ impl SyncController {
         key: &str,
         secret: &str,
         sync: &SyncService,
+        db: Arc<DbManager>,
         progress_cb: ProgressCallback,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let auth_service = HattrickAuthService::new();
@@ -125,7 +154,29 @@ impl SyncController {
                 )
                 .await
             {
-                Ok(()) => info!("Retry sync successful"),
+                Ok((team_id, download_id)) => {
+                    info!("Retry sync successful");
+                    // Fire off lazy avatar fetch in the background
+                    let sync_clone = Arc::new(SyncService::new(db));
+                    let key_clone = key.to_string();
+                    let secret_clone = secret.to_string();
+
+                    tokio::spawn(async move {
+                        if let Err(e) = sync_clone
+                            .perform_avatar_sync_with_stored_secrets(
+                                key_clone,
+                                secret_clone,
+                                team_id,
+                                download_id,
+                            )
+                            .await
+                        {
+                            warn!("Background avatar fetch failed: {}", e);
+                        } else {
+                            info!("Background avatar fetch completed.");
+                        }
+                    });
+                }
                 Err(e) => return Err(format!("Retry sync error: {}", e).into()),
             }
         } else {

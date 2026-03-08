@@ -56,19 +56,23 @@ impl SeriesController {
                         .filter_map(|t| t.TeamID.parse::<i32>().ok())
                         .collect();
 
-                    let existing_teams = crate::db::teams::get_existing_team_ids(&mut conn, &team_ids)
-                        .unwrap_or_default();
+                    let existing_teams =
+                        crate::db::teams::get_existing_team_ids(&mut conn, &team_ids)
+                            .unwrap_or_default();
                     if existing_teams.len() == team_ids.len() {
                         let all_series_matches =
                             crate::db::series::get_matches_for_teams(&mut conn, &team_ids)
                                 .unwrap_or_default();
-                        let logo_urls = crate::db::teams::get_logo_urls_for_teams(&mut conn, &team_ids)
-                            .unwrap_or_default();
+                        let logo_urls =
+                            crate::db::teams::get_logo_urls_for_teams(&mut conn, &team_ids)
+                                .unwrap_or_default();
 
                         let filtered = filter_matches_for_season(&league_details, matches_data);
                         return Ok((league_details, filtered, all_series_matches, logo_urls));
                     } else {
-                        log::info!("Some opponent teams are missing from DB. Falling through to CHPP API.");
+                        log::info!(
+                            "Some opponent teams are missing from DB. Falling through to CHPP API."
+                        );
                     }
                 }
             }
@@ -137,11 +141,11 @@ impl SeriesController {
             if tid as u32 == team_id {
                 continue;
             }
-            
+
             // First perform team_details_request to fetch and update logos
             let (oauth_data1, signing_key1) =
                 crate::chpp::oauth::create_oauth_context(&key, &secret, &token, &token_secret);
-            
+
             if let Ok(team_data) = crate::chpp::request::team_details_request(
                 oauth_data1,
                 signing_key1,
@@ -150,7 +154,13 @@ impl SeriesController {
             .await
             {
                 if let Some(team) = team_data.Teams.Teams.first() {
-                    let _ = crate::db::teams::save_team(&mut conn, team, &team_data.User, download_id, false);
+                    let _ = crate::db::teams::save_team(
+                        &mut conn,
+                        team,
+                        &team_data.User,
+                        download_id,
+                        false,
+                    );
                 }
             }
 
@@ -313,7 +323,7 @@ impl SeriesController {
     }
 }
 
-fn filter_matches_for_season(
+pub fn filter_matches_for_season(
     league_details: &LeagueDetailsData,
     mut matches: MatchesData,
 ) -> MatchesData {

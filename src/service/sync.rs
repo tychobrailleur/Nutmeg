@@ -48,14 +48,22 @@ pub trait DataSyncService {
         access_token: String,
         access_secret: String,
         on_progress: ProgressCallback,
-    ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<(u32, i32), Error>> + Send + '_>>;
 
     fn perform_sync_with_stored_secrets(
         &self,
         consumer_key: String,
         consumer_secret: String,
         on_progress: ProgressCallback,
-    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<Option<(u32, i32)>, Error>> + Send + '_>>;
+
+    fn perform_avatar_sync_with_stored_secrets(
+        &self,
+        consumer_key: String,
+        consumer_secret: String,
+        team_id: u32,
+        download_id: i32,
+    ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>>;
 }
 
 pub struct SyncService {
@@ -95,12 +103,12 @@ impl DataSyncService for SyncService {
         access_token: String,
         access_secret: String,
         on_progress: ProgressCallback,
-    ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(u32, i32), Error>> + Send + '_>> {
         let db_manager = self.db_manager.clone();
         let client = self.client.clone();
 
         Box::pin(async move {
-            Self::do_full_sync(
+            let res = Self::do_full_sync(
                 db_manager,
                 client,
                 consumer_key,
@@ -109,7 +117,9 @@ impl DataSyncService for SyncService {
                 access_secret,
                 on_progress,
             )
-            .await
+            .await?;
+
+            Ok(res)
         })
     }
 
@@ -118,7 +128,7 @@ impl DataSyncService for SyncService {
         consumer_key: String,
         consumer_secret: String,
         on_progress: ProgressCallback,
-    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Option<(u32, i32)>, Error>> + Send + '_>> {
         let db_manager = self.db_manager.clone();
         let client = self.client.clone();
         let secret_service = self.secret_service.clone();
@@ -126,13 +136,13 @@ impl DataSyncService for SyncService {
         Box::pin(async move {
             let access_token = match secret_service.get_secret("access_token").await {
                 Ok(Some(token)) => token,
-                Ok(None) => return Ok(false),
+                Ok(None) => return Ok(None),
                 Err(e) => return Err(Error::Io(e.to_string())),
             };
 
             let access_secret = match secret_service.get_secret("access_secret").await {
                 Ok(Some(secret)) => secret,
-                Ok(None) => return Ok(false),
+                Ok(None) => return Ok(None),
                 Err(e) => return Err(Error::Io(e.to_string())),
             };
 
@@ -146,7 +156,45 @@ impl DataSyncService for SyncService {
                 on_progress,
             )
             .await
-            .map(|_| true)
+            .map(|r| Some(r))
+        })
+    }
+
+    fn perform_avatar_sync_with_stored_secrets(
+        &self,
+        consumer_key: String,
+        consumer_secret: String,
+        team_id: u32,
+        download_id: i32,
+    ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>> {
+        let db_manager = self.db_manager.clone();
+        let client = self.client.clone();
+        let secret_service = self.secret_service.clone();
+
+        Box::pin(async move {
+            let access_token = match secret_service.get_secret("access_token").await {
+                Ok(Some(token)) => token,
+                Ok(None) => return Err(Error::Io("Missing access token".to_owned())),
+                Err(e) => return Err(Error::Io(e.to_string())),
+            };
+
+            let access_secret = match secret_service.get_secret("access_secret").await {
+                Ok(Some(secret)) => secret,
+                Ok(None) => return Err(Error::Io("Missing access secret".to_owned())),
+                Err(e) => return Err(Error::Io(e.to_string())),
+            };
+
+            let get_auth = || {
+                create_oauth_context(
+                    &consumer_key,
+                    &consumer_secret,
+                    &access_token,
+                    &access_secret,
+                )
+            };
+
+            Self::fetch_and_save_avatars_lazily(db_manager, client, &get_auth, team_id, download_id)
+                .await
         })
     }
 }
@@ -566,43 +614,19 @@ impl SyncService {
             return Err(Error::Parse("No player list in response".to_string()));
         };
 
-        // Fetch detailed player data for each player and merge with basic data
-        let (players_list, avatars_list) = {
+        let (players_list, _avatars_list) = {
             info!(
                 "Fetching detailed player data for {} players",
                 player_list.players.len()
             );
 
-            // Fetch avatars for the team
-            let (data, key) = get_auth();
-            let avatar_map = match client.avatars(data, key, Some(team_id)).await {
-                Ok(avatars) => {
-                    info!(
-                        "Fetched {} player avatars for team {}",
-                        avatars.team.players.players.len(),
-                        team_id
-                    );
-                    let mut map = HashMap::new();
-                    for avatar_player in avatars.team.players.players {
-                        map.insert(avatar_player.player_id, avatar_player.avatar.layers);
-                    }
-                    map
-                }
-                Err(e) => {
-                    warn!("Failed to fetch avatars for team {}: {}", team_id, e);
-                    HashMap::new()
-                }
-            };
-
             use futures::stream::{self, StreamExt};
 
             let mut merged_players = Vec::new();
-            let mut avatars_to_save = Vec::new();
 
             let futures = player_list.players.into_iter().map(|basic_player| {
                 let db_manager = db_manager.clone();
                 let client = client.clone();
-                let avatar_map = &avatar_map;
 
                 async move {
                     let player_id = basic_player.PlayerID;
@@ -658,8 +682,7 @@ impl SyncService {
                         }
                     }
 
-                    // Merge detailed data with basic data
-                    let mut merged = match result {
+                    let merged = match result {
                         Ok(detailed_player) => {
                             debug!(
                                 "Successfully fetched detailed data for player {}",
@@ -679,30 +702,16 @@ impl SyncService {
                         }
                     };
 
-                    let mut avatar_tuple = None;
-                    if let Some(layers) = avatar_map.get(&player_id) {
-                        if let Some(avatar_blob) =
-                            AvatarService::fetch_and_composite_avatar(player_id, layers).await
-                        {
-                            merged.AvatarBlob = Some(avatar_blob.clone());
-                            avatar_tuple = Some((player_id, avatar_blob));
-                        }
-                    }
-
-                    (merged, avatar_tuple)
+                    (merged, None as Option<(u32, Vec<u8>)>)
                 }
             });
 
-            // Execute concurrently with a limit of 4
             let mut stream = stream::iter(futures).buffer_unordered(4);
-            while let Some((merged, avatar_tuple)) = stream.next().await {
+            while let Some((merged, _avatar_tuple)) = stream.next().await {
                 merged_players.push(merged);
-                if let Some(avatar) = avatar_tuple {
-                    avatars_to_save.push(avatar);
-                }
             }
 
-            (merged_players, avatars_to_save)
+            (merged_players, Vec::<(u32, Vec<u8>)>::new())
         };
 
         // Save players
@@ -710,12 +719,80 @@ impl SyncService {
         tokio::task::spawn_blocking(move || {
             let mut conn = db.get_connection()?;
             conn.transaction::<_, Error, _>(|conn| {
-                save_players(conn, &players_list, team_id, download_id)?;
-                save_avatars(conn, &avatars_list, download_id)
+                save_players(conn, &players_list, team_id, download_id)
             })
         })
         .await
         .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+
+        Ok(())
+    }
+
+    pub async fn fetch_and_save_avatars_lazily<F>(
+        db_manager: Arc<DbManager>,
+        client: Arc<dyn ChppClient>,
+        get_auth: &F,
+        team_id: u32,
+        download_id: i32,
+    ) -> Result<(), Error>
+    where
+        F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
+    {
+        info!("Starting lazy fetch for avatars of team {}", team_id);
+        let (data, key) = get_auth();
+
+        let avatars = client.avatars(data, key, Some(team_id)).await?;
+        let entry_id = Self::log_download_entry(
+            db_manager.clone(),
+            download_id,
+            ChppEndpoints::TEAM_DETAILS.name, // Reusing endpoint or defining a new one for avatars
+            "1.0",
+            Some(team_id as i32),
+        )
+        .await?;
+
+        let mut avatars_to_save = Vec::new();
+        use futures::stream::{self, StreamExt};
+
+        let db_manager_clone = db_manager.clone();
+        let futures = avatars
+            .team
+            .players
+            .players
+            .into_iter()
+            .map(|avatar_player| async move {
+                let player_id = avatar_player.player_id;
+                if let Some(avatar_blob) = AvatarService::fetch_and_composite_avatar(
+                    player_id,
+                    &avatar_player.avatar.layers,
+                )
+                .await
+                {
+                    Some((player_id, avatar_blob))
+                } else {
+                    None
+                }
+            });
+
+        let mut stream = stream::iter(futures).buffer_unordered(4);
+        while let Some(avatar_opt) = stream.next().await {
+            if let Some(avatar) = avatar_opt {
+                avatars_to_save.push(avatar);
+            }
+        }
+
+        if !avatars_to_save.is_empty() {
+            tokio::task::spawn_blocking(move || {
+                let mut conn = db_manager_clone.get_connection()?;
+                conn.transaction::<_, Error, _>(|conn| {
+                    save_avatars(conn, &avatars_to_save, download_id)
+                })
+            })
+            .await
+            .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+        }
+
+        let _ = Self::update_download_entry(db_manager, entry_id, "success", None).await;
 
         Ok(())
     }
@@ -784,7 +861,7 @@ impl SyncService {
         access_token: String,
         access_secret: String,
         on_progress: ProgressCallback,
-    ) -> Result<(), Error> {
+    ) -> Result<(u32, i32), Error> {
         on_progress(0.0, "Checking credentials...");
 
         debug!("consumer_key: {}", consumer_key);
@@ -860,7 +937,7 @@ impl SyncService {
 
         on_progress(1.0, "Done.");
         info!("Download {} completed successfully", download_id);
-        Ok(())
+        Ok((team_id, download_id))
     }
 }
 

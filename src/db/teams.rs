@@ -748,7 +748,13 @@ pub fn save_team(
     is_current_authenticated_user: bool,
 ) -> Result<(), Error> {
     let is_bot = team.BotStatus.as_ref().map(|b| b.IsBot).unwrap_or(false);
-    save_user(conn, user, download_id, is_current_authenticated_user, is_bot)?;
+    save_user(
+        conn,
+        user,
+        download_id,
+        is_current_authenticated_user,
+        is_bot,
+    )?;
 
     if let Some(cup) = &team.Cup {
         save_cup(conn, cup, download_id)?;
@@ -901,15 +907,15 @@ pub fn get_latest_download_id(conn: &mut SqliteConnection) -> Result<Option<i32>
 pub fn get_teams_summary(
     conn: &mut SqliteConnection,
 ) -> Result<Vec<(u32, String, Option<String>)>, Error> {
-    use diesel::sql_query;
     use diesel::prelude::*;
+    use diesel::sql_query;
     use diesel::sql_types::{Integer, Nullable, Text};
 
     // We must find all teams belonging to a user where is_current_authenticated_user = 1.
     // However, because the database is append-only, there are multiple rows for the same team
     // across different download_ids. We must only select the row for each unique team
     // that has the MAXIMUM download_id to get its most recent name and logo.
-    
+
     #[derive(QueryableByName)]
     struct TeamSummaryRow {
         #[diesel(sql_type = Integer)]
@@ -1643,7 +1649,7 @@ mod tests {
             </User>
         "#;
         let user: User = serde_xml_rs::from_str(user_xml).unwrap();
-        
+
         let team_xml = r#"
             <Team>
                 <TeamID>200</TeamID>
@@ -1733,11 +1739,19 @@ mod tests {
         // 3. Verify resilience: queries still work for the authenticated user's data
         // even though the global latest download_id is now 2.
         let teams_post = get_teams_summary(&mut conn).unwrap();
-        assert_eq!(teams_post.len(), 1, "Teams should still be found even if global latest download changed");
+        assert_eq!(
+            teams_post.len(),
+            1,
+            "Teams should still be found even if global latest download changed"
+        );
         assert_eq!(teams_post[0].0, 200);
 
         let players_post = get_players_for_team(&mut conn, 200).unwrap();
-        assert_eq!(players_post.len(), 1, "Players should still be found even if global latest download changed");
+        assert_eq!(
+            players_post.len(),
+            1,
+            "Players should still be found even if global latest download changed"
+        );
         assert_eq!(players_post[0].PlayerID, 300);
     }
 }

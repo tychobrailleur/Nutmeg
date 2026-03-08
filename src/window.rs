@@ -41,7 +41,7 @@ mod imp {
 
     // See https://gtk-rs.org/gtk4-rs/stable/latest/docs/gtk4_macros/derive.CompositeTemplate.html
     // for composite template, it brings template and template_child attributes.
-    #[derive(Debug, Default, CompositeTemplate)]
+    #[derive(Default, CompositeTemplate)]
     #[template(resource = "/org/gnome/Nutmeg/window.ui")]
     pub struct NutmegWindow {
         #[template_child]
@@ -81,6 +81,9 @@ mod imp {
         pub opponent_analysis: TemplateChild<OpponentAnalysis>,
 
         pub context_object: ContextObject,
+        pub main_controller: std::cell::RefCell<
+            Option<std::rc::Rc<crate::ui::controllers::main_controller::MainController>>,
+        >,
     }
 
     #[glib::object_subclass]
@@ -107,14 +110,22 @@ mod imp {
             self.parent_constructed();
             let obj = self.obj();
 
-            // Load Teams
-            obj.load_teams();
+            // Setup Signals
+            obj.setup_signals();
 
             // Setup Bindings
             obj.setup_bindings();
 
-            // Setup Signals
-            obj.setup_signals();
+            let factory = gtk::SignalListItemFactory::new();
+            obj.setup_team_dropdown_factory(&factory);
+            obj.imp().combo_teams.set_factory(Some(&factory));
+
+            // Load Global State (Teams, etc.)
+            let controller = crate::ui::controllers::main_controller::MainController::new(
+                obj.imp().context_object.clone(),
+            );
+            obj.imp().main_controller.replace(Some(controller.clone()));
+            controller.refresh_all_teams();
 
             // Inject ContextObject into sub-pages
             obj.imp()
@@ -155,47 +166,11 @@ impl NutmegWindow {
             .build()
     }
 
-    // Loads the teams associated with the user to populate the main dropdown.
-    pub fn load_teams(&self) {
-        use crate::ui::controllers::teams::TeamController;
-        TeamController::load_teams(&self.imp().combo_teams);
-    }
+    // Team loading is now managed internally by `MainController`,
+    // and DB lookups for series data happen immediately upon `selected-team` change.
 
-    pub fn load_current_team_series_data(&self) {
-        let imp = self.imp();
-        let model = &imp.context_object;
-        let team_obj: Option<TeamObject> = model.property("selected-team");
-
-        if let Some(team_object) = team_obj {
-            let team_data = team_object.team_data();
-            let team_id = team_data.id;
-            let window_weak = self.downgrade();
-
-            glib::MainContext::default().spawn_local(async move {
-                use crate::series::ui::controller::SeriesController;
-
-                match SeriesController::load_series_data(team_id).await {
-                    Ok((league_data, matches_data, all_series_matches, logo_urls)) => {
-                        if let Some(window) = window_weak.upgrade() {
-                            window.imp().series_page.set_data(
-                                Some(&league_data),
-                                Some(&matches_data),
-                                &all_series_matches,
-                                &logo_urls,
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("Failed to load series data: {}", e);
-                        // TODO: Show error in UI
-                    }
-                }
-            });
-        } else {
-            imp.series_page
-                .set_data(None, None, &[], &std::collections::HashMap::new());
-        }
-    }
+    // We keep these empty implementations around if they are called recursively from signals
+    // but they no longer perform any logic themselves. We will prune them shortly.
 
     fn setup_bindings(&self) {
         let imp = self.imp();
@@ -212,13 +187,24 @@ impl NutmegWindow {
             self.update_optimiser_players(Some(store));
         }
 
-        // Listen to selected-team changes to load series data.
-        // Must be connected BEFORE bind_property(...).sync_create() below so that
-        // the initial sync fires into the already-connected handler and the series
-        // tab is populated on startup without requiring the user to switch teams.
+        // Wait for data load notification rather than selected-team
+        // This ensures the data is strictly hydrated from the DB before the series page draws
         let window = self.clone();
-        model.connect_notify_local(Some("selected-team"), move |_, _| {
-            window.load_current_team_series_data();
+        model.connect_notify_local(Some("data-loaded"), move |m, _| {
+            let win_imp = window.imp();
+
+            // Extract the snapshot
+            let league_opt = m.league_details();
+            let matches_opt = m.matches();
+            let all_series = m.all_series_matches().unwrap_or_default();
+            let logos = m.series_logo_urls().unwrap_or_default();
+
+            win_imp.series_page.set_data(
+                league_opt.as_ref(),
+                matches_opt.as_ref(),
+                &all_series,
+                &logos,
+            );
         });
 
         // Bind ContextObject selected-team to OpponentAnalysis
@@ -230,9 +216,13 @@ impl NutmegWindow {
         imp.opponent_analysis.set_property("context", model);
         imp.optimiser.set_property("context", model);
 
+        // Bind ContextObject all-teams to the main dropdown.
+        model
+            .bind_property("all-teams", &*imp.combo_teams, "model")
+            .sync_create()
+            .build();
+
         // Bind combo_teams selected item to ContextObject selected-team.
-        // sync_create immediately fires the "selected-team" notify, which is why
-        // the handler above must already be connected at this point.
         imp.combo_teams
             .bind_property("selected-item", model, "selected-team")
             .sync_create()
@@ -243,6 +233,72 @@ impl NutmegWindow {
             .bind_property("players", &imp.player_list.tree_view(), "model")
             .sync_create()
             .build();
+    }
+
+    fn setup_team_dropdown_factory(&self, factory: &gtk::SignalListItemFactory) {
+        factory.connect_setup(|_, item| {
+            let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+            let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            hbox.set_margin_start(4);
+            hbox.set_margin_end(4);
+            hbox.set_margin_top(4);
+            hbox.set_margin_bottom(4);
+
+            let logo = gtk::Image::new();
+            logo.set_pixel_size(24);
+            hbox.append(&logo);
+
+            let label = gtk::Label::new(None);
+            label.set_xalign(0.0);
+            hbox.append(&label);
+
+            item.set_child(Some(&hbox));
+        });
+
+        factory.connect_bind(|_, item| {
+            let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+            let team_obj = item.item().and_downcast::<TeamObject>().unwrap();
+            let hbox = item.child().and_downcast::<gtk::Box>().unwrap();
+
+            let logo = hbox
+                .first_child()
+                .unwrap()
+                .downcast::<gtk::Image>()
+                .unwrap();
+            let label = logo
+                .next_sibling()
+                .unwrap()
+                .downcast::<gtk::Label>()
+                .unwrap();
+
+            let team_data = team_obj.team_data();
+
+            let markup = format!(
+                "{} <span foreground='gray'>({})</span>",
+                glib::markup_escape_text(&team_data.name),
+                team_data.id
+            );
+            label.set_markup(&markup);
+
+            if let Some(mut url) = team_data.logo_url {
+                if url.starts_with("//") {
+                    url = format!("https:{}", url);
+                }
+
+                let logo_clone = logo.clone();
+                glib::MainContext::default().spawn_local(async move {
+                    use crate::utils::image::load_image_from_url;
+                    match load_image_from_url(&url).await {
+                        Ok(texture) => {
+                            logo_clone.set_paintable(Some(&texture));
+                        }
+                        Err(e) => {
+                            log::debug!("Failed to load team logo from {}: {}", url, e);
+                        }
+                    }
+                });
+            }
+        });
     }
 
     fn update_optimiser_players(&self, list_store: Option<gtk::ListStore>) {
@@ -352,26 +408,17 @@ impl NutmegWindow {
                     imp.sync_revealer.set_reveal_child(false);
                     imp.team_sync.set_sensitive(true);
 
-                    win.load_teams();
-                    // load_teams() fires selected-team notify, but call explicitly
-                    // in case the team list is unchanged and the notify doesn't fire.
-                    win.load_current_team_series_data();
+                    if let Some(ctrl) = win.imp().main_controller.borrow().as_ref() {
+                        ctrl.refresh_all_teams();
+                    }
                 }
             });
         });
 
-        // Notebook page switch handler
-        let window_weak = self.downgrade();
-        imp.notebook.connect_switch_page(move |_, page, _| {
-            let window = match window_weak.upgrade() {
-                Some(w) => w,
-                None => return,
-            };
-
-            let series_page_widget = window.imp().series_page.upcast_ref::<gtk::Widget>();
-            if page == series_page_widget {
-                window.load_current_team_series_data();
-            }
+        // Notebook page switch handler (no longer needs to demand data loading)
+        imp.notebook.connect_switch_page(move |_, _page, _| {
+            // ContextObject is now autonomous; data should already be present
+            // when switching to the Series tab.
         });
     }
 
@@ -402,7 +449,9 @@ impl NutmegWindow {
                                 Ok(()) => {
                                     log::info!("Database cleared successfully");
                                     // Reload teams to show empty state
-                                    win.load_teams();
+                                    if let Some(ctrl) = win.imp().main_controller.borrow().as_ref() {
+                                        ctrl.refresh_all_teams();
+                                    }
 
                                     let success_dialog = gtk::MessageDialog::builder()
                                         .transient_for(&win)
@@ -499,5 +548,24 @@ impl NutmegWindow {
             .build();
 
         self.add_action_entries([clear_db_action, delete_secrets_action]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_combo_teams_has_factory() {
+        gtk::init().unwrap();
+        gio::resources_register_include!("nutmeg.gresource").unwrap();
+        let app = gtk::Application::new(Some("org.gnome.Nutmeg.TestWindowFactory"), gio::ApplicationFlags::FLAGS_NONE);
+        let window = NutmegWindow::new(&app);
+
+        let dropdown = window.imp().combo_teams.clone();
+        assert!(
+            dropdown.factory().is_some(),
+            "combo_teams dropdown MUST have a factory configured to render the team name and logo."
+        );
     }
 }

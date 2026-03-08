@@ -117,12 +117,17 @@ mod imp {
                         .expect("Value must be Option<TeamObject>");
                     self.selected_team.replace(team);
                     self.obj().notify("selected-team");
-                    self.obj().fetch_upcoming_opponents();
                 }
                 "context" => {
                     let ctx = value
                         .get::<Option<crate::ui::context_object::ContextObject>>()
                         .expect("Value must be Option<ContextObject>");
+                    if let Some(c) = &ctx {
+                        let dropdown: &gtk::DropDown = &self.dropdown_team;
+                        c.bind_property("upcoming-opponents", dropdown, "model")
+                            .flags(glib::BindingFlags::SYNC_CREATE)
+                            .build();
+                    }
                     self.context.replace(ctx);
                     self.obj().notify("context");
                 }
@@ -194,10 +199,10 @@ mod imp {
 
                 let img_clone = img.clone();
                 let url = team_item.team_logo_url();
-                
+
                 // Set a placeholder while loading
                 img.set_icon_name(Some("image-missing"));
-                
+
                 glib::MainContext::default().spawn_local(async move {
                     if let Ok(texture) = crate::utils::image::load_image_from_url(&url).await {
                         img_clone.set_paintable(Some(&texture));
@@ -722,14 +727,12 @@ impl OpponentAnalysis {
                                 .and_then(|r| r.rating_midfield.map(|v| v as u32)),
                             rating_right_def: rating
                                 .and_then(|r| r.rating_right_def.map(|v| v as u32)),
-                            rating_mid_def: rating
-                                .and_then(|r| r.rating_mid_def.map(|v| v as u32)),
+                            rating_mid_def: rating.and_then(|r| r.rating_mid_def.map(|v| v as u32)),
                             rating_left_def: rating
                                 .and_then(|r| r.rating_left_def.map(|v| v as u32)),
                             rating_right_att: rating
                                 .and_then(|r| r.rating_right_att.map(|v| v as u32)),
-                            rating_mid_att: rating
-                                .and_then(|r| r.rating_mid_att.map(|v| v as u32)),
+                            rating_mid_att: rating.and_then(|r| r.rating_mid_att.map(|v| v as u32)),
                             rating_left_att: rating
                                 .and_then(|r| r.rating_left_att.map(|v| v as u32)),
                         }
@@ -746,13 +749,24 @@ impl OpponentAnalysis {
                     // Try fetch from API in background quietly
                     let secret_service = crate::service::secret::SystemSecretService::new();
                     use crate::service::secret::SecretStorageService;
-                    if let (Ok(Some(token)), Ok(Some(secret))) = (secret_service.get_secret("access_token").await, secret_service.get_secret("access_secret").await) {
-                        let filter_clone = if match_type_filter.is_empty() { None } else { Some(match_type_filter.clone()) };
+                    if let (Ok(Some(token)), Ok(Some(secret))) = (
+                        secret_service.get_secret("access_token").await,
+                        secret_service.get_secret("access_secret").await,
+                    ) {
+                        let filter_clone = if match_type_filter.is_empty() {
+                            None
+                        } else {
+                            Some(match_type_filter.clone())
+                        };
                         let ck = crate::config::consumer_key();
                         let cs = crate::config::consumer_secret();
-                        let get_auth = || crate::chpp::oauth::create_oauth_context(&ck, &cs, &token, &secret);
-                        if let Ok(analysis) = service.analyze_opponent(&get_auth, team_id, limit, filter_clone).await {
-                             local_imp.latest_matches.replace(analysis.matches);
+                        let get_auth =
+                            || crate::chpp::oauth::create_oauth_context(&ck, &cs, &token, &secret);
+                        if let Ok(analysis) = service
+                            .analyze_opponent(&get_auth, team_id, limit, filter_clone)
+                            .await
+                        {
+                            local_imp.latest_matches.replace(analysis.matches);
                         }
                     }
                 }
@@ -1027,32 +1041,67 @@ impl OpponentAnalysis {
                                 if let Some(ctx) = local_imp.context.borrow().as_ref() {
                                     if let Some(lineups) = ctx.best_lineups() {
                                         use crate::rating::types::RatingSector;
-                                        
+
                                         let mut best_lineup_name = String::new();
                                         let mut best_score = -9999.0;
-                                        
+
                                         for lineup in lineups {
-                                            let m = lineup.sector_ratings.get(&RatingSector::Midfield).unwrap_or(&0.0) - mid_avg;
-                                            
-                                            let al = lineup.sector_ratings.get(&RatingSector::AttackLeft).unwrap_or(&0.0) - rd_avg;
-                                            let ac = lineup.sector_ratings.get(&RatingSector::AttackCentral).unwrap_or(&0.0) - cd_avg;
-                                            let ar = lineup.sector_ratings.get(&RatingSector::AttackRight).unwrap_or(&0.0) - ld_avg;
-                                            
-                                            let dl = lineup.sector_ratings.get(&RatingSector::DefenceLeft).unwrap_or(&0.0) - ra_avg;
-                                            let dc = lineup.sector_ratings.get(&RatingSector::DefenceCentral).unwrap_or(&0.0) - ca_avg;
-                                            let dr = lineup.sector_ratings.get(&RatingSector::DefenceRight).unwrap_or(&0.0) - la_avg;
-                                            
+                                            let m = lineup
+                                                .sector_ratings
+                                                .get(&RatingSector::Midfield)
+                                                .unwrap_or(&0.0)
+                                                - mid_avg;
+
+                                            let al = lineup
+                                                .sector_ratings
+                                                .get(&RatingSector::AttackLeft)
+                                                .unwrap_or(&0.0)
+                                                - rd_avg;
+                                            let ac = lineup
+                                                .sector_ratings
+                                                .get(&RatingSector::AttackCentral)
+                                                .unwrap_or(&0.0)
+                                                - cd_avg;
+                                            let ar = lineup
+                                                .sector_ratings
+                                                .get(&RatingSector::AttackRight)
+                                                .unwrap_or(&0.0)
+                                                - ld_avg;
+
+                                            let dl = lineup
+                                                .sector_ratings
+                                                .get(&RatingSector::DefenceLeft)
+                                                .unwrap_or(&0.0)
+                                                - ra_avg;
+                                            let dc = lineup
+                                                .sector_ratings
+                                                .get(&RatingSector::DefenceCentral)
+                                                .unwrap_or(&0.0)
+                                                - ca_avg;
+                                            let dr = lineup
+                                                .sector_ratings
+                                                .get(&RatingSector::DefenceRight)
+                                                .unwrap_or(&0.0)
+                                                - la_avg;
+
                                             let score = (m * 3.0) + al + ac + ar + dl + dc + dr;
-                                            
+
                                             if score > best_score {
                                                 best_score = score;
-                                                best_lineup_name = lineup.formation.name().to_string();
+                                                best_lineup_name =
+                                                    lineup.formation.name().to_string();
                                             }
                                         }
-                                        
+
                                         if !best_lineup_name.is_empty() {
-                                            let current = local_imp.lbl_tactical_summary.label().to_string();
-                                            let summary = format!("{}\n\n<b>{}</b>: {}", current, gettext("Recommended Counter"), best_lineup_name);
+                                            let current =
+                                                local_imp.lbl_tactical_summary.label().to_string();
+                                            let summary = format!(
+                                                "{}\n\n<b>{}</b>: {}",
+                                                current,
+                                                gettext("Recommended Counter"),
+                                                best_lineup_name
+                                            );
                                             local_imp.lbl_tactical_summary.set_markup(&summary);
                                         }
                                     }
@@ -1077,90 +1126,6 @@ impl OpponentAnalysis {
                 spinner_clone.set_spinning(false);
                 btn_clone.set_sensitive(true);
             });
-        });
-    }
-
-    fn fetch_upcoming_opponents(&self) {
-        let team_obj = self.property::<Option<crate::ui::team_object::TeamObject>>("selected-team");
-        let our_team_id = if let Some(t) = team_obj {
-            t.team_data().id
-        } else {
-            return;
-        };
-
-        let dropdown = self.imp().dropdown_team.clone();
-        let list_store = gio::ListStore::new::<model::OpponentItem>();
-        dropdown.set_model(Some(&list_store));
-
-        let client = Arc::new(HattrickClient::new());
-        let service = OpponentAnalysisService::new(client);
-
-        // 1. Populate from DB immediately
-        if let Ok(opponents) = service.get_upcoming_opponents_from_db(our_team_id) {
-            for opp in opponents {
-                let logo_url = format!(
-                    "//res.hattrick.org/teamlogo/{}/{}/{}/{}/{}.png",
-                    opp.team_id % 10,
-                    opp.team_id % 100,
-                    opp.team_id % 1000,
-                    opp.team_id,
-                    opp.team_id
-                );
-                let item = model::OpponentItem::new(
-                    opp.team_id,
-                    &opp.team_name,
-                    &opp.match_date,
-                    &logo_url,
-                );
-                list_store.append(&item);
-            }
-        }
-
-        // 2. Then try to refresh from API in background if secrets available
-        glib::MainContext::default().spawn_local(async move {
-            let secret_service = SystemSecretService::new();
-            use crate::service::secret::SecretStorageService;
-
-            let token_res = secret_service.get_secret("access_token").await;
-            let secret_res = secret_service.get_secret("access_secret").await;
-
-            if let (Ok(Some(token)), Ok(Some(secret))) = (token_res, secret_res) {
-                let ck = consumer_key();
-                let cs = consumer_secret();
-
-                let get_auth =
-                    || crate::chpp::oauth::create_oauth_context(&ck, &cs, &token, &secret);
-
-                match service.get_upcoming_opponents(&get_auth, our_team_id).await {
-                    Ok(opponents) => {
-                        // Clear and repopulate if we got fresh data
-                        // This ensures we have the latest names/dates if they changed
-                        list_store.remove_all();
-                        for opp in opponents {
-                            let logo_url = format!(
-                                "//res.hattrick.org/teamlogo/{}/{}/{}/{}/{}.png",
-                                opp.team_id % 10,
-                                opp.team_id % 100,
-                                opp.team_id % 1000,
-                                opp.team_id,
-                                opp.team_id
-                            );
-                            let item = model::OpponentItem::new(
-                                opp.team_id,
-                                &opp.team_name,
-                                &opp.match_date,
-                                &logo_url,
-                            );
-                            list_store.append(&item);
-                        }
-                        // Note: Matches from get_upcoming_opponents are NOT automatically saved to DB here
-                        // but they will be saved when a full sync happens or if we add persistence logic here.
-                    }
-                    Err(_e) => {
-                        debug!("Failed to refresh upcoming opponents from API: {}", _e);
-                    }
-                }
-            }
         });
     }
 }
