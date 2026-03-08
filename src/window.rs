@@ -561,7 +561,10 @@ mod tests {
     fn test_combo_teams_has_factory() {
         gtk::init().unwrap();
         gio::resources_register_include!("nutmeg.gresource").unwrap();
-        let app = gtk::Application::new(Some("org.gnome.Nutmeg.TestWindowFactory"), gio::ApplicationFlags::FLAGS_NONE);
+        let app = gtk::Application::new(
+            Some("org.gnome.Nutmeg.TestWindowFactory"),
+            gio::ApplicationFlags::FLAGS_NONE,
+        );
         let window = NutmegWindow::new(&app);
 
         let dropdown = window.imp().combo_teams.clone();

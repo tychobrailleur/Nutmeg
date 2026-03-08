@@ -28,9 +28,9 @@ impl MatchOutcome {
     /// RGB colour used when drawing the result disc.
     fn colour(&self) -> (f64, f64, f64) {
         match self {
-            MatchOutcome::Win => (0.22, 0.71, 0.29),   // green
-            MatchOutcome::Draw => (1.00, 0.75, 0.00),  // yellow/orange
-            MatchOutcome::Loss => (0.87, 0.20, 0.20),  // red
+            MatchOutcome::Win => (0.22, 0.71, 0.29),  // green
+            MatchOutcome::Draw => (1.00, 0.75, 0.00), // yellow/orange
+            MatchOutcome::Loss => (0.87, 0.20, 0.20), // red
         }
     }
 }
@@ -40,18 +40,12 @@ impl MatchOutcome {
 /// Computes the last `max_results` finished league outcomes for `team_id` from
 /// a flat list of match details, ordered from oldest to newest so the Form bar
 /// reads left-to-right in chronological order.
-fn compute_form(
-    team_id: &str,
-    matches: &[MatchDetails],
-    league_unit_id: u32,
-    max_results: usize,
-) -> Vec<MatchOutcome> {
+fn compute_form(team_id: &str, matches: &[MatchDetails], max_results: usize) -> Vec<MatchOutcome> {
     let mut finished: Vec<&MatchDetails> = matches
         .iter()
         .filter(|m| {
             m.Status.to_uppercase() == "FINISHED"
                 && m.MatchType == 1 // league only
-                && (m.MatchContextId.is_none() || m.MatchContextId == Some(league_unit_id))
                 && (m.HomeTeam.HomeTeamID == team_id || m.AwayTeam.AwayTeamID == team_id)
                 && m.HomeGoals.is_some()
                 && m.AwayGoals.is_some()
@@ -304,10 +298,9 @@ impl SeriesPage {
                 league_data.LeagueLevelUnitName, league_data.LeagueLevelUnitID
             ));
 
-            let league_unit_id = league_data.LeagueLevelUnitID;
             let store = gtk::gio::ListStore::new::<LeagueTeamObject>();
             for team in &league_data.Teams {
-                let form = compute_form(&team.TeamID, match_dataset, league_unit_id, 5);
+                let form = compute_form(&team.TeamID, match_dataset, 5);
                 let tid = team.TeamID.parse::<i32>().unwrap_or(0);
                 let logo_url = logo_urls.get(&tid).cloned();
                 store.append(&LeagueTeamObject::new(team.clone(), form, logo_url));
@@ -518,8 +511,19 @@ impl SeriesPage {
                                 let draw_weak = badge_draw.downgrade();
                                 let target_id = team_id.clone();
                                 glib::MainContext::default().spawn_local(async move {
-                                    // Another concurrent task may have already loaded this URL.
-                                    if IMAGE_CACHE.with(|c| c.borrow().contains_key(&fixed_url)) {
+                                    // Another concurrent task may have already populated the cache.
+                                    if let Some(texture) =
+                                        IMAGE_CACHE.with(|c| c.borrow().get(&fixed_url).cloned())
+                                    {
+                                        if let Some(img) = img_weak.upgrade() {
+                                            if img.widget_name() == target_id {
+                                                img.set_paintable(Some(&texture));
+                                                img.set_visible(true);
+                                                if let Some(draw) = draw_weak.upgrade() {
+                                                    draw.set_visible(false);
+                                                }
+                                            }
+                                        }
                                         return;
                                     }
 
@@ -721,7 +725,7 @@ mod tests {
             make_match(2, "20", "10", 1, 1, "2026-01-08 20:00:00"), // draw
             make_match(3, "10", "30", 0, 2, "2026-01-15 20:00:00"), // team 10 loses
         ];
-        let form = compute_form("10", &matches, 123, 5);
+        let form = compute_form("10", &matches, 5);
         assert_eq!(
             form,
             vec![MatchOutcome::Win, MatchOutcome::Draw, MatchOutcome::Loss]
@@ -733,7 +737,7 @@ mod tests {
         let matches: Vec<MatchDetails> = (1..=8)
             .map(|i| make_match(i, "10", "20", 1, 0, &format!("2026-01-{:02} 20:00:00", i)))
             .collect();
-        let form = compute_form("10", &matches, 123, 5);
+        let form = compute_form("10", &matches, 5);
         assert_eq!(form.len(), 5);
         assert!(form.iter().all(|&o| o == MatchOutcome::Win));
     }
@@ -742,8 +746,50 @@ mod tests {
     fn test_compute_form_excludes_cup_matches() {
         let mut m = make_match(1, "10", "20", 3, 1, "2026-01-01 20:00:00");
         m.MatchType = 3; // cup — must be excluded
-        let form = compute_form("10", &[m], 123, 5);
+        let form = compute_form("10", &[m], 5);
         assert!(form.is_empty());
+    }
+
+    // ── Regression tests for the two fixed bugs ──────────────────────────────
+
+    #[test]
+    fn test_compute_form_includes_match_with_context_id_zero() {
+        // Simulates a league match row saved by the archive endpoint with
+        // MatchContextId = Some(0) — the pattern that used to cause form to break.
+        let mut m = make_match(1, "10", "20", 2, 1, "2026-01-01 20:00:00");
+        m.MatchContextId = Some(0);
+        let form = compute_form("10", &[m], 5);
+        assert_eq!(form, vec![MatchOutcome::Win]);
+    }
+
+    #[test]
+    fn test_compute_form_includes_match_with_context_id_none() {
+        // Archive endpoint sometimes omits MatchContextId entirely.
+        let mut m = make_match(1, "10", "20", 1, 2, "2026-01-01 20:00:00");
+        m.MatchContextId = None;
+        let form = compute_form("10", &[m], 5);
+        assert_eq!(form, vec![MatchOutcome::Loss]);
+    }
+
+    #[test]
+    fn test_compute_form_not_affected_by_context_id_value() {
+        // Regardless of MatchContextId (correct value, zero, or None), a
+        // MatchType == 1 match must always appear in the form bar.
+        let league_unit_id = 54321u32;
+        let mut with_correct = make_match(1, "10", "20", 2, 0, "2026-01-01 20:00:00");
+        with_correct.MatchContextId = Some(league_unit_id);
+
+        let mut with_zero = make_match(2, "10", "30", 1, 1, "2026-01-08 20:00:00");
+        with_zero.MatchContextId = Some(0);
+
+        let mut with_none = make_match(3, "10", "40", 0, 1, "2026-01-15 20:00:00");
+        with_none.MatchContextId = None;
+
+        let form = compute_form("10", &[with_correct, with_zero, with_none], 5);
+        assert_eq!(
+            form,
+            vec![MatchOutcome::Win, MatchOutcome::Draw, MatchOutcome::Loss]
+        );
     }
 
     #[test]
