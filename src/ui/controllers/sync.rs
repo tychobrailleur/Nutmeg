@@ -2,6 +2,7 @@ use crate::db::manager::DbManager;
 use crate::service::auth::{AuthenticationService, HattrickAuthService};
 use crate::service::secret::{SecretStorageService, SystemSecretService};
 use crate::service::sync::{DataSyncService, ProgressCallback, SyncService};
+use crate::ui::context_object::ContextObject;
 use crate::ui::oauth_dialog::OAuthDialog;
 use crate::window::NutmegWindow;
 use gtk::glib;
@@ -20,6 +21,7 @@ impl SyncController {
     /// 4. Reports progress via the provided sender.
     pub async fn perform_sync(
         window_weak: glib::WeakRef<NutmegWindow>,
+        context: ContextObject,
         sender: tokio::sync::mpsc::UnboundedSender<(f64, String)>,
     ) {
         let db = Arc::new(DbManager::new());
@@ -46,8 +48,10 @@ impl SyncController {
                 let sync_clone = Arc::new(SyncService::new(db.clone()));
                 let key_clone = key.clone();
                 let secret_clone = secret.clone();
+                let ctx_clone = context.clone();
 
-                tokio::spawn(async move {
+                let ctx_clone = context.clone();
+                glib::MainContext::default().spawn_local(async move {
                     if let Err(e) = sync_clone
                         .perform_avatar_sync_with_stored_secrets(
                             key_clone,
@@ -59,7 +63,15 @@ impl SyncController {
                     {
                         warn!("Background avatar fetch failed: {}", e);
                     } else {
-                        info!("Background avatar fetch completed.");
+                        info!("Background avatar fetch completed. Refreshing player list.");
+                        // Re-trigger player list load to include new avatars
+                        if let Some(selected) = ctx_clone.selected_team() {
+                            let squad_controller =
+                                crate::ui::controllers::squad_tab::SquadTabController::new(
+                                    ctx_clone.clone(),
+                                );
+                            squad_controller.on_team_selected(&selected);
+                        }
                     }
                 });
             }
@@ -68,6 +80,7 @@ impl SyncController {
                 // OAuth Flow
                 if let Err(e) = Self::start_oauth_flow(
                     window_weak,
+                    context,
                     &key,
                     &secret,
                     &sync,
@@ -93,6 +106,7 @@ impl SyncController {
 
     async fn start_oauth_flow(
         window_weak: glib::WeakRef<NutmegWindow>,
+        context: ContextObject,
         key: &str,
         secret: &str,
         sync: &SyncService,
@@ -140,10 +154,7 @@ impl SyncController {
                 .await?;
 
             // 6. Retry Sync — pass the freshly obtained tokens directly instead of
-            //    re-reading them from the keychain.  A round-trip through the system
-            //    keychain immediately after writing can return Ok(None) on some
-            //    platforms (macOS Keychain visibility race), which would cause the sync
-            //    to silently fail even though authentication succeeded.
+            //    re-reading them from the keychain.
             match sync
                 .perform_initial_sync(
                     key.to_string(),
@@ -160,8 +171,10 @@ impl SyncController {
                     let sync_clone = Arc::new(SyncService::new(db));
                     let key_clone = key.to_string();
                     let secret_clone = secret.to_string();
+                    let ctx_clone = context.clone();
 
-                    tokio::spawn(async move {
+                    let ctx_clone = context.clone();
+                    glib::MainContext::default().spawn_local(async move {
                         if let Err(e) = sync_clone
                             .perform_avatar_sync_with_stored_secrets(
                                 key_clone,
@@ -173,7 +186,14 @@ impl SyncController {
                         {
                             warn!("Background avatar fetch failed: {}", e);
                         } else {
-                            info!("Background avatar fetch completed.");
+                            info!("Background avatar fetch completed. Refreshing player list.");
+                            if let Some(selected) = ctx_clone.selected_team() {
+                                let squad_controller =
+                                    crate::ui::controllers::squad_tab::SquadTabController::new(
+                                        ctx_clone.clone(),
+                                    );
+                                squad_controller.on_team_selected(&selected);
+                            }
                         }
                     });
                 }

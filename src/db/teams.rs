@@ -1144,23 +1144,36 @@ pub fn get_players_for_team(
         .filter_map(|(id, flag)| flag.map(|flag_emoji| (id, flag_emoji)))
         .collect();
 
-    let results: Vec<(PlayerEntity, Option<AvatarEntity>)> = players::table
-        .left_join(
-            avatars::table.on(avatars::player_id
-                .eq(players::id)
-                .and(avatars::download_id.eq(players::download_id))),
-        )
+    let results: Vec<PlayerEntity> = players::table
         .filter(players::team_id.eq(team_id_in as i32))
         .filter(players::download_id.eq(download_id_filter))
-        .load::<(PlayerEntity, Option<AvatarEntity>)>(conn)
+        .load::<PlayerEntity>(conn)
         .map_err(|e| Error::Db(format!("Failed to load players: {}", e)))?;
 
+    let player_ids: Vec<i32> = results.iter().map(|p| p.id).collect();
+
+    // Fetch avatars separately to get the latest available for each player,
+    // regardless of whether they were part of the initial player download.
+    let avatars_rows: Vec<(i32, Vec<u8>)> = avatars::table
+        .filter(avatars::player_id.eq_any(player_ids))
+        .order((avatars::player_id.asc(), avatars::download_id.desc()))
+        .select((avatars::player_id, avatars::image))
+        .load::<(i32, Vec<u8>)>(conn)
+        .map_err(|e| Error::Db(format!("Failed to load avatars: {}", e)))?;
+
+    let mut avatar_map = std::collections::HashMap::new();
+    for (pid, img) in avatars_rows {
+        avatar_map.entry(pid).or_insert(img);
+    }
+
     let mut players = Vec::new();
-    for (entity, avatar_entity) in results {
+    for entity in results {
         let flag = country_map.get(&entity.country_id).cloned();
         let native_flag = entity
             .native_country_id
             .and_then(|id| country_map.get(&id).cloned());
+
+        let avatar_blob = avatar_map.get(&entity.id).cloned();
 
         players.push(crate::chpp::model::Player {
             PlayerID: entity.id as u32,
@@ -1201,7 +1214,7 @@ pub fn get_players_for_team(
             CapsU20: entity.caps_u20.map(|v| v as u32),
             Cards: entity.cards.map(|v| v as u32),
             InjuryLevel: entity.injury_level,
-            AvatarBlob: avatar_entity.map(|a| a.image),
+            AvatarBlob: avatar_blob,
             Flag: flag,
             NativeCountryFlag: native_flag,
             ReferencePlayerID: None,
@@ -1313,8 +1326,10 @@ pub fn get_logo_urls_for_teams(
     }
 
     // For each team_id, pick the row with the highest download_id (latest data).
+    // Filter out empty strings which are sometimes returned by Hattrick for non-pro users or bots.
     let rows: Vec<(i32, Option<String>)> = teams::table
         .filter(teams::id.eq_any(team_ids))
+        .filter(teams::logo_url.ne(""))
         .order((teams::id.asc(), teams::download_id.desc()))
         .select((teams::id, teams::logo_url))
         .load::<(i32, Option<String>)>(conn)

@@ -360,6 +360,7 @@ impl NutmegWindow {
 
         // Sync Handler
         let window_weak = self.downgrade();
+        let context_object_clone = imp.context_object.clone();
         imp.team_sync.connect_clicked(move |_| {
             let window = match window_weak.upgrade() {
                 Some(w) => w,
@@ -367,6 +368,7 @@ impl NutmegWindow {
             };
 
             let imp = window.imp();
+            let context = context_object_clone.clone();
 
             // Disable button
             imp.team_sync.set_sensitive(false);
@@ -396,7 +398,7 @@ impl NutmegWindow {
             glib::MainContext::default().spawn_local(async move {
                 // Delegate to SyncController
                 use crate::ui::controllers::sync::SyncController;
-                SyncController::perform_sync(window_weak_completion.clone(), sender).await;
+                SyncController::perform_sync(window_weak_completion.clone(), context, sender).await;
 
                 // UI Cleanup
                 if let Some(win) = window_weak_completion.upgrade() {

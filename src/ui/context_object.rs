@@ -121,6 +121,10 @@ impl ContextObject {
         glib::Object::new()
     }
 
+    pub fn selected_team(&self) -> Option<TeamObject> {
+        self.property::<Option<TeamObject>>("selected-team")
+    }
+
     fn notify_selected_team(&self) {
         self.notify("selected-team");
     }

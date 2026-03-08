@@ -28,9 +28,9 @@ impl MatchOutcome {
     /// RGB colour used when drawing the result disc.
     fn colour(&self) -> (f64, f64, f64) {
         match self {
-            MatchOutcome::Win => (0.22, 0.71, 0.29),  // green
-            MatchOutcome::Draw => (0.60, 0.60, 0.60), // grey
-            MatchOutcome::Loss => (0.87, 0.20, 0.20), // red
+            MatchOutcome::Win => (0.22, 0.71, 0.29),   // green
+            MatchOutcome::Draw => (1.00, 0.75, 0.00),  // yellow/orange
+            MatchOutcome::Loss => (0.87, 0.20, 0.20),  // red
         }
     }
 }
@@ -594,12 +594,17 @@ impl SeriesPage {
             let item = item.downcast_ref::<ListItem>().unwrap();
             if let Some(obj) = item.item().and_downcast::<LeagueTeamObject>() {
                 let form = obj.imp().form.borrow().clone();
+                let missing_count = DISC_COUNT.saturating_sub(form.len());
                 if let Some(row) = item.child().and_downcast::<gtk::Box>() {
                     let mut child_opt = row.first_child();
                     for i in 0..DISC_COUNT {
                         if let Some(child) = child_opt {
                             if let Some(disc) = child.downcast_ref::<DrawingArea>() {
-                                let outcome = form.get(i).copied();
+                                let outcome = if i >= missing_count {
+                                    form.get(i - missing_count).copied()
+                                } else {
+                                    None
+                                };
                                 disc.set_draw_func(move |_, cr, w, h| {
                                     let cx = w as f64 / 2.0;
                                     let cy = h as f64 / 2.0;
