@@ -208,23 +208,21 @@ impl ContextObject {
         self.notify("players");
     }
 
-    pub fn set_league_details(&self, details: Option<crate::chpp::model::LeagueDetailsData>) {
-        self.imp().league_details.replace(details);
-        self.notify("data-loaded");
-    }
-
-    pub fn set_matches(&self, matches: Option<crate::chpp::model::MatchesData>) {
+    /// Sets all four series fields atomically and fires `data-loaded` exactly once.
+    ///
+    /// Prefer this over calling the individual setters to avoid triggering multiple
+    /// partial redraws of the series page.
+    pub fn set_series_data(
+        &self,
+        league: Option<crate::chpp::model::LeagueDetailsData>,
+        matches: Option<crate::chpp::model::MatchesData>,
+        all_matches: Option<Vec<crate::chpp::model::MatchDetails>>,
+        logo_urls: Option<std::collections::HashMap<i32, String>>,
+    ) {
+        self.imp().league_details.replace(league);
         self.imp().matches.replace(matches);
-        self.notify("data-loaded");
-    }
-
-    pub fn set_all_series_matches(&self, matches: Option<Vec<crate::chpp::model::MatchDetails>>) {
-        self.imp().all_series_matches.replace(matches);
-        self.notify("data-loaded");
-    }
-
-    pub fn set_series_logo_urls(&self, logos: Option<std::collections::HashMap<i32, String>>) {
-        self.imp().series_logo_urls.replace(logos);
+        self.imp().all_series_matches.replace(all_matches);
+        self.imp().series_logo_urls.replace(logo_urls);
         self.notify("data-loaded");
     }
 }
