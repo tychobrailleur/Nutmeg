@@ -890,19 +890,6 @@ pub fn save_team(
 }
 
 // Returns the ID of the most recent completed download, or None if no downloads exist
-pub fn get_latest_download_id(conn: &mut SqliteConnection) -> Result<Option<i32>, Error> {
-    use crate::db::schema::downloads::dsl::*;
-    use diesel::prelude::*;
-
-    downloads
-        .filter(status.eq("completed"))
-        .select(id)
-        .order(id.desc())
-        .first::<i32>(conn)
-        .optional()
-        .map_err(|e| Error::Db(format!("Failed to get latest download: {}", e)))
-}
-
 // Returns a list of (TeamID, TeamName) for all teams in the DB.
 pub fn get_teams_summary(
     conn: &mut SqliteConnection,
@@ -1271,15 +1258,13 @@ pub fn get_players_for_team(
 pub fn get_team(conn: &mut SqliteConnection, team_id: u32) -> Result<Option<Team>, Error> {
     use crate::db::schema::teams::dsl::*;
 
-    let latest_download = get_latest_download_id(conn)?;
-    if latest_download.is_none() {
-        return Ok(None);
-    }
-    let download_id_filter = latest_download.unwrap();
-
+    // Use the most recent download for *this specific team* rather than the
+    // globally latest download_id.  After a background series sync the global
+    // latest download_id belongs to a run that only saved opponent teams; the
+    // user's own team would not be present at that id, causing a spurious None.
     let result = teams
         .filter(id.eq(team_id as i32))
-        .filter(download_id.eq(download_id_filter))
+        .order(download_id.desc())
         .first::<TeamEntity>(conn)
         .optional()
         .map_err(|e| Error::Io(format!("Database error: {}", e)))?;
