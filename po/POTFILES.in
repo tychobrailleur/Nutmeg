@@ -1,7 +1,14 @@
 # List of source files containing translatable strings.
 # Please keep this file sorted alphabetically.
 data/org.gnome.Nutmeg.desktop.in
-data/org.gnome.Nutmeg.metainfo.xml.in
 data/org.gnome.Nutmeg.gschema.xml
+data/org.gnome.Nutmeg.metainfo.xml.in
+src/opponent_analysis/ui/opponent_analysis.ui
+src/rating/ui/page.ui
+src/series/ui/page.ui
 src/setup_window.ui
+src/squad/ui/player_details.ui
+src/squad/ui/player_list.ui
+src/training/ui/page.ui
+src/ui/help-overlay.ui
 src/window.ui

@@ -118,9 +118,7 @@ impl SquadTabController {
         if let Some(best) = evaluation.best_position {
             debug!(
                 "  Best position: {:?} ({:?}) with rating {:.2}",
-                best.position,
-                best.behaviour,
-                best.rating
+                best.position, best.behaviour, best.rating
             );
             Self::format_position_display(&best.position, &best.behaviour)
         } else {

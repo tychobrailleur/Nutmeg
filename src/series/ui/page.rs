@@ -6,7 +6,7 @@
  */
 
 use crate::chpp::model::{LeagueDetailsData, LeagueTeam, MatchDetails, MatchesData};
-use log::{debug, warn};
+use gettextrs::gettext;
 use glib::subclass::InitializingObject;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
@@ -14,6 +14,7 @@ use gtk::{
     glib, ColumnView, ColumnViewColumn, CompositeTemplate, DrawingArea, Label, ListItem,
     SignalListItemFactory,
 };
+use log::{debug, warn};
 
 // ── Match outcome ──────────────────────────────────────────────────────────────
 
@@ -333,12 +334,7 @@ impl SeriesPage {
 
             let store = gtk::gio::ListStore::new::<LeagueTeamObject>();
             for team in &league_data.Teams {
-                let form = compute_form(
-                    &team.TeamID,
-                    match_dataset,
-                    5,
-                    team.Matches as usize,
-                );
+                let form = compute_form(&team.TeamID, match_dataset, 5, team.Matches as usize);
                 let tid = team.TeamID.parse::<i32>().unwrap_or(0);
                 let logo_url = logo_urls.get(&tid).cloned();
                 store.append(&LeagueTeamObject::new(team.clone(), form, logo_url));
@@ -370,25 +366,30 @@ impl SeriesPage {
         // ── Series Table ──────────────────────────────────────────────────────
         let view = &imp.league_table_view;
 
-        self.add_league_text_column(view, "Pos", |t| t.Position.to_string());
+        // translators: league table column headers (keep abbreviations short)
+        self.add_league_text_column(view, &gettext("Pos"), |t| t.Position.to_string());
         self.add_badge_name_column(view);
-        self.add_league_text_column(view, "P", |t| t.Matches.to_string());
-        self.add_league_text_column(view, "W", |t| t.Won.to_string());
-        self.add_league_text_column(view, "D", |t| t.Draws.to_string());
-        self.add_league_text_column(view, "L", |t| t.Lost.to_string());
-        self.add_league_text_column(view, "GD", |t| {
+        self.add_league_text_column(view, &gettext("P"), |t| t.Matches.to_string());
+        self.add_league_text_column(view, &gettext("W"), |t| t.Won.to_string());
+        self.add_league_text_column(view, &gettext("D"), |t| t.Draws.to_string());
+        self.add_league_text_column(view, &gettext("L"), |t| t.Lost.to_string());
+        self.add_league_text_column(view, &gettext("GD"), |t| {
             (t.GoalsFor as i32 - t.GoalsAgainst as i32).to_string()
         });
-        self.add_league_text_column(view, "Pts", |t| t.Points.to_string());
+        self.add_league_text_column(view, &gettext("Pts"), |t| t.Points.to_string());
         self.add_form_column(view);
 
         // ── Matches ───────────────────────────────────────────────────────────
         let matches_view = &imp.matches_list_view;
 
-        self.add_match_column(matches_view, "Date", |m| m.MatchDate.clone());
-        self.add_match_column(matches_view, "Home", |m| m.HomeTeam.HomeTeamName.clone());
-        self.add_match_column(matches_view, "Score", format_match_score);
-        self.add_match_column(matches_view, "Away", |m| m.AwayTeam.AwayTeamName.clone());
+        self.add_match_column(matches_view, &gettext("Date"), false, |m| m.MatchDate.clone());
+        self.add_match_column(matches_view, &gettext("Home"), true, |m| {
+            m.HomeTeam.HomeTeamName.clone()
+        });
+        self.add_match_column(matches_view, &gettext("Score"), false, format_match_score);
+        self.add_match_column(matches_view, &gettext("Away"), true, |m| {
+            m.AwayTeam.AwayTeamName.clone()
+        });
     }
 
     // ── Column builders ───────────────────────────────────────────────────────
@@ -585,8 +586,7 @@ impl SeriesPage {
                                         Err(e) => {
                                             warn!(
                                                 "Failed to load team logo from '{}': {}",
-                                                fixed_url,
-                                                e
+                                                fixed_url, e
                                             );
                                         }
                                     }
@@ -601,7 +601,7 @@ impl SeriesPage {
             }
         });
 
-        let column = ColumnViewColumn::new(Some("Team"), Some(factory));
+        let column = ColumnViewColumn::new(Some(&gettext("Team")), Some(factory));
         column.set_expand(true);
         view.append_column(&column);
     }
@@ -656,14 +656,16 @@ impl SeriesPage {
                                         cr.set_source_rgb(dr, dg, db);
                                         let _ = cr.fill();
                                     });
-                                    let tooltip = format!(
-                                        "{}\n{} {} – {} {}",
-                                        entry.match_date,
-                                        entry.home_team,
-                                        entry.home_goals,
-                                        entry.away_goals,
-                                        entry.away_team,
-                                    );
+                                    // translators: Form disc tooltip.
+                                    // {date} = match date, {home} = home team name,
+                                    // {hg} = home goals, {ag} = away goals,
+                                    // {away} = away team name.
+                                    let tooltip = gettext("{date}\n{home} {hg} \u{2013} {ag} {away}")
+                                        .replace("{date}", &entry.match_date)
+                                        .replace("{home}", &entry.home_team)
+                                        .replace("{hg}", &entry.home_goals.to_string())
+                                        .replace("{ag}", &entry.away_goals.to_string())
+                                        .replace("{away}", &entry.away_team);
                                     disc.set_tooltip_text(Some(&tooltip));
                                 } else {
                                     // No game for this slot in the current season.
@@ -684,7 +686,7 @@ impl SeriesPage {
     }
 
     /// Simple text column for match rows.
-    fn add_match_column<F>(&self, view: &ColumnView, title: &str, extractor: F)
+    fn add_match_column<F>(&self, view: &ColumnView, title: &str, expand: bool, extractor: F)
     where
         F: Fn(&MatchDetails) -> String + 'static + Clone,
     {
@@ -718,7 +720,7 @@ impl SeriesPage {
         });
 
         let column = ColumnViewColumn::new(Some(title), Some(factory));
-        if title == "Home" || title == "Away" {
+        if expand {
             column.set_expand(true);
         }
         view.append_column(&column);
@@ -729,7 +731,11 @@ impl SeriesPage {
 
 fn format_match_score(details: &MatchDetails) -> String {
     match (details.HomeGoals, details.AwayGoals) {
-        (Some(h), Some(a)) => format!("{} - {}", h, a),
+        // translators: Football match score. {home} = home goals, {away} = away goals.
+        // The separator and order can be changed for regional conventions (e.g. "3 : 2").
+        (Some(h), Some(a)) => gettext("{home} \u{2013} {away}")
+            .replace("{home}", &h.to_string())
+            .replace("{away}", &a.to_string()),
         _ => "-".to_string(),
     }
 }

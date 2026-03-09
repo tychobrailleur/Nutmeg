@@ -357,8 +357,7 @@ impl SyncService {
 
         info!(
             "User: {} ({})",
-            hattrick_data.User.UserID,
-            hattrick_data.User.Loginname
+            hattrick_data.User.UserID, hattrick_data.User.Loginname
         );
 
         let user = hattrick_data.User;
@@ -513,7 +512,10 @@ impl SyncService {
                 .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
             }
             Err(e) => {
-                warn!("[sync] Failed to fetch archived matches for team {}: {}", team_id, e);
+                warn!(
+                    "[sync] Failed to fetch archived matches for team {}: {}",
+                    team_id, e
+                );
             }
         }
 
@@ -941,7 +943,11 @@ impl SyncService {
             download_id,
         )
         .await?;
-        info!("[sync] user_data (team {}): {:.2}s", team_id, t.elapsed().as_secs_f64());
+        info!(
+            "[sync] user_data (team {}): {:.2}s",
+            team_id,
+            t.elapsed().as_secs_f64()
+        );
 
         on_progress(0.6, "Fetching players...");
         let t = Instant::now();

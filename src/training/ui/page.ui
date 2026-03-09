@@ -16,7 +16,7 @@
         
         <child>
             <object class="GtkLabel">
-                <property name="label">Saved Plans</property>
+                <property name="label" translatable="yes">Saved Plans</property>
                 <property name="css-classes">heading</property>
                 <property name="halign">start</property>
             </object>
@@ -40,7 +40,7 @@
                 <property name="spacing">6</property>
                 <child>
                     <object class="GtkButton" id="new_plan_button">
-                        <property name="label">New Plan</property>
+                        <property name="label" translatable="yes">New Plan</property>
                         <property name="icon-name">list-add-symbolic</property>
                         <property name="hexpand">true</property>
                     </object>
@@ -48,7 +48,7 @@
                 <child>
                     <object class="GtkButton" id="delete_plan_button">
                         <property name="icon-name">user-trash-symbolic</property>
-                        <property name="tooltip-text">Delete current plan</property>
+                        <property name="tooltip-text" translatable="yes">Delete current plan</property>
                     </object>
                 </child>
             </object>
@@ -76,7 +76,7 @@
                     <property name="spacing">4</property>
                     <child>
                         <object class="GtkEntry" id="plan_name_entry">
-                            <property name="placeholder-text">Plan Name</property>
+                            <property name="placeholder-text" translatable="yes">Plan Name</property>
                         </object>
                     </child>
                     <child>
@@ -97,14 +97,14 @@
                     <property name="spacing">12</property>
                     <child>
                         <object class="GtkLabel">
-                            <property name="label">Training Cycle</property>
+                            <property name="label" translatable="yes">Training Cycle</property>
                             <property name="css-classes">heading</property>
                             <property name="halign">start</property>
                         </object>
                     </child>
                     <child>
                          <object class="GtkButton" id="add_step_button">
-                            <property name="label">Add Step</property>
+                            <property name="label" translatable="yes">Add Step</property>
                             <property name="icon-name">list-add-symbolic</property>
                             <property name="halign">end</property>
                             <property name="hexpand">true</property>
@@ -127,7 +127,7 @@
             <!-- Target Players -->
             <child>
                 <object class="GtkLabel">
-                    <property name="label">Target Players</property>
+                    <property name="label" translatable="yes">Target Players</property>
                     <property name="css-classes">heading</property>
                     <property name="halign">start</property>
                 </object>
@@ -150,13 +150,13 @@
                     <property name="spacing">6</property>
                     <child>
                         <object class="GtkButton" id="simulate_button">
-                            <property name="label">Simulate Cycle</property>
+                            <property name="label" translatable="yes">Simulate Cycle</property>
                             <property name="icon-name">media-playback-start-symbolic</property>
                         </object>
                     </child>
                     <child>
                         <object class="GtkLabel" id="results_label">
-                            <property name="label">Projections will appear here</property>
+                            <property name="label" translatable="yes">Projections will appear here</property>
                             <property name="css-classes">dim-label</property>
                             <property name="wrap">true</property>
                             <property name="selectable">true</property>

@@ -73,7 +73,14 @@ impl SyncController {
         {
             Ok(Some((team_id, download_id))) => {
                 info!("Sync completed successfully");
-                Self::spawn_avatar_refresh(db.clone(), context.clone(), key.clone(), secret.clone(), team_id, download_id);
+                Self::spawn_avatar_refresh(
+                    db.clone(),
+                    context.clone(),
+                    key.clone(),
+                    secret.clone(),
+                    team_id,
+                    download_id,
+                );
             }
             Ok(None) => {
                 warn!("Sync failed: No credentials found, starting OAuth flow...");
@@ -167,7 +174,14 @@ impl SyncController {
             {
                 Ok((team_id, download_id)) => {
                     info!("Retry sync successful");
-                    Self::spawn_avatar_refresh(db, context.clone(), key.to_string(), secret.to_string(), team_id, download_id);
+                    Self::spawn_avatar_refresh(
+                        db,
+                        context.clone(),
+                        key.to_string(),
+                        secret.to_string(),
+                        team_id,
+                        download_id,
+                    );
                 }
                 Err(e) => return Err(format!("Retry sync error: {}", e).into()),
             }

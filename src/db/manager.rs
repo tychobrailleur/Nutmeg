@@ -186,7 +186,6 @@ impl DbManager {
         })
         .map_err(|e| Error::Io(format!("Failed to clear database: {}", e)))
     }
-
 }
 
 #[cfg(test)]

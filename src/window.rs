@@ -110,10 +110,7 @@ mod imp {
             self.parent_constructed();
             let obj = self.obj();
 
-            // Setup Signals
             obj.setup_signals();
-
-            // Setup Bindings
             obj.setup_bindings();
 
             let factory = gtk::SignalListItemFactory::new();
@@ -132,7 +129,6 @@ mod imp {
                 .training_planner
                 .set_context_object(&obj.imp().context_object.clone());
 
-            // Setup window actions
             obj.setup_actions();
 
             // Load CSS

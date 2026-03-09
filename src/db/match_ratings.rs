@@ -164,7 +164,11 @@ mod tests {
         save_match_ratings(&mut conn, &[make_rating(1001, 10, dl2, 8.0)]).expect("save dl2");
 
         let loaded = get_match_ratings(&mut conn, 10).expect("load");
-        assert_eq!(loaded.len(), 1, "deduplication should return one row per match");
+        assert_eq!(
+            loaded.len(),
+            1,
+            "deduplication should return one row per match"
+        );
         assert_eq!(
             loaded[0].rating_midfield,
             Some(8.0),

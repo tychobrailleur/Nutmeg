@@ -28,25 +28,35 @@ impl SeriesTabController {
 
         let db = DbManager::new();
         let Ok(mut conn) = db.get_connection() else {
-            warn!("SeriesTabController: Could not open DB connection for team {}", team_id);
+            warn!(
+                "SeriesTabController: Could not open DB connection for team {}",
+                team_id
+            );
             return;
         };
 
-        let team_in_db = crate::db::teams::get_team(&mut conn, team_id).ok().flatten();
+        let team_in_db = crate::db::teams::get_team(&mut conn, team_id)
+            .ok()
+            .flatten();
         let Some(t) = team_in_db else {
             warn!("SeriesTabController: Team {} not found in DB", team_id);
             return;
         };
         let Some(unit) = t.LeagueLevelUnit else {
-            warn!("SeriesTabController: No LeagueLevelUnit for team {}", team_id);
+            warn!(
+                "SeriesTabController: No LeagueLevelUnit for team {}",
+                team_id
+            );
             return;
         };
 
         let league_unit_id = unit.LeagueLevelUnitID;
-        let db_league =
-            crate::db::series::get_latest_league_details(&mut conn, league_unit_id).ok().flatten();
-        let db_matches =
-            crate::db::series::get_latest_matches(&mut conn, team_id).ok().flatten();
+        let db_league = crate::db::series::get_latest_league_details(&mut conn, league_unit_id)
+            .ok()
+            .flatten();
+        let db_matches = crate::db::series::get_latest_matches(&mut conn, team_id)
+            .ok()
+            .flatten();
 
         let (Some(league), Some(matches)) = (db_league, db_matches) else {
             warn!(
@@ -69,12 +79,8 @@ impl SeriesTabController {
 
         let filtered = filter_matches_for_season(&league, matches);
 
-        self.context.set_series_data(
-            Some(league),
-            Some(filtered),
-            Some(all_matches),
-            Some(logos),
-        );
+        self.context
+            .set_series_data(Some(league), Some(filtered), Some(all_matches), Some(logos));
     }
 
     pub fn clear(&self) {
