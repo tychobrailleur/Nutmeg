@@ -37,6 +37,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Instant;
 
 pub type ProgressCallback = Box<dyn Fn(f64, &str) + Send + Sync>;
 
@@ -354,7 +355,7 @@ impl SyncService {
             }
         };
 
-        log::info!(
+        info!(
             "User: {} ({})",
             hattrick_data.User.UserID,
             hattrick_data.User.Loginname
@@ -375,7 +376,7 @@ impl SyncService {
             let mut conn = db.get_connection()?;
             conn.transaction::<_, Error, _>(|conn| {
                 for team in &teams_clone {
-                    log::info!("Saving team: {} ({})", team.TeamName, team.TeamID);
+                    info!("Saving team: {} ({})", team.TeamName, team.TeamID);
                     save_team(conn, team, &user, download_id, true)?;
                 }
                 Ok(())
@@ -390,8 +391,8 @@ impl SyncService {
             .map(|unit| unit.LeagueLevelUnitID);
 
         match league_unit_id_opt {
-            Some(series) => log::info!("Team {} belongs to series {}", team_id, series),
-            None => log::warn!("No series found for team {}", team_id),
+            Some(series) => info!("Team {} belongs to series {}", team_id, series),
+            None => warn!("No series found for team {}", team_id),
         }
 
         Ok((team_id, league_unit_id_opt))
@@ -441,7 +442,7 @@ impl SyncService {
                         Some(e.to_string()),
                     )
                     .await?;
-                    log::warn!("Failed to fetch league details: {}", e);
+                    warn!("Failed to fetch league details: {}", e);
                 }
             }
         }
@@ -455,10 +456,21 @@ impl SyncService {
         )
         .await?;
 
-        let (data, key) = get_auth();
-        let upcoming_matches_res = client.matches(data, key, Some(team_id)).await;
+        // Fire upcoming and archived fetches concurrently — they are independent.
+        let t = Instant::now();
+        let (data_up, key_up) = get_auth();
+        let (data_arc, key_arc) = get_auth();
+        let (upcoming_res, archived_res) = tokio::join!(
+            client.matches(data_up, key_up, Some(team_id)),
+            client.matches_archive(data_arc, key_arc, Some(team_id), None, None)
+        );
+        info!(
+            "[sync] matches fetch (upcoming+archived) for team {}: {:.2}s",
+            team_id,
+            t.elapsed().as_secs_f64()
+        );
 
-        match upcoming_matches_res {
+        match upcoming_res {
             Ok(matches_data) => {
                 Self::update_download_entry(db_manager.clone(), entry_id, "success", None).await?;
 
@@ -480,20 +492,17 @@ impl SyncService {
                     Some(e.to_string()),
                 )
                 .await?;
-                log::warn!("Failed to fetch matches: {}", e);
+                warn!("Failed to fetch matches: {}", e);
             }
         }
 
-        // Also fetch archived (already-played) matches so the full season is available in the DB
-        let (data, key) = get_auth();
-        match client
-            .matches_archive(data, key, Some(team_id), None, None)
-            .await
-        {
+        // Save archived matches — non-fatal if unavailable.
+        match archived_res {
             Ok(archived_data) => {
-                log::debug!(
-                    "Fetched {} archived matches during sync",
-                    archived_data.Team.MatchList.Matches.len()
+                debug!(
+                    "[sync] Saving {} archived matches for team {}",
+                    archived_data.Team.MatchList.Matches.len(),
+                    team_id
                 );
                 let db = db_manager.clone();
                 tokio::task::spawn_blocking(move || {
@@ -504,8 +513,7 @@ impl SyncService {
                 .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
             }
             Err(e) => {
-                log::warn!("Failed to fetch archived matches during sync: {}", e);
-                // Non-fatal: upcoming matches are already saved
+                warn!("[sync] Failed to fetch archived matches for team {}: {}", team_id, e);
             }
         }
 
@@ -549,7 +557,7 @@ impl SyncService {
             }
         };
 
-        log::info!(
+        info!(
             "Fetched world details with {} leagues",
             world_details.LeagueList.Leagues.len()
         );
@@ -610,15 +618,17 @@ impl SyncService {
         let player_list = if let Some(pl) = players_resp.Team.PlayerList {
             pl
         } else {
-            log::warn!("No player list found for team");
+            warn!("No player list found for team");
             return Err(Error::Parse("No player list in response".to_string()));
         };
 
         let players_list = {
+            let player_count = player_list.players.len();
             info!(
-                "Fetching detailed player data for {} players",
-                player_list.players.len()
+                "[sync] Fetching detailed data for {} players (concurrency=8)",
+                player_count
             );
+            let player_detail_start = Instant::now();
 
             use futures::stream::{self, StreamExt};
 
@@ -630,7 +640,7 @@ impl SyncService {
 
                 async move {
                     let player_id = basic_player.PlayerID;
-                    info!("Fetching details for player ID: {}", player_id);
+                    let t = Instant::now();
 
                     let operation_name = format!("player_details({})", player_id);
 
@@ -685,17 +695,19 @@ impl SyncService {
                     match result {
                         Ok(detailed_player) => {
                             debug!(
-                                "Successfully fetched detailed data for player {}",
-                                player_id
+                                "[sync] player_details({}): {:.2}s",
+                                player_id,
+                                t.elapsed().as_secs_f64()
                             );
                             basic_player
                                 .clone()
                                 .merge_player_data(Some(detailed_player))
                         }
                         Err(e) => {
-                            log::warn!(
-                                "Failed to fetch details for player {}: {}. Using basic data only.",
+                            warn!(
+                                "[sync] player_details({}) failed in {:.2}s: {}. Using basic data.",
                                 player_id,
+                                t.elapsed().as_secs_f64(),
                                 e
                             );
                             basic_player.clone().merge_player_data(None)
@@ -704,11 +716,18 @@ impl SyncService {
                 }
             });
 
-            let mut stream = stream::iter(futures).buffer_unordered(4);
+            // Concurrency=8: balances API throughput against rate-limit risk.
+            // Raising further may trigger HTTP 429 from the CHPP API.
+            let mut stream = stream::iter(futures).buffer_unordered(8);
             while let Some(merged) = stream.next().await {
                 merged_players.push(merged);
             }
 
+            info!(
+                "[sync] Fetched details for {} players in {:.2}s",
+                player_count,
+                player_detail_start.elapsed().as_secs_f64()
+            );
             merged_players
         };
 
@@ -736,10 +755,18 @@ impl SyncService {
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
-        info!("Starting lazy fetch for avatars of team {}", team_id);
+        info!("[sync] Starting avatar fetch for team {}", team_id);
+        let t = Instant::now();
         let (data, key) = get_auth();
 
         let avatars = client.avatars(data, key, Some(team_id)).await?;
+        info!(
+            "[sync] avatars manifest for team {}: {:.2}s ({} players)",
+            team_id,
+            t.elapsed().as_secs_f64(),
+            avatars.team.players.players.len()
+        );
+
         let entry_id = Self::log_download_entry(
             db_manager.clone(),
             download_id,
@@ -752,6 +779,8 @@ impl SyncService {
         let mut avatars_to_save = Vec::new();
         use futures::stream::{self, StreamExt};
 
+        let player_count = avatars.team.players.players.len();
+        let composite_start = Instant::now();
         let db_manager_clone = db_manager.clone();
         let futures = avatars
             .team
@@ -772,12 +801,20 @@ impl SyncService {
                 }
             });
 
-        let mut stream = stream::iter(futures).buffer_unordered(4);
+        // 8 concurrent composites: each player fetches ~4 layer images over the network.
+        let mut stream = stream::iter(futures).buffer_unordered(8);
         while let Some(avatar_opt) = stream.next().await {
             if let Some(avatar) = avatar_opt {
                 avatars_to_save.push(avatar);
             }
         }
+        info!(
+            "[sync] composited {}/{} avatars for team {} in {:.2}s",
+            avatars_to_save.len(),
+            player_count,
+            team_id,
+            composite_start.elapsed().as_secs_f64()
+        );
 
         if !avatars_to_save.is_empty() {
             tokio::task::spawn_blocking(move || {
@@ -834,7 +871,7 @@ impl SyncService {
                 .await
                 .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
 
-                log::info!("Saved {} staff members", staff_count);
+                info!("Saved {} staff members", staff_count);
             }
             Err(e) => {
                 Self::update_download_entry(
@@ -844,7 +881,7 @@ impl SyncService {
                     Some(e.to_string()),
                 )
                 .await?;
-                log::warn!("Failed to fetch staff list: {}", e);
+                warn!("Failed to fetch staff list: {}", e);
             }
         }
 
@@ -875,6 +912,9 @@ impl SyncService {
             )
         };
 
+        let sync_start = Instant::now();
+        info!("[sync] Starting full sync");
+
         on_progress(0.05, "Creating download record...");
         let download_id = Self::create_download_record(db_manager.clone()).await?;
 
@@ -882,6 +922,7 @@ impl SyncService {
             0.1,
             "Fetching world details (countries, leagues, currencies)...",
         );
+        let t = Instant::now();
         Self::fetch_and_save_world_details(
             db_manager.clone(),
             client.clone(),
@@ -889,8 +930,10 @@ impl SyncService {
             download_id,
         )
         .await?;
+        info!("[sync] world_details: {:.2}s", t.elapsed().as_secs_f64());
 
         on_progress(0.5, "Fetching user data...");
+        let t = Instant::now();
         let (team_id, league_unit_id_opt) = Self::fetch_and_save_user_data(
             db_manager.clone(),
             client.clone(),
@@ -898,8 +941,10 @@ impl SyncService {
             download_id,
         )
         .await?;
+        info!("[sync] user_data (team {}): {:.2}s", team_id, t.elapsed().as_secs_f64());
 
         on_progress(0.6, "Fetching players...");
+        let t = Instant::now();
         Self::fetch_and_save_players(
             db_manager.clone(),
             client.clone(),
@@ -908,8 +953,10 @@ impl SyncService {
             download_id,
         )
         .await?;
+        info!("[sync] players: {:.2}s", t.elapsed().as_secs_f64());
 
         on_progress(0.7, "Fetching staff...");
+        let t = Instant::now();
         Self::fetch_and_save_staff(
             db_manager.clone(),
             client.clone(),
@@ -918,8 +965,10 @@ impl SyncService {
             download_id,
         )
         .await?;
+        info!("[sync] staff: {:.2}s", t.elapsed().as_secs_f64());
 
         on_progress(0.8, "Fetching series and matches...");
+        let t = Instant::now();
         Self::fetch_and_save_match_data(
             db_manager.clone(),
             client.clone(),
@@ -929,12 +978,17 @@ impl SyncService {
             download_id,
         )
         .await?;
+        info!("[sync] match_data: {:.2}s", t.elapsed().as_secs_f64());
 
         on_progress(0.9, "Finalizing download...");
         Self::complete_download_record(db_manager.clone(), download_id).await?;
 
         on_progress(1.0, "Done.");
-        info!("Download {} completed successfully", download_id);
+        info!(
+            "[sync] Completed (download_id={}) in {:.2}s",
+            download_id,
+            sync_start.elapsed().as_secs_f64()
+        );
         Ok((team_id, download_id))
     }
 }

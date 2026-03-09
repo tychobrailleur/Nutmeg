@@ -192,7 +192,7 @@ fn save_league_teams(
         .load(conn)
         .unwrap_or_default();
     let mut latest_by_team: std::collections::HashMap<i32, &LeagueUnitTeam> =
-        std::collections::HashMap::new();
+        std::collections::HashMap::with_capacity(all_stored.len());
     for row in &all_stored {
         latest_by_team.entry(row.team_id).or_insert(row);
     }
@@ -266,7 +266,7 @@ pub fn save_matches(
         .load(conn)
         .unwrap_or_default();
     let mut latest_by_match: std::collections::HashMap<i32, &Match> =
-        std::collections::HashMap::new();
+        std::collections::HashMap::with_capacity(all_stored.len());
     for row in &all_stored {
         latest_by_match.entry(row.match_id).or_insert(row);
     }
@@ -382,7 +382,7 @@ pub fn get_latest_matches(
     }
 
     // Deduplicate by match_id, keeping the latest download version
-    let mut unique_matches = std::collections::HashMap::new();
+    let mut unique_matches = std::collections::HashMap::with_capacity(db_matches.len());
     for m in db_matches {
         unique_matches.entry(m.match_id).or_insert(m);
     }
@@ -459,7 +459,7 @@ pub fn get_matches_for_teams(
 
     // Keep only the most recent download per match_id
     let mut unique_matches: std::collections::HashMap<i32, Match> =
-        std::collections::HashMap::new();
+        std::collections::HashMap::with_capacity(db_matches.len());
     for m in db_matches {
         unique_matches.entry(m.match_id).or_insert(m);
     }

@@ -32,7 +32,7 @@ impl SeriesTabController {
             return;
         };
 
-        let team_in_db = crate::db::teams::get_team(&mut conn, team_id).unwrap_or(None);
+        let team_in_db = crate::db::teams::get_team(&mut conn, team_id).ok().flatten();
         let Some(t) = team_in_db else {
             warn!("SeriesTabController: Team {} not found in DB", team_id);
             return;
@@ -44,10 +44,9 @@ impl SeriesTabController {
 
         let league_unit_id = unit.LeagueLevelUnitID;
         let db_league =
-            crate::db::series::get_latest_league_details(&mut conn, league_unit_id)
-                .unwrap_or(None);
+            crate::db::series::get_latest_league_details(&mut conn, league_unit_id).ok().flatten();
         let db_matches =
-            crate::db::series::get_latest_matches(&mut conn, team_id).unwrap_or(None);
+            crate::db::series::get_latest_matches(&mut conn, team_id).ok().flatten();
 
         let (Some(league), Some(matches)) = (db_league, db_matches) else {
             warn!(

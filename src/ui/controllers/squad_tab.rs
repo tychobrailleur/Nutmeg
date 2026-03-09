@@ -8,7 +8,7 @@ use crate::ui::player_object::PlayerObject;
 use crate::ui::team_object::TeamObject;
 use gtk::glib;
 use gtk::prelude::*;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use num_format::SystemLocale;
 
 pub struct SquadTabController {
@@ -96,7 +96,7 @@ impl SquadTabController {
         let evaluation = evaluate_all_positions(&model, player, &lineup, 45);
 
         if let Some(skills) = &player.PlayerSkills {
-            log::debug!(
+            debug!(
                 "Player {} {} - Form={} Skills: K={} D={} PM={} W={} P={} S={}",
                 player.FirstName,
                 player.LastName,
@@ -116,7 +116,7 @@ impl SquadTabController {
         }
 
         if let Some(best) = evaluation.best_position {
-            log::debug!(
+            debug!(
                 "  Best position: {:?} ({:?}) with rating {:.2}",
                 best.position,
                 best.behaviour,

@@ -8,7 +8,6 @@
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gio, glib, Button, Label, SpinButton, Spinner};
-use log::debug;
 use std::sync::Arc;
 
 use crate::chpp::client::HattrickClient;

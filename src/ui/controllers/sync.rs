@@ -137,7 +137,7 @@ impl SyncController {
             }
         });
 
-        let code_opt = rx.await.unwrap_or(None);
+        let code_opt = rx.await.ok().flatten();
 
         if let Some(code) = code_opt {
             // 4. Verify Code

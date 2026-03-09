@@ -6,6 +6,7 @@
  */
 
 use crate::chpp::model::{LeagueDetailsData, LeagueTeam, MatchDetails, MatchesData};
+use log::{debug, warn};
 use glib::subclass::InitializingObject;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
@@ -321,7 +322,7 @@ impl SeriesPage {
         };
 
         if let Some(league_data) = league {
-            log::debug!(
+            debug!(
                 "Setting league data for unit: {}",
                 league_data.LeagueLevelUnitName
             );
@@ -342,11 +343,11 @@ impl SeriesPage {
                 let logo_url = logo_urls.get(&tid).cloned();
                 store.append(&LeagueTeamObject::new(team.clone(), form, logo_url));
             }
-            log::debug!("Added {} teams to league store", league_data.Teams.len());
+            debug!("Added {} teams to league store", league_data.Teams.len());
             let selection_model = gtk::NoSelection::new(Some(store));
             imp.league_table_view.set_model(Some(&selection_model));
         } else {
-            log::debug!("No league data provided");
+            debug!("No league data provided");
             imp.league_name_label.set_text("Series");
             imp.league_table_view.set_model(None::<&gtk::NoSelection>);
         }
@@ -491,9 +492,7 @@ impl SeriesPage {
                         let first_char = team_name
                             .chars()
                             .next()
-                            .unwrap_or('?')
-                            .to_uppercase()
-                            .next()
+                            .and_then(|c| c.to_uppercase().next())
                             .unwrap_or('?');
                         let (br, bg, bb) = badge_colour(&team_id);
                         badge_draw.set_draw_func(move |_, cr, w, h| {
@@ -584,7 +583,7 @@ impl SeriesPage {
                                             }
                                         }
                                         Err(e) => {
-                                            log::warn!(
+                                            warn!(
                                                 "Failed to load team logo from '{}': {}",
                                                 fixed_url,
                                                 e
