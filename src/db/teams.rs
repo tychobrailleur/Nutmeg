@@ -505,8 +505,6 @@ pub fn save_players(
 
         diesel::insert_into(players::table)
             .values(&entity)
-            .on_conflict((players::id, players::download_id))
-            .do_nothing()
             .execute(conn)
             .map_err(|e| Error::Io(format!("Database error saving player: {}", e)))?;
     }
@@ -527,17 +525,16 @@ pub fn save_avatars(
 
         diesel::insert_into(avatars::table)
             .values(&entity)
-            .on_conflict((avatars::player_id, avatars::download_id))
-            .do_nothing()
             .execute(conn)
             .map_err(|e| Error::Io(format!("Database error saving avatar: {}", e)))?;
     }
     Ok(())
 }
 
-// Persists a Language entity.
-// We use ON CONFLICT DO UPDATE to handle cases where the language already exists
-// but might have a different name (though unlikely for IDs).
+// Persists a Language entity. The same language may appear in multiple API
+// responses within a single sync (e.g. world_details + user details), so we
+// use INSERT OR IGNORE to silently skip the second occurrence. No data is lost
+// because the row is identical for a given (id, download_id).
 pub fn save_language(
     conn: &mut SqliteConnection,
     language: &Language,
@@ -548,17 +545,17 @@ pub fn save_language(
         download_id,
         name: language.LanguageName.clone(),
     };
-    diesel::insert_into(languages::table)
+    diesel::insert_or_ignore_into(languages::table)
         .values(&entity)
-        .on_conflict((languages::id, languages::download_id))
-        .do_nothing()
         .execute(conn)
         .map_err(|e| Error::Io(format!("Database error saving language: {}", e)))?;
     Ok(())
 }
 
-// Persists a Currency entity.
-// Rate and Symbol are optional and updated if the currency ID exists.
+// Persists a Currency entity. The same currency may appear in multiple API
+// responses within a single sync (e.g. world_details + team country), so we
+// use INSERT OR IGNORE to silently skip duplicates. No data is lost because
+// a given (id, download_id) always represents the same currency data.
 pub fn save_currency(
     conn: &mut SqliteConnection,
     currency: &Currency,
@@ -571,10 +568,8 @@ pub fn save_currency(
         rate: currency.Rate,
         symbol: currency.Symbol.clone(),
     };
-    diesel::insert_into(currencies::table)
+    diesel::insert_or_ignore_into(currencies::table)
         .values(&entity)
-        .on_conflict((currencies::id, currencies::download_id))
-        .do_nothing()
         .execute(conn)
         .map_err(|e| Error::Io(format!("Database error saving currency: {}", e)))?;
     Ok(())
@@ -614,8 +609,6 @@ fn save_user(
 
     diesel::insert_into(users::table)
         .values(&entity)
-        .on_conflict((users::id, users::download_id))
-        .do_nothing()
         .execute(conn)
         .map_err(|e| Error::Io(format!("Database error saving user: {}", e)))?;
     Ok(())
@@ -643,10 +636,10 @@ pub fn save_country(
         time_format: country.TimeFormat.clone(),
         flag,
     };
-    diesel::insert_into(countries::table)
+    // A country may appear in both world_details and team_details within one
+    // sync; INSERT OR IGNORE skips the duplicate without losing any data.
+    diesel::insert_or_ignore_into(countries::table)
         .values(&entity)
-        .on_conflict((countries::id, countries::download_id))
-        .do_nothing()
         .execute(conn)
         .map_err(|e| Error::Io(format!("Database error saving country: {}", e)))?;
     Ok(())
@@ -667,10 +660,10 @@ fn save_region(
             name: region.RegionName.clone(),
             country_id: country_id as i32,
         };
-        diesel::insert_into(regions::table)
+        // A region may appear in multiple API responses within one sync;
+        // INSERT OR IGNORE skips the duplicate without losing any data.
+        diesel::insert_or_ignore_into(regions::table)
             .values(&entity)
-            .on_conflict((regions::id, regions::download_id))
-            .do_nothing()
             .execute(conn)
             .map_err(|e| Error::Io(format!("Database error saving region: {}", e)))?;
     }
@@ -705,10 +698,10 @@ fn save_league(
         number_of_levels: league.NumberOfLevels.map(|v| v as i32),
         league_system_id: league.LeagueSystemId.unwrap_or(1) as i32,
     };
-    diesel::insert_into(leagues::table)
+    // A league may appear in multiple API responses within one sync;
+    // INSERT OR IGNORE skips the duplicate without losing any data.
+    diesel::insert_or_ignore_into(leagues::table)
         .values(&entity)
-        .on_conflict((leagues::id, leagues::download_id))
-        .do_nothing()
         .execute(conn)
         .map_err(|e| Error::Io(format!("Database error saving league: {}", e)))?;
     Ok(())
@@ -730,8 +723,6 @@ fn save_cup(conn: &mut SqliteConnection, cup: &Cup, download_id: i32) -> Result<
         };
         diesel::insert_into(cups::table)
             .values(&entity)
-            .on_conflict((cups::id, cups::download_id))
-            .do_nothing()
             .execute(conn)
             .map_err(|e| Error::Io(format!("Database error saving cup: {}", e)))?;
     }
@@ -881,8 +872,6 @@ pub fn save_team(
 
     diesel::insert_into(teams::table)
         .values(&entity)
-        .on_conflict((teams::id, teams::download_id))
-        .do_nothing()
         .execute(conn)
         .map_err(|e| Error::Io(format!("Database error: {}", e)))?;
 

@@ -187,28 +187,6 @@ impl DbManager {
         .map_err(|e| Error::Io(format!("Failed to clear database: {}", e)))
     }
 
-    /// Delete old completed downloads, keeping only the `keep_count` most recent.
-    ///
-    /// Because all entity tables have `ON DELETE CASCADE` foreign keys to the
-    /// `downloads` table (activated by the FK PRAGMA applied on every connection),
-    /// deleting a download row automatically removes all associated entity rows.
-    #[allow(dead_code)]
-    pub fn prune_old_downloads(&self, keep_count: u32) -> Result<usize, Error> {
-        let mut conn = self.get_connection()?;
-        diesel::sql_query(
-            "DELETE FROM downloads
-             WHERE status = 'completed'
-               AND id NOT IN (
-                   SELECT id FROM downloads
-                   WHERE status = 'completed'
-                   ORDER BY id DESC
-                   LIMIT ?
-               )",
-        )
-        .bind::<diesel::sql_types::Integer, _>(keep_count as i32)
-        .execute(&mut conn)
-        .map_err(|e| Error::Db(format!("Prune failed: {}", e)))
-    }
 }
 
 #[cfg(test)]

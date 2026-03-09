@@ -9,7 +9,7 @@ use crate::chpp::client::ChppClient;
 use crate::chpp::error::Error;
 use crate::chpp::model::Player;
 use crate::db::manager::DbManager;
-use crate::db::match_ratings::MatchRating;
+use crate::db::match_ratings::{MatchRating, NewMatchRating};
 use crate::rating::types::{Behaviour, PositionId};
 use crate::ui::components::pitch_view::PitchPlayer;
 use oauth_1a::{OAuthData, SigningKey};
@@ -295,7 +295,7 @@ impl OpponentAnalysisService {
         Ok(ratings)
     }
 
-    pub fn save_match_ratings(&self, ratings: &[MatchRating]) -> Result<(), Box<dyn StdError>> {
+    pub fn save_match_ratings(&self, ratings: &[NewMatchRating]) -> Result<(), Box<dyn StdError>> {
         let db_manager = DbManager::new();
         let mut conn = db_manager.get_connection()?;
         crate::db::match_ratings::save_match_ratings(&mut conn, ratings)?;

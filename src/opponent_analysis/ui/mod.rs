@@ -1004,14 +1004,27 @@ impl OpponentAnalysis {
                                 local_imp.average_ratings_pitch.append(&sector_view);
 
                                 // Persist ratings to DB
-                                use crate::db::match_ratings::MatchRating;
-                                let new_ratings: Vec<MatchRating> = analysis
+                                use crate::db::match_ratings::NewMatchRating;
+                                let download_id = crate::db::manager::DbManager::new()
+                                    .get_connection()
+                                    .ok()
+                                    .and_then(|mut conn| {
+                                        crate::db::download_entries::create_download(
+                                            &mut conn,
+                                            &chrono::Utc::now().to_rfc3339(),
+                                            "completed",
+                                        )
+                                        .ok()
+                                    })
+                                    .unwrap_or(0);
+                                let new_ratings: Vec<NewMatchRating> = analysis
                                     .matches
                                     .iter()
                                     .filter(|m| m.rating_midfield.is_some())
-                                    .map(|m| MatchRating {
+                                    .map(|m| NewMatchRating {
                                         match_id: m.match_id as i32,
                                         team_id: team_id as i32,
+                                        download_id,
                                         formation: m.formation.clone(),
                                         tactic_type: m.tactic_type.map(|t| t as i32),
                                         rating_midfield: m.rating_midfield.map(|v| v as f64),

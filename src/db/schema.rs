@@ -291,9 +291,10 @@ diesel::table! {
 }
 
 diesel::table! {
-    match_ratings (match_id, team_id) {
+    match_ratings (match_id, team_id, download_id) {
         match_id         -> Integer,
         team_id          -> Integer,
+        download_id      -> Integer,
         formation        -> Nullable<Text>,
         tactic_type      -> Nullable<Integer>,
         rating_midfield  -> Nullable<Double>,
@@ -305,6 +306,8 @@ diesel::table! {
         rating_left_att  -> Nullable<Double>,
     }
 }
+
+diesel::joinable!(match_ratings -> downloads (download_id));
 
 diesel::joinable!(avatars -> downloads (download_id));
 diesel::joinable!(countries -> downloads (download_id));

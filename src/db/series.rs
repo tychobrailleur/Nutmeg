@@ -130,10 +130,10 @@ pub fn save_league_details(
         current_match_round: data.CurrentMatchRound.map(|v| v as i32),
     };
 
-    diesel::insert_into(league_units::table)
+    // A league unit may be fetched for multiple opponents in the same sync;
+    // INSERT OR IGNORE skips the duplicate without losing any data.
+    diesel::insert_or_ignore_into(league_units::table)
         .values(&new_unit)
-        .on_conflict((league_units::unit_id, league_units::download_id))
-        .do_nothing()
         .execute(conn)
         .map_err(|e| Error::Io(format!("Failed to insert league unit: {}", e)))?;
 
@@ -169,8 +169,16 @@ fn save_league_teams(
         })
         .collect();
 
-    // Use INSERT OR IGNORE (insert_or_ignore_into) for batch inserts in SQLite.
-    // Diesel's on_conflict().do_nothing() is not supported on batch inserts for SQLite.
+    // Deduplicate by composite PK before inserting so the plain INSERT never
+    // sees a conflict — consistent with the insert-only schema invariant.
+    let mut seen_pks = std::collections::HashSet::new();
+    let records: Vec<NewLeagueUnitTeam> = records
+        .into_iter()
+        .filter(|r| seen_pks.insert((r.unit_id, r.team_id, r.download_id)))
+        .collect();
+
+    // The same league unit may be fetched multiple times in one sync;
+    // INSERT OR IGNORE skips rows already present under this download_id.
     diesel::insert_or_ignore_into(league_unit_teams::table)
         .values(&records)
         .execute(conn)
@@ -207,8 +215,19 @@ pub fn save_matches(
         })
         .collect();
 
-    // Use INSERT OR IGNORE (insert_or_ignore_into) for batch inserts in SQLite.
-    // Diesel's on_conflict().do_nothing() is not supported on batch inserts for SQLite.
+    // Deduplicate by composite PK (match_id, download_id) in Rust before
+    // inserting.  The same match can appear in multiple opponents' archives
+    // when they are fetched within a single download; deduplicating here
+    // keeps the plain INSERT free of conflicts as required by the insert-only
+    // schema invariant.
+    let mut seen_ids = std::collections::HashSet::new();
+    let records: Vec<NewMatch> = records
+        .into_iter()
+        .filter(|r| seen_ids.insert((r.match_id, r.download_id)))
+        .collect();
+
+    // The same match can appear in multiple API responses within one sync;
+    // INSERT OR IGNORE skips rows already present under this download_id.
     diesel::insert_or_ignore_into(matches::table)
         .values(&records)
         .execute(conn)
