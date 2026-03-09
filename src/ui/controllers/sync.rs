@@ -13,6 +13,36 @@ use std::sync::Arc;
 pub struct SyncController;
 
 impl SyncController {
+    /// Spawns a background task that fetches avatars and refreshes the squad view when done.
+    fn spawn_avatar_refresh(
+        db: Arc<DbManager>,
+        context: ContextObject,
+        key: String,
+        secret: String,
+        team_id: u32,
+        download_id: i32,
+    ) {
+        let sync_clone = Arc::new(SyncService::new(db));
+        let ctx_clone = context;
+        glib::MainContext::default().spawn_local(async move {
+            if let Err(e) = sync_clone
+                .perform_avatar_sync_with_stored_secrets(key, secret, team_id, download_id)
+                .await
+            {
+                warn!("Background avatar fetch failed: {}", e);
+            } else {
+                info!("Background avatar fetch completed. Refreshing player list.");
+                if let Some(selected) = ctx_clone.selected_team() {
+                    let squad_controller =
+                        crate::ui::controllers::squad_tab::SquadTabController::new(
+                            ctx_clone.clone(),
+                        );
+                    squad_controller.on_team_selected(&selected);
+                }
+            }
+        });
+    }
+
     /// Performs the sync flow.
     ///
     /// 1. Tries to sync with stored secrets.
@@ -43,37 +73,7 @@ impl SyncController {
         {
             Ok(Some((team_id, download_id))) => {
                 info!("Sync completed successfully");
-
-                // Fire off lazy avatar fetch in the background
-                let sync_clone = Arc::new(SyncService::new(db.clone()));
-                let key_clone = key.clone();
-                let secret_clone = secret.clone();
-                let ctx_clone = context.clone();
-
-                let ctx_clone = context.clone();
-                glib::MainContext::default().spawn_local(async move {
-                    if let Err(e) = sync_clone
-                        .perform_avatar_sync_with_stored_secrets(
-                            key_clone,
-                            secret_clone,
-                            team_id,
-                            download_id,
-                        )
-                        .await
-                    {
-                        warn!("Background avatar fetch failed: {}", e);
-                    } else {
-                        info!("Background avatar fetch completed. Refreshing player list.");
-                        // Re-trigger player list load to include new avatars
-                        if let Some(selected) = ctx_clone.selected_team() {
-                            let squad_controller =
-                                crate::ui::controllers::squad_tab::SquadTabController::new(
-                                    ctx_clone.clone(),
-                                );
-                            squad_controller.on_team_selected(&selected);
-                        }
-                    }
-                });
+                Self::spawn_avatar_refresh(db.clone(), context.clone(), key.clone(), secret.clone(), team_id, download_id);
             }
             Ok(None) => {
                 warn!("Sync failed: No credentials found, starting OAuth flow...");
@@ -167,35 +167,7 @@ impl SyncController {
             {
                 Ok((team_id, download_id)) => {
                     info!("Retry sync successful");
-                    // Fire off lazy avatar fetch in the background
-                    let sync_clone = Arc::new(SyncService::new(db));
-                    let key_clone = key.to_string();
-                    let secret_clone = secret.to_string();
-                    let ctx_clone = context.clone();
-
-                    let ctx_clone = context.clone();
-                    glib::MainContext::default().spawn_local(async move {
-                        if let Err(e) = sync_clone
-                            .perform_avatar_sync_with_stored_secrets(
-                                key_clone,
-                                secret_clone,
-                                team_id,
-                                download_id,
-                            )
-                            .await
-                        {
-                            warn!("Background avatar fetch failed: {}", e);
-                        } else {
-                            info!("Background avatar fetch completed. Refreshing player list.");
-                            if let Some(selected) = ctx_clone.selected_team() {
-                                let squad_controller =
-                                    crate::ui::controllers::squad_tab::SquadTabController::new(
-                                        ctx_clone.clone(),
-                                    );
-                                squad_controller.on_team_selected(&selected);
-                            }
-                        }
-                    });
+                    Self::spawn_avatar_refresh(db, context.clone(), key.to_string(), secret.to_string(), team_id, download_id);
                 }
                 Err(e) => return Err(format!("Retry sync error: {}", e).into()),
             }

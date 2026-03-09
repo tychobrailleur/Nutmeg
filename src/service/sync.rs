@@ -614,7 +614,7 @@ impl SyncService {
             return Err(Error::Parse("No player list in response".to_string()));
         };
 
-        let (players_list, _avatars_list) = {
+        let players_list = {
             info!(
                 "Fetching detailed player data for {} players",
                 player_list.players.len()
@@ -682,7 +682,7 @@ impl SyncService {
                         }
                     }
 
-                    let merged = match result {
+                    match result {
                         Ok(detailed_player) => {
                             debug!(
                                 "Successfully fetched detailed data for player {}",
@@ -700,18 +700,16 @@ impl SyncService {
                             );
                             basic_player.clone().merge_player_data(None)
                         }
-                    };
-
-                    (merged, None as Option<(u32, Vec<u8>)>)
+                    }
                 }
             });
 
             let mut stream = stream::iter(futures).buffer_unordered(4);
-            while let Some((merged, _avatar_tuple)) = stream.next().await {
+            while let Some(merged) = stream.next().await {
                 merged_players.push(merged);
             }
 
-            (merged_players, Vec::<(u32, Vec<u8>)>::new())
+            merged_players
         };
 
         // Save players
@@ -745,8 +743,8 @@ impl SyncService {
         let entry_id = Self::log_download_entry(
             db_manager.clone(),
             download_id,
-            ChppEndpoints::TEAM_DETAILS.name, // Reusing endpoint or defining a new one for avatars
-            "1.0",
+            ChppEndpoints::AVATARS.name,
+            ChppEndpoints::AVATARS.version,
             Some(team_id as i32),
         )
         .await?;

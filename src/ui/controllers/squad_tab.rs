@@ -165,10 +165,6 @@ impl SquadTabController {
             let display = PlayerDisplay::new(p, &locale, Some(&preferred_pos));
 
             let bg = if p.MotherClubBonus {
-                let temp_widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-                temp_widget.add_css_class("mother-club");
-                #[allow(deprecated)]
-                let _style_context = temp_widget.style_context();
                 Some("rgba(64, 224, 208, 0.3)".to_string())
             } else {
                 None
