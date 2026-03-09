@@ -531,10 +531,10 @@ pub fn save_avatars(
     Ok(())
 }
 
-// Persists a Language entity. The same language may appear in multiple API
-// responses within a single sync (e.g. world_details + user details), so we
-// use INSERT OR IGNORE to silently skip the second occurrence. No data is lost
-// because the row is identical for a given (id, download_id).
+// Persists a Language entity.
+// Inserts a new versioned row only when the entity is brand new or its name
+// has changed since the last stored version.  If the latest stored row matches
+// the incoming data the insert is skipped — no redundant row is created.
 pub fn save_language(
     conn: &mut SqliteConnection,
     language: &Language,
@@ -545,17 +545,28 @@ pub fn save_language(
         download_id,
         name: language.LanguageName.clone(),
     };
-    diesel::insert_or_ignore_into(languages::table)
-        .values(&entity)
-        .execute(conn)
-        .map_err(|e| Error::Io(format!("Database error saving language: {}", e)))?;
+    let latest: Option<LanguageEntity> = languages::table
+        .filter(languages::id.eq(entity.id))
+        .order(languages::download_id.desc())
+        .first(conn)
+        .optional()
+        .map_err(|e| Error::Io(format!("Database error querying language: {}", e)))?;
+    let changed = match &latest {
+        None => true,
+        Some(existing) => existing.name != entity.name,
+    };
+    if changed {
+        diesel::insert_into(languages::table)
+            .values(&entity)
+            .execute(conn)
+            .map_err(|e| Error::Io(format!("Database error saving language: {}", e)))?;
+    }
     Ok(())
 }
 
-// Persists a Currency entity. The same currency may appear in multiple API
-// responses within a single sync (e.g. world_details + team country), so we
-// use INSERT OR IGNORE to silently skip duplicates. No data is lost because
-// a given (id, download_id) always represents the same currency data.
+// Persists a Currency entity.
+// Inserts a new versioned row only when the entity is brand new or any of its
+// values (name, rate, symbol) have changed since the last stored version.
 pub fn save_currency(
     conn: &mut SqliteConnection,
     currency: &Currency,
@@ -568,10 +579,26 @@ pub fn save_currency(
         rate: currency.Rate,
         symbol: currency.Symbol.clone(),
     };
-    diesel::insert_or_ignore_into(currencies::table)
-        .values(&entity)
-        .execute(conn)
-        .map_err(|e| Error::Io(format!("Database error saving currency: {}", e)))?;
+    let latest: Option<CurrencyEntity> = currencies::table
+        .filter(currencies::id.eq(entity.id))
+        .order(currencies::download_id.desc())
+        .first(conn)
+        .optional()
+        .map_err(|e| Error::Io(format!("Database error querying currency: {}", e)))?;
+    let changed = match &latest {
+        None => true,
+        Some(existing) => {
+            existing.name != entity.name
+                || existing.rate != entity.rate
+                || existing.symbol != entity.symbol
+        }
+    };
+    if changed {
+        diesel::insert_into(currencies::table)
+            .values(&entity)
+            .execute(conn)
+            .map_err(|e| Error::Io(format!("Database error saving currency: {}", e)))?;
+    }
     Ok(())
 }
 
@@ -620,10 +647,6 @@ pub fn save_country(
     country: &Country,
     download_id: i32,
 ) -> Result<(), Error> {
-    if let Some(c) = &country.Currency {
-        save_currency(conn, c, download_id)?;
-    }
-
     let flag = get_flag_emoji(country.CountryCode.as_deref());
 
     let entity = CountryEntity {
@@ -636,12 +659,28 @@ pub fn save_country(
         time_format: country.TimeFormat.clone(),
         flag,
     };
-    // A country may appear in both world_details and team_details within one
-    // sync; INSERT OR IGNORE skips the duplicate without losing any data.
-    diesel::insert_or_ignore_into(countries::table)
-        .values(&entity)
-        .execute(conn)
-        .map_err(|e| Error::Io(format!("Database error saving country: {}", e)))?;
+    let latest: Option<CountryEntity> = countries::table
+        .filter(countries::id.eq(entity.id))
+        .order(countries::download_id.desc())
+        .first(conn)
+        .optional()
+        .map_err(|e| Error::Io(format!("Database error querying country: {}", e)))?;
+    let changed = match &latest {
+        None => true,
+        Some(existing) => {
+            existing.name != entity.name
+                || existing.currency_id != entity.currency_id
+                || existing.country_code != entity.country_code
+                || existing.date_format != entity.date_format
+                || existing.time_format != entity.time_format
+        }
+    };
+    if changed {
+        diesel::insert_into(countries::table)
+            .values(&entity)
+            .execute(conn)
+            .map_err(|e| Error::Io(format!("Database error saving country: {}", e)))?;
+    }
     Ok(())
 }
 
@@ -660,12 +699,24 @@ fn save_region(
             name: region.RegionName.clone(),
             country_id: country_id as i32,
         };
-        // A region may appear in multiple API responses within one sync;
-        // INSERT OR IGNORE skips the duplicate without losing any data.
-        diesel::insert_or_ignore_into(regions::table)
-            .values(&entity)
-            .execute(conn)
-            .map_err(|e| Error::Io(format!("Database error saving region: {}", e)))?;
+        let latest: Option<RegionEntity> = regions::table
+            .filter(regions::id.eq(entity.id))
+            .order(regions::download_id.desc())
+            .first(conn)
+            .optional()
+            .map_err(|e| Error::Io(format!("Database error querying region: {}", e)))?;
+        let changed = match &latest {
+            None => true,
+            Some(existing) => {
+                existing.name != entity.name || existing.country_id != entity.country_id
+            }
+        };
+        if changed {
+            diesel::insert_into(regions::table)
+                .values(&entity)
+                .execute(conn)
+                .map_err(|e| Error::Io(format!("Database error saving region: {}", e)))?;
+        }
     }
 
     Ok(())
@@ -698,12 +749,39 @@ fn save_league(
         number_of_levels: league.NumberOfLevels.map(|v| v as i32),
         league_system_id: league.LeagueSystemId.unwrap_or(1) as i32,
     };
-    // A league may appear in multiple API responses within one sync;
-    // INSERT OR IGNORE skips the duplicate without losing any data.
-    diesel::insert_or_ignore_into(leagues::table)
-        .values(&entity)
-        .execute(conn)
-        .map_err(|e| Error::Io(format!("Database error saving league: {}", e)))?;
+    let latest: Option<LeagueEntity> = leagues::table
+        .filter(leagues::id.eq(entity.id))
+        .order(leagues::download_id.desc())
+        .first(conn)
+        .optional()
+        .map_err(|e| Error::Io(format!("Database error querying league: {}", e)))?;
+    let changed = match &latest {
+        None => true,
+        Some(existing) => {
+            existing.name != entity.name
+                || existing.country_id != entity.country_id
+                || existing.short_name != entity.short_name
+                || existing.continent != entity.continent
+                || existing.season != entity.season
+                || existing.season_offset != entity.season_offset
+                || existing.match_round != entity.match_round
+                || existing.zone_name != entity.zone_name
+                || existing.english_name != entity.english_name
+                || existing.language_id != entity.language_id
+                || existing.national_team_id != entity.national_team_id
+                || existing.u20_team_id != entity.u20_team_id
+                || existing.active_teams != entity.active_teams
+                || existing.active_users != entity.active_users
+                || existing.number_of_levels != entity.number_of_levels
+                || existing.league_system_id != entity.league_system_id
+        }
+    };
+    if changed {
+        diesel::insert_into(leagues::table)
+            .values(&entity)
+            .execute(conn)
+            .map_err(|e| Error::Io(format!("Database error saving league: {}", e)))?;
+    }
     Ok(())
 }
 

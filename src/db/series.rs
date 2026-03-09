@@ -130,12 +130,27 @@ pub fn save_league_details(
         current_match_round: data.CurrentMatchRound.map(|v| v as i32),
     };
 
-    // A league unit may be fetched for multiple opponents in the same sync;
-    // INSERT OR IGNORE skips the duplicate without losing any data.
-    diesel::insert_or_ignore_into(league_units::table)
-        .values(&new_unit)
-        .execute(conn)
-        .map_err(|e| Error::Io(format!("Failed to insert league unit: {}", e)))?;
+    let latest_unit: Option<LeagueUnit> = league_units::table
+        .filter(league_units::unit_id.eq(unit_id))
+        .order(league_units::download_id.desc())
+        .first(conn)
+        .optional()
+        .map_err(|e| Error::Io(format!("Failed to query league unit: {}", e)))?;
+    let unit_changed = match &latest_unit {
+        None => true,
+        Some(existing) => {
+            existing.unit_name != new_unit.unit_name
+                || existing.league_level != new_unit.league_level
+                || existing.max_number_of_teams != new_unit.max_number_of_teams
+                || existing.current_match_round != new_unit.current_match_round
+        }
+    };
+    if unit_changed {
+        diesel::insert_into(league_units::table)
+            .values(&new_unit)
+            .execute(conn)
+            .map_err(|e| Error::Io(format!("Failed to insert league unit: {}", e)))?;
+    }
 
     save_league_teams(conn, download_id, unit_id, data)?;
 
@@ -169,20 +184,46 @@ fn save_league_teams(
         })
         .collect();
 
-    // Deduplicate by composite PK before inserting so the plain INSERT never
-    // sees a conflict — consistent with the insert-only schema invariant.
+    // Load the latest stored row per team for this league unit, across all
+    // downloads, so we can detect whether anything has changed.
+    let all_stored: Vec<LeagueUnitTeam> = league_unit_teams::table
+        .filter(league_unit_teams::unit_id.eq(unit_id))
+        .order(league_unit_teams::download_id.desc())
+        .load(conn)
+        .unwrap_or_default();
+    let mut latest_by_team: std::collections::HashMap<i32, &LeagueUnitTeam> =
+        std::collections::HashMap::new();
+    for row in &all_stored {
+        latest_by_team.entry(row.team_id).or_insert(row);
+    }
+
+    // Within-batch dedup, then keep only new or changed rows.
     let mut seen_pks = std::collections::HashSet::new();
     let records: Vec<NewLeagueUnitTeam> = records
         .into_iter()
-        .filter(|r| seen_pks.insert((r.unit_id, r.team_id, r.download_id)))
+        .filter(|r| seen_pks.insert(r.team_id))
+        .filter(|r| match latest_by_team.get(&r.team_id) {
+            None => true,
+            Some(existing) => {
+                existing.team_name != r.team_name
+                    || existing.position != r.position
+                    || existing.points != r.points
+                    || existing.matches_played != r.matches_played
+                    || existing.goals_for != r.goals_for
+                    || existing.goals_against != r.goals_against
+                    || existing.won != r.won
+                    || existing.draws != r.draws
+                    || existing.lost != r.lost
+            }
+        })
         .collect();
 
-    // The same league unit may be fetched multiple times in one sync;
-    // INSERT OR IGNORE skips rows already present under this download_id.
-    diesel::insert_or_ignore_into(league_unit_teams::table)
-        .values(&records)
-        .execute(conn)
-        .map_err(|e| Error::Io(format!("Failed to insert league teams: {}", e)))?;
+    if !records.is_empty() {
+        diesel::insert_into(league_unit_teams::table)
+            .values(&records)
+            .execute(conn)
+            .map_err(|e| Error::Io(format!("Failed to insert league teams: {}", e)))?;
+    }
 
     Ok(())
 }
@@ -215,23 +256,47 @@ pub fn save_matches(
         })
         .collect();
 
-    // Deduplicate by composite PK (match_id, download_id) in Rust before
-    // inserting.  The same match can appear in multiple opponents' archives
-    // when they are fetched within a single download; deduplicating here
-    // keeps the plain INSERT free of conflicts as required by the insert-only
-    // schema invariant.
+    // Collect the match_ids in this batch so we can scope the DB query.
+    let incoming_ids: Vec<i32> = records.iter().map(|r| r.match_id).collect();
+
+    // Load the latest stored row for each match_id present in the batch.
+    let all_stored: Vec<Match> = matches::table
+        .filter(matches::match_id.eq_any(&incoming_ids))
+        .order(matches::download_id.desc())
+        .load(conn)
+        .unwrap_or_default();
+    let mut latest_by_match: std::collections::HashMap<i32, &Match> =
+        std::collections::HashMap::new();
+    for row in &all_stored {
+        latest_by_match.entry(row.match_id).or_insert(row);
+    }
+
+    // Within-batch dedup, then keep only new or changed rows.
     let mut seen_ids = std::collections::HashSet::new();
     let records: Vec<NewMatch> = records
         .into_iter()
-        .filter(|r| seen_ids.insert((r.match_id, r.download_id)))
+        .filter(|r| seen_ids.insert(r.match_id))
+        .filter(|r| match latest_by_match.get(&r.match_id) {
+            None => true,
+            Some(existing) => {
+                existing.status != r.status
+                    || existing.home_goals != r.home_goals
+                    || existing.away_goals != r.away_goals
+                    || existing.home_team_id != r.home_team_id
+                    || existing.away_team_id != r.away_team_id
+                    || existing.match_date != r.match_date
+                    || existing.match_type != r.match_type
+                    || existing.match_context_id != r.match_context_id
+            }
+        })
         .collect();
 
-    // The same match can appear in multiple API responses within one sync;
-    // INSERT OR IGNORE skips rows already present under this download_id.
-    diesel::insert_or_ignore_into(matches::table)
-        .values(&records)
-        .execute(conn)
-        .map_err(|e| Error::Io(format!("Failed to insert matches: {}", e)))?;
+    if !records.is_empty() {
+        diesel::insert_into(matches::table)
+            .values(&records)
+            .execute(conn)
+            .map_err(|e| Error::Io(format!("Failed to insert matches: {}", e)))?;
+    }
 
     Ok(())
 }
@@ -684,14 +749,6 @@ mod tests {
 
         // Verify upcoming opponents from DB
         // Add an UPCOMING match
-        let upcoming_data = MatchesData {
-            Team: crate::chpp::model::MatchesTeamWrapper {
-                TeamID: "1".to_string(),
-                TeamName: "Team A".to_string(),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
         // Explicitly constructing as MatchesListWrapper is easier for the test helper
         let mut m_list = Vec::new();
         m_list.push(crate::chpp::model::MatchDetails {
