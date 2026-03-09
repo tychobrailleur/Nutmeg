@@ -558,6 +558,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "requires a GTK display and must run on the main thread"]
     fn test_combo_teams_has_factory() {
         gtk::init().unwrap();
         gio::resources_register_include!("nutmeg.gresource").unwrap();
