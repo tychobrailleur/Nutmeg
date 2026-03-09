@@ -29,18 +29,43 @@ impl MatchOutcome {
     fn colour(&self) -> (f64, f64, f64) {
         match self {
             MatchOutcome::Win => (0.22, 0.71, 0.29),  // green
-            MatchOutcome::Draw => (1.00, 0.75, 0.00), // yellow/orange
+            MatchOutcome::Draw => (0.85, 0.85, 0.85), // grey
             MatchOutcome::Loss => (0.87, 0.20, 0.20), // red
         }
     }
 }
 
+// ── Form entry ─────────────────────────────────────────────────────────────────
+
+/// A single entry in a team's form bar: the match outcome plus the data needed
+/// to build the hover tooltip ("Home Team 0 – 0 Away Team, date").
+#[derive(Debug, Clone)]
+pub struct FormEntry {
+    pub outcome: MatchOutcome,
+    pub match_date: String,
+    pub home_team: String,
+    pub away_team: String,
+    pub home_goals: u32,
+    pub away_goals: u32,
+}
+
 // ── Form helper ───────────────────────────────────────────────────────────────
 
-/// Computes the last `max_results` finished league outcomes for `team_id` from
-/// a flat list of match details, ordered from oldest to newest so the Form bar
-/// reads left-to-right in chronological order.
-fn compute_form(team_id: &str, matches: &[MatchDetails], max_results: usize) -> Vec<MatchOutcome> {
+/// Computes the form bar entries for `team_id`.
+///
+/// Only finished league matches are considered.  Results are scoped to the
+/// **current season** by taking at most `season_match_count` of the most-recent
+/// matches (relying on the invariant that the current season's games are always
+/// the most recent ones in the dataset).  At most `max_results` entries are
+/// returned so the bar never exceeds 5 discs.
+///
+/// The returned vec is **newest-first** so index 0 is rendered on the left.
+fn compute_form(
+    team_id: &str,
+    matches: &[MatchDetails],
+    max_results: usize,
+    season_match_count: usize,
+) -> Vec<FormEntry> {
     let mut finished: Vec<&MatchDetails> = matches
         .iter()
         .filter(|m| {
@@ -52,14 +77,14 @@ fn compute_form(team_id: &str, matches: &[MatchDetails], max_results: usize) -> 
         })
         .collect();
 
-    // Sort ascending by date so we can take the last N
-    finished.sort_by(|a, b| a.MatchDate.cmp(&b.MatchDate));
+    // Sort descending so we can take the most-recent N (current season) first.
+    finished.sort_by(|a, b| b.MatchDate.cmp(&a.MatchDate));
+
+    let limit = max_results.min(season_match_count);
 
     finished
-        .iter()
-        .rev()
-        .take(max_results)
-        .rev() // restore chronological order for display
+        .into_iter()
+        .take(limit)
         .filter_map(|m| {
             let home = m.HomeGoals?;
             let away = m.AwayGoals?;
@@ -79,7 +104,14 @@ fn compute_form(team_id: &str, matches: &[MatchDetails], max_results: usize) -> 
             } else {
                 MatchOutcome::Loss
             };
-            Some(outcome)
+            Some(FormEntry {
+                outcome,
+                match_date: m.MatchDate.clone(),
+                home_team: m.HomeTeam.HomeTeamName.clone(),
+                away_team: m.AwayTeam.AwayTeamName.clone(),
+                home_goals: home,
+                away_goals: away,
+            })
         })
         .collect()
 }
@@ -138,8 +170,8 @@ mod imp_model {
 
     pub struct LeagueTeamObject {
         pub data: RefCell<Option<LeagueTeam>>,
-        /// Last ≤5 league outcomes, oldest-first for display.
-        pub form: RefCell<Vec<MatchOutcome>>,
+        /// Up to 5 current-season league results, newest-first.
+        pub form: RefCell<Vec<FormEntry>>,
         pub logo_url: RefCell<Option<String>>,
     }
 
@@ -168,7 +200,7 @@ glib::wrapper! {
 }
 
 impl LeagueTeamObject {
-    pub fn new(team: LeagueTeam, form: Vec<MatchOutcome>, logo_url: Option<String>) -> Self {
+    pub fn new(team: LeagueTeam, form: Vec<FormEntry>, logo_url: Option<String>) -> Self {
         let obj: Self = glib::Object::builder().build();
         *obj.imp().data.borrow_mut() = Some(team);
         *obj.imp().form.borrow_mut() = form;
@@ -300,7 +332,12 @@ impl SeriesPage {
 
             let store = gtk::gio::ListStore::new::<LeagueTeamObject>();
             for team in &league_data.Teams {
-                let form = compute_form(&team.TeamID, match_dataset, 5);
+                let form = compute_form(
+                    &team.TeamID,
+                    match_dataset,
+                    5,
+                    team.Matches as usize,
+                );
                 let tid = team.TeamID.parse::<i32>().unwrap_or(0);
                 let logo_url = logo_urls.get(&tid).cloned();
                 store.append(&LeagueTeamObject::new(team.clone(), form, logo_url));
@@ -570,10 +607,12 @@ impl SeriesPage {
         view.append_column(&column);
     }
 
-    /// Form column: up to 5 coloured discs showing recent results,
-    /// left=oldest, right=most recent.
+    /// Form column: up to 5 coloured discs showing the current season's most-recent
+    /// results, newest on the left.  Discs beyond the number of games played this
+    /// season are hidden so the column is empty at the start of a new season.
+    /// Hovering a disc shows a tooltip with the match date and score.
     fn add_form_column(&self, view: &ColumnView) {
-        const DISC_COUNT: usize = 5;
+        const MAX_DISCS: usize = 5;
         const DISC_SIZE: i32 = 14;
 
         let factory = SignalListItemFactory::new();
@@ -584,11 +623,13 @@ impl SeriesPage {
             row.set_margin_top(8);
             row.set_margin_bottom(8);
             row.set_valign(gtk::Align::Center);
-            for _ in 0..DISC_COUNT {
+            for _ in 0..MAX_DISCS {
                 let disc = DrawingArea::new();
                 disc.set_content_width(DISC_SIZE);
                 disc.set_content_height(DISC_SIZE);
                 disc.set_valign(gtk::Align::Center);
+                // Enable tooltips on the drawing area.
+                disc.set_has_tooltip(true);
                 row.append(&disc);
             }
             item.set_child(Some(&row));
@@ -598,27 +639,39 @@ impl SeriesPage {
             let item = item.downcast_ref::<ListItem>().unwrap();
             if let Some(obj) = item.item().and_downcast::<LeagueTeamObject>() {
                 let form = obj.imp().form.borrow().clone();
-                let missing_count = DISC_COUNT.saturating_sub(form.len());
+                // `form` is newest-first; index 0 → leftmost disc.
                 if let Some(row) = item.child().and_downcast::<gtk::Box>() {
                     let mut child_opt = row.first_child();
-                    for i in 0..DISC_COUNT {
-                        if let Some(child) = child_opt {
+                    for i in 0..MAX_DISCS {
+                        if let Some(child) = child_opt.take() {
                             if let Some(disc) = child.downcast_ref::<DrawingArea>() {
-                                let outcome = if i >= missing_count {
-                                    form.get(i - missing_count).copied()
+                                if let Some(entry) = form.get(i) {
+                                    let colour = entry.outcome.colour();
+                                    disc.set_visible(true);
+                                    disc.set_draw_func(move |_, cr, w, h| {
+                                        let cx = w as f64 / 2.0;
+                                        let cy = h as f64 / 2.0;
+                                        let r = (w.min(h) as f64 / 2.0) - 1.0;
+                                        cr.arc(cx, cy, r, 0.0, std::f64::consts::TAU);
+                                        let (dr, dg, db) = colour;
+                                        cr.set_source_rgb(dr, dg, db);
+                                        let _ = cr.fill();
+                                    });
+                                    let tooltip = format!(
+                                        "{}\n{} {} – {} {}",
+                                        entry.match_date,
+                                        entry.home_team,
+                                        entry.home_goals,
+                                        entry.away_goals,
+                                        entry.away_team,
+                                    );
+                                    disc.set_tooltip_text(Some(&tooltip));
                                 } else {
-                                    None
-                                };
-                                disc.set_draw_func(move |_, cr, w, h| {
-                                    let cx = w as f64 / 2.0;
-                                    let cy = h as f64 / 2.0;
-                                    let r = (w.min(h) as f64 / 2.0) - 1.0;
-                                    cr.arc(cx, cy, r, 0.0, std::f64::consts::TAU);
-                                    let (dr, dg, db) =
-                                        outcome.map(|o| o.colour()).unwrap_or((0.85, 0.85, 0.85));
-                                    cr.set_source_rgb(dr, dg, db);
-                                    let _ = cr.fill();
-                                });
+                                    // No game for this slot in the current season.
+                                    disc.set_visible(false);
+                                    disc.set_tooltip_text(None);
+                                    disc.set_draw_func(|_, _, _, _| {});
+                                }
                             }
                             child_opt = child.next_sibling();
                         }
@@ -718,63 +771,99 @@ mod tests {
         }
     }
 
+    fn outcomes(form: &[FormEntry]) -> Vec<MatchOutcome> {
+        form.iter().map(|e| e.outcome).collect()
+    }
+
     #[test]
-    fn test_compute_form_win_draw_loss() {
+    fn test_compute_form_win_draw_loss_newest_first() {
+        // Chronological order: Win → Draw → Loss; newest-first expected: Loss, Draw, Win.
         let matches = vec![
             make_match(1, "10", "20", 2, 0, "2026-01-01 20:00:00"), // team 10 wins
             make_match(2, "20", "10", 1, 1, "2026-01-08 20:00:00"), // draw
             make_match(3, "10", "30", 0, 2, "2026-01-15 20:00:00"), // team 10 loses
         ];
-        let form = compute_form("10", &matches, 5);
+        let form = compute_form("10", &matches, 5, 3);
         assert_eq!(
-            form,
-            vec![MatchOutcome::Win, MatchOutcome::Draw, MatchOutcome::Loss]
+            outcomes(&form),
+            vec![MatchOutcome::Loss, MatchOutcome::Draw, MatchOutcome::Win]
         );
     }
 
     #[test]
     fn test_compute_form_only_last_five() {
+        // 8 matches played this season; form bar capped at 5 (the 5 most recent).
         let matches: Vec<MatchDetails> = (1..=8)
             .map(|i| make_match(i, "10", "20", 1, 0, &format!("2026-01-{:02} 20:00:00", i)))
             .collect();
-        let form = compute_form("10", &matches, 5);
+        let form = compute_form("10", &matches, 5, 8);
         assert_eq!(form.len(), 5);
-        assert!(form.iter().all(|&o| o == MatchOutcome::Win));
+        assert!(form.iter().all(|e| e.outcome == MatchOutcome::Win));
+    }
+
+    #[test]
+    fn test_compute_form_scoped_to_current_season() {
+        // 5 matches in the dataset but only 2 played in the current season.
+        // The form bar must show 2 discs (the 2 most recent matches).
+        let matches: Vec<MatchDetails> = (1..=5)
+            .map(|i| make_match(i, "10", "20", 1, 0, &format!("2026-01-{:02} 20:00:00", i)))
+            .collect();
+        let form = compute_form("10", &matches, 5, 2);
+        assert_eq!(form.len(), 2);
+    }
+
+    #[test]
+    fn test_compute_form_new_season_is_empty() {
+        // At the start of a new season, season_match_count == 0 → column empty.
+        let matches: Vec<MatchDetails> = (1..=5)
+            .map(|i| make_match(i, "10", "20", 1, 0, &format!("2026-01-{:02} 20:00:00", i)))
+            .collect();
+        let form = compute_form("10", &matches, 5, 0);
+        assert!(form.is_empty());
     }
 
     #[test]
     fn test_compute_form_excludes_cup_matches() {
         let mut m = make_match(1, "10", "20", 3, 1, "2026-01-01 20:00:00");
         m.MatchType = 3; // cup — must be excluded
-        let form = compute_form("10", &[m], 5);
+        let form = compute_form("10", &[m], 5, 1);
         assert!(form.is_empty());
+    }
+
+    #[test]
+    fn test_compute_form_tooltip_fields() {
+        let m = make_match(1, "10", "20", 2, 1, "2026-03-01 20:00:00");
+        let form = compute_form("10", &[m], 5, 1);
+        assert_eq!(form.len(), 1);
+        let entry = &form[0];
+        assert_eq!(entry.outcome, MatchOutcome::Win);
+        assert_eq!(entry.home_goals, 2);
+        assert_eq!(entry.away_goals, 1);
+        assert_eq!(entry.match_date, "2026-03-01 20:00:00");
+        assert_eq!(entry.home_team, "Team 10");
+        assert_eq!(entry.away_team, "Team 20");
     }
 
     // ── Regression tests for the two fixed bugs ──────────────────────────────
 
     #[test]
     fn test_compute_form_includes_match_with_context_id_zero() {
-        // Simulates a league match row saved by the archive endpoint with
-        // MatchContextId = Some(0) — the pattern that used to cause form to break.
         let mut m = make_match(1, "10", "20", 2, 1, "2026-01-01 20:00:00");
         m.MatchContextId = Some(0);
-        let form = compute_form("10", &[m], 5);
-        assert_eq!(form, vec![MatchOutcome::Win]);
+        let form = compute_form("10", &[m], 5, 1);
+        assert_eq!(outcomes(&form), vec![MatchOutcome::Win]);
     }
 
     #[test]
     fn test_compute_form_includes_match_with_context_id_none() {
-        // Archive endpoint sometimes omits MatchContextId entirely.
         let mut m = make_match(1, "10", "20", 1, 2, "2026-01-01 20:00:00");
         m.MatchContextId = None;
-        let form = compute_form("10", &[m], 5);
-        assert_eq!(form, vec![MatchOutcome::Loss]);
+        let form = compute_form("10", &[m], 5, 1);
+        assert_eq!(outcomes(&form), vec![MatchOutcome::Loss]);
     }
 
     #[test]
     fn test_compute_form_not_affected_by_context_id_value() {
-        // Regardless of MatchContextId (correct value, zero, or None), a
-        // MatchType == 1 match must always appear in the form bar.
         let league_unit_id = 54321u32;
         let mut with_correct = make_match(1, "10", "20", 2, 0, "2026-01-01 20:00:00");
         with_correct.MatchContextId = Some(league_unit_id);
@@ -785,10 +874,11 @@ mod tests {
         let mut with_none = make_match(3, "10", "40", 0, 1, "2026-01-15 20:00:00");
         with_none.MatchContextId = None;
 
-        let form = compute_form("10", &[with_correct, with_zero, with_none], 5);
+        // Newest-first: Loss (match 3) → Draw (match 2) → Win (match 1).
+        let form = compute_form("10", &[with_correct, with_zero, with_none], 5, 3);
         assert_eq!(
-            form,
-            vec![MatchOutcome::Win, MatchOutcome::Draw, MatchOutcome::Loss]
+            outcomes(&form),
+            vec![MatchOutcome::Loss, MatchOutcome::Draw, MatchOutcome::Win]
         );
     }
 
