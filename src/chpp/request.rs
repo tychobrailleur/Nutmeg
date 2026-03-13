@@ -193,8 +193,37 @@ async fn perform_single_request<T: DeserializeOwned>(
                 }
             }
 
-            let hattrick_data: T = from_str(data_str.as_str())
-                .map_err(|e| Error::Xml(format!("Failed to deserialize XML: {}", e)))?;
+            let hattrick_data: T = match from_str(data_str.as_str()) {
+                Ok(data) => data,
+                Err(e) => {
+                    let preview = if data_str.len() > 100 {
+                        format!("{}...", &data_str[..100])
+                    } else {
+                        data_str.clone()
+                    };
+
+                    log::error!(
+                        "Failed to deserialize XML from {} v{}. Error: {}. Raw response (first 100 chars): {}",
+                        file, version, e, preview
+                    );
+
+                    // Handle common non-XML error responses from CHPP/OAuth
+                    if data_str.contains("expired_token") {
+                        return Err(Error::Auth("expired_token".to_string()));
+                    } else if data_str.contains("invalid_token") {
+                        return Err(Error::Auth("invalid_token".to_string()));
+                    } else if data_str.contains("version_not_supported") {
+                        return Err(Error::ChppApi {
+                            code: 400,
+                            message: "version_not_supported".to_string(),
+                            error_guid: None,
+                            request: Some(file.to_string()),
+                        });
+                    }
+
+                    return Err(Error::Xml(format!("Failed to deserialize XML: {}", e)));
+                }
+            };
             Ok(hattrick_data)
         }
         Err(e) => Err(Error::Network(e.to_string())),
