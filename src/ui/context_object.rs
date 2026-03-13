@@ -7,6 +7,8 @@ use std::cell::RefCell;
 use std::sync::OnceLock;
 
 use crate::squad::ui::player_list::create_player_model;
+use gtk::prelude::*;
+use log::{error, info, warn};
 
 mod imp {
     use super::*;
@@ -108,6 +110,16 @@ mod imp {
                 }
                 _ => unimplemented!(),
             }
+        }
+
+        fn constructed(&self) {
+            self.parent_constructed();
+
+            // Setup automatic refresh when team changes
+            let obj = self.obj();
+            obj.connect_notify_local(Some("selected-team"), |ctx, _| {
+                ctx.refresh_from_db();
+            });
         }
     }
 }
@@ -224,6 +236,78 @@ impl ContextObject {
         self.imp().all_series_matches.replace(all_matches);
         self.imp().series_logo_urls.replace(logo_urls);
         self.notify("data-loaded");
+    }
+
+    /// Centralised method to refresh all in-memory snapshot data from the database
+    /// for the currently selected team.
+    pub fn refresh_from_db(&self) {
+        let Some(team) = self.selected_team() else {
+            self.clear_context();
+            return;
+        };
+
+        let team_id = team.team_data().id;
+        log::info!("ContextObject: Refreshing snapshot for team {}", team_id);
+
+        let db = crate::db::manager::DbManager::new();
+        let Ok(mut conn) = db.get_connection() else {
+            log::warn!("ContextObject: Failed to connect to DB for refresh");
+            return;
+        };
+
+        // 1. Players
+        match crate::db::teams::get_players_for_team(&mut conn, team_id) {
+            Ok(players) => {
+                let store = crate::ui::controllers::squad_tab::SquadTabController::create_player_list_store(&players);
+                self.set_players(Some(store));
+            }
+            Err(e) => log::error!("ContextObject: Failed to load players: {}", e),
+        }
+
+        // 2. Series Data
+        let mut league_unit_id = None;
+        if let Ok(Some(t)) = crate::db::teams::get_team(&mut conn, team_id) {
+            if let Some(unit) = t.LeagueLevelUnit {
+                league_unit_id = Some(unit.LeagueLevelUnitID);
+            }
+        }
+
+        if let Some(unit_id) = league_unit_id {
+            let db_league = crate::db::series::get_latest_league_details(&mut conn, unit_id).ok().flatten();
+            let db_matches = crate::db::series::get_latest_matches(&mut conn, team_id).ok().flatten();
+
+            if let (Some(league), Some(matches)) = (db_league, db_matches) {
+                let team_ids: Vec<i32> = league.Teams.iter().filter_map(|t| t.TeamID.parse::<i32>().ok()).collect();
+                let all_matches = crate::db::series::get_matches_for_teams(&mut conn, &team_ids).unwrap_or_default();
+                let logos = crate::db::teams::get_logo_urls_for_teams(&mut conn, &team_ids).unwrap_or_default();
+                let filtered = crate::series::ui::controller::filter_matches_for_season(&league, matches);
+
+                self.set_series_data(Some(league), Some(filtered), Some(all_matches), Some(logos));
+            }
+        }
+
+        // 3. Upcoming Opponents
+        let list_store = gtk::gio::ListStore::new::<crate::opponent_analysis::ui::model::OpponentItem>();
+        if let Ok(opponents) = crate::db::series::get_upcoming_opponents_from_db(&mut conn, team_id) {
+            for opp in opponents {
+                let logo_url = format!(
+                    "https://res.hattrick.org/teamlogo/{}/{}/{}/{}/{}.png",
+                    opp.team_id % 10,
+                    opp.team_id % 100,
+                    opp.team_id % 1000,
+                    opp.team_id,
+                    opp.team_id
+                );
+                let item = crate::opponent_analysis::ui::model::OpponentItem::new(
+                    opp.team_id as u32,
+                    &opp.team_name,
+                    &opp.match_date,
+                    &logo_url,
+                );
+                list_store.append(&item);
+            }
+        }
+        self.set_upcoming_opponents(Some(list_store));
     }
 }
 

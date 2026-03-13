@@ -32,12 +32,8 @@ impl SyncController {
                 warn!("Background avatar fetch failed: {}", e);
             } else {
                 info!("Background avatar fetch completed. Refreshing player list.");
-                if let Some(selected) = ctx_clone.selected_team() {
-                    let squad_controller =
-                        crate::ui::controllers::squad_tab::SquadTabController::new(
-                            ctx_clone.clone(),
-                        );
-                    squad_controller.on_team_selected(&selected);
+                if let Some(_selected) = ctx_clone.selected_team() {
+                    ctx_clone.refresh_from_db();
                 }
             }
         });
@@ -73,6 +69,7 @@ impl SyncController {
         {
             Ok(Some((team_id, download_id))) => {
                 info!("Sync completed successfully");
+                context.refresh_from_db();
                 Self::spawn_avatar_refresh(
                     db.clone(),
                     context.clone(),
@@ -174,6 +171,7 @@ impl SyncController {
             {
                 Ok((team_id, download_id)) => {
                     info!("Retry sync successful");
+                    context.refresh_from_db();
                     Self::spawn_avatar_refresh(
                         db,
                         context.clone(),

@@ -20,6 +20,11 @@
 
 use crate::chpp::client::HattrickClient;
 use crate::chpp::metadata::ChppEndpoints;
+use crate::chpp::model::{
+    AvatarsData, AvatarsPlayers, AvatarsTeam, HattrickData, LeagueDetailsData, MatchesData,
+    MatchesListWrapper, MatchesTeamWrapper, PlayersData, StaffListData, Team, Teams, User,
+    WorldDetails,
+};
 use crate::chpp::{create_oauth_context, retry_with_default_config, ChppClient, Error};
 use crate::db::download_entries::{create_download_entry, update_entry_status, NewDownloadEntry};
 use crate::db::manager::DbManager;
@@ -456,7 +461,7 @@ impl SyncService {
         .await?;
 
         // Fire upcoming and archived fetches concurrently — they are independent.
-        let t = Instant::now();
+        let t_fetch = Instant::now();
         let (data_up, key_up) = get_auth();
         let (data_arc, key_arc) = get_auth();
         let (upcoming_res, archived_res) = tokio::join!(
@@ -466,22 +471,21 @@ impl SyncService {
         info!(
             "[sync] matches fetch (upcoming+archived) for team {}: {:.2}s",
             team_id,
-            t.elapsed().as_secs_f64()
+            t_fetch.elapsed().as_secs_f64()
         );
 
+        let mut all_matches = Vec::new();
+        let mut seen_ids = std::collections::HashSet::new();
+
+        // 1. Process upcoming matches
         match upcoming_res {
             Ok(matches_data) => {
                 Self::update_download_entry(db_manager.clone(), entry_id, "success", None).await?;
-
-                let db = db_manager.clone();
-                tokio::task::spawn_blocking(move || {
-                    let mut conn = db.get_connection()?;
-                    conn.transaction::<_, Error, _>(|conn| {
-                        save_matches(conn, download_id, &matches_data)
-                    })
-                })
-                .await
-                .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+                for m in matches_data.Team.MatchList.Matches {
+                    if seen_ids.insert(m.MatchID) {
+                        all_matches.push(m);
+                    }
+                }
             }
             Err(e) => {
                 Self::update_download_entry(
@@ -491,25 +495,23 @@ impl SyncService {
                     Some(e.to_string()),
                 )
                 .await?;
-                warn!("Failed to fetch matches: {}", e);
+                warn!("Failed to fetch upcoming matches for team {}: {}", team_id, e);
             }
         }
 
-        // Save archived matches — non-fatal if unavailable.
+        // 2. Process archived matches
         match archived_res {
             Ok(archived_data) => {
                 debug!(
-                    "[sync] Saving {} archived matches for team {}",
+                    "[sync] Found {} archived matches for team {}",
                     archived_data.Team.MatchList.Matches.len(),
                     team_id
                 );
-                let db = db_manager.clone();
-                tokio::task::spawn_blocking(move || {
-                    let mut conn = db.get_connection()?;
-                    save_matches(&mut conn, download_id, &archived_data)
-                })
-                .await
-                .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+                for m in archived_data.Team.MatchList.Matches {
+                    if seen_ids.insert(m.MatchID) {
+                        all_matches.push(m);
+                    }
+                }
             }
             Err(e) => {
                 warn!(
@@ -517,6 +519,31 @@ impl SyncService {
                     team_id, e
                 );
             }
+        }
+
+        // 3. Save all unique matches in one transaction
+        if !all_matches.is_empty() {
+            let db = db_manager.clone();
+            let matches_to_save = MatchesData {
+                Team: MatchesTeamWrapper {
+                    TeamID: team_id.to_string(),
+                    TeamName: "Unknown".to_string(),
+                    ShortTeamName: None,
+                    League: None,
+                    LeagueLevelUnit: None,
+                    MatchList: MatchesListWrapper {
+                        Matches: all_matches,
+                    },
+                },
+            };
+            tokio::task::spawn_blocking(move || {
+                let mut conn = db.get_connection()?;
+                conn.transaction::<_, Error, _>(|conn| {
+                    save_matches(conn, download_id, &matches_to_save)
+                })
+            })
+            .await
+            .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
         }
 
         Ok(())

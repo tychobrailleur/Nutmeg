@@ -1,5 +1,9 @@
 -- Add download_id to match_ratings so it follows the insert-only pattern.
 -- The old PK was (match_id, team_id); the new PK is (match_id, team_id, download_id).
+
+-- Ensure a legacy download record exists for data migrated from pre-download_id schema.
+INSERT OR IGNORE INTO downloads (id, timestamp, status)
+VALUES (0, '1970-01-01T00:00:00Z', 'legacy');
 CREATE TABLE match_ratings_new (
     match_id         INTEGER NOT NULL,
     team_id          INTEGER NOT NULL,

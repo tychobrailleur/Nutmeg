@@ -63,15 +63,11 @@ impl MainController {
         }
     }
 
-    fn load_team_data(&self, team: TeamObject) {
-        self.series_tab.on_team_selected(&team);
-        self.squad_tab.on_team_selected(&team);
-        self.opponent_tab.on_team_selected(&team);
+    fn load_team_data(&self, _team: TeamObject) {
+        // No-op: ContextObject now refreshes itself on selected-team change.
     }
 
     fn clear_team_data(&self) {
-        self.series_tab.clear();
-        self.squad_tab.clear();
-        self.opponent_tab.clear();
+        // No-op: ContextObject now clears itself via refresh_from_db() -> clear_context().
     }
 }

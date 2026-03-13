@@ -388,10 +388,40 @@ pub fn save_players(
     players_list: &[crate::chpp::model::Player],
     team_id: u32,
     download_id: i32,
-) -> Result<(), Error> {
+) -> Result<(), Error> {    let incoming_ids: Vec<i32> = players_list.iter().map(|p| p.PlayerID as i32).collect();
+
+    // 1. Load latest stored version for each player to detect changes
+    let all_stored: Vec<PlayerEntity> = players::table
+        .filter(players::id.eq_any(&incoming_ids))
+        .order(players::download_id.desc())
+        .load(conn)
+        .unwrap_or_default();
+    let mut latest_by_player: std::collections::HashMap<i32, PlayerEntity> =
+        std::collections::HashMap::with_capacity(all_stored.len());
+    for row in all_stored {
+        latest_by_player.entry(row.id).or_insert(row);
+    }
+
+    // 2. Load match_ids already present in this download to avoid UNIQUE violations
+    let already_in_download: std::collections::HashSet<i32> = players::table
+        .filter(players::download_id.eq(download_id))
+        .filter(players::id.eq_any(&incoming_ids))
+        .select(players::id)
+        .load::<i32>(conn)
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+
     for player in players_list {
+        let player_id = player.PlayerID as i32;
+
+        // Skip if already inserted in this download
+        if already_in_download.contains(&player_id) {
+            continue;
+        }
+
         let entity = PlayerEntity {
-            id: player.PlayerID as i32,
+            id: player_id,
             download_id,
             team_id: team_id as i32,
             first_name: player.FirstName.clone(),
@@ -503,11 +533,41 @@ pub fn save_players(
             gender_id: player.GenderID.unwrap_or(1) as i32,
         };
 
-        diesel::insert_into(players::table)
-            .values(&entity)
-            .execute(conn)
-            .map_err(|e| Error::Io(format!("Database error saving player: {}", e)))?;
+        // Check for changes
+        let changed = match latest_by_player.get(&player_id) {
+            None => true,
+            Some(existing) => {
+                existing.team_id != entity.team_id
+                    || existing.first_name != entity.first_name
+                    || existing.last_name != entity.last_name
+                    || existing.player_number != entity.player_number
+                    || existing.age != entity.age
+                    || existing.age_days != entity.age_days
+                    || existing.tsi != entity.tsi
+                    || existing.player_form != entity.player_form
+                    || existing.experience != entity.experience
+                    || existing.loyalty != entity.loyalty
+                    || existing.stamina_skill != entity.stamina_skill
+                    || existing.keeper_skill != entity.keeper_skill
+                    || existing.playmaker_skill != entity.playmaker_skill
+                    || existing.scorer_skill != entity.scorer_skill
+                    || existing.passing_skill != entity.passing_skill
+                    || existing.winger_skill != entity.winger_skill
+                    || existing.defender_skill != entity.defender_skill
+                    || existing.set_pieces_skill != entity.set_pieces_skill
+                    || existing.injury_level != entity.injury_level
+                    || existing.last_match_id != entity.last_match_id
+            }
+        };
+
+        if changed {
+            diesel::insert_into(players::table)
+                .values(&entity)
+                .execute(conn)
+                .map_err(|e| Error::Io(format!("Database error saving player {}: {}", player_id, e)))?;
+        }
     }
+
     Ok(())
 }
 
@@ -516,17 +576,56 @@ pub fn save_avatars(
     avatars_list: &[(u32, Vec<u8>)],
     download_id: i32,
 ) -> Result<(), Error> {
+    let incoming_ids: Vec<i32> = avatars_list.iter().map(|(id, _)| *id as i32).collect();
+
+    // 1. Load latest stored version for each avatar to detect changes
+    let all_stored: Vec<AvatarEntity> = avatars::table
+        .filter(avatars::player_id.eq_any(&incoming_ids))
+        .order(avatars::download_id.desc())
+        .load(conn)
+        .unwrap_or_default();
+    let mut latest_by_player: std::collections::HashMap<i32, AvatarEntity> =
+        std::collections::HashMap::with_capacity(all_stored.len());
+    for row in all_stored {
+        latest_by_player.entry(row.player_id).or_insert(row);
+    }
+
+    // 2. Load player_ids already present in this download to avoid UNIQUE violations
+    let already_in_download: std::collections::HashSet<i32> = avatars::table
+        .filter(avatars::download_id.eq(download_id))
+        .filter(avatars::player_id.eq_any(&incoming_ids))
+        .select(avatars::player_id)
+        .load::<i32>(conn)
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+
     for (player_id, image) in avatars_list {
+        let p_id = *player_id as i32;
+
+        // Skip if already inserted in this download
+        if already_in_download.contains(&p_id) {
+            continue;
+        }
+
         let entity = AvatarEntity {
-            player_id: *player_id as i32,
+            player_id: p_id,
             download_id,
             image: image.clone(),
         };
 
-        diesel::insert_into(avatars::table)
-            .values(&entity)
-            .execute(conn)
-            .map_err(|e| Error::Io(format!("Database error saving avatar: {}", e)))?;
+        // Check for changes
+        let changed = match latest_by_player.get(&p_id) {
+            None => true,
+            Some(existing) => existing.image != entity.image,
+        };
+
+        if changed {
+            diesel::insert_into(avatars::table)
+                .values(&entity)
+                .execute(conn)
+                .map_err(|e| Error::Io(format!("Database error saving avatar for {}: {}", p_id, e)))?;
+        }
     }
     Ok(())
 }
@@ -1468,7 +1567,7 @@ mod tests {
         use crate::db::schema::downloads;
         use chrono::Utc;
         let download_entity = DownloadEntity {
-            id: 0,
+            id: 100,
             timestamp: Utc::now().to_rfc3339(),
             status: "completed".to_string(),
         };
@@ -1477,7 +1576,7 @@ mod tests {
             .execute(&mut conn)
             .expect("Failed to create download");
 
-        save_team(&mut conn, &team, &user, 0, true).expect("Failed to save team");
+        save_team(&mut conn, &team, &user, 100, true).expect("Failed to save team");
 
         let saved_team = get_team(&mut conn, 99999)
             .expect("Failed to get team")

@@ -197,11 +197,22 @@ fn save_league_teams(
         latest_by_team.entry(row.team_id).or_insert(row);
     }
 
-    // Within-batch dedup, then keep only new or changed rows.
+    // Load all stored rows for these teams and this download_id to avoid UNIQUE violations
+    let already_in_download: std::collections::HashSet<i32> = league_unit_teams::table
+        .filter(league_unit_teams::unit_id.eq(unit_id))
+        .filter(league_unit_teams::download_id.eq(download_id))
+        .select(league_unit_teams::team_id)
+        .load::<i32>(conn)
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+
+    // Within-batch dedup, then keep only new or changed rows, and NOT already in this download.
     let mut seen_pks = std::collections::HashSet::new();
     let records: Vec<NewLeagueUnitTeam> = records
         .into_iter()
         .filter(|r| seen_pks.insert(r.team_id))
+        .filter(|r| !already_in_download.contains(&r.team_id))
         .filter(|r| match latest_by_team.get(&r.team_id) {
             None => true,
             Some(existing) => {
@@ -271,11 +282,22 @@ pub fn save_matches(
         latest_by_match.entry(row.match_id).or_insert(row);
     }
 
-    // Within-batch dedup, then keep only new or changed rows.
+    // Load all match_ids already present in this download to avoid UNIQUE violations
+    let already_in_download: std::collections::HashSet<i32> = matches::table
+        .filter(matches::download_id.eq(download_id))
+        .filter(matches::match_id.eq_any(&incoming_ids))
+        .select(matches::match_id)
+        .load::<i32>(conn)
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+
+    // Within-batch dedup, then keep only new or changed rows, and NOT already in this download.
     let mut seen_ids = std::collections::HashSet::new();
     let records: Vec<NewMatch> = records
         .into_iter()
         .filter(|r| seen_ids.insert(r.match_id))
+        .filter(|r| !already_in_download.contains(&r.match_id))
         .filter(|r| match latest_by_match.get(&r.match_id) {
             None => true,
             Some(existing) => {

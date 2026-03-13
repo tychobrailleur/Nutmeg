@@ -20,29 +20,8 @@ impl SquadTabController {
         Self { context }
     }
 
-    pub fn on_team_selected(&self, team: &TeamObject) {
-        let team_id = team.team_data().id;
-        info!("SquadTabController: Loading data for team {}", team_id);
-        let ctx = self.context.clone();
-
-        glib::MainContext::default().spawn_local(async move {
-            let db = DbManager::new();
-            if let Ok(mut conn) = db.get_connection() {
-                match crate::db::teams::get_players_for_team(&mut conn, team_id) {
-                    Ok(players) => {
-                        info!("SquadTabController: Loaded {} players", players.len());
-                        let list_store = Self::create_player_list_store(&players);
-                        ctx.set_players(Some(list_store));
-                    }
-                    Err(e) => error!("SquadTabController: Failed to load players: {}", e),
-                }
-            }
-        });
-    }
-
     pub fn clear(&self) {
-        let store = Self::create_player_list_store(&[]);
-        self.context.set_players(Some(store));
+        // No-op: ContextObject clears its own properties.
     }
 
     /// Format position for display
