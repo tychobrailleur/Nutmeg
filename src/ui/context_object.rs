@@ -1,3 +1,6 @@
+use crate::db::manager::DbManager;
+use crate::rating::model::Team;
+use crate::squad::ui::player_list::create_player_model;
 use crate::ui::player_object::PlayerObject;
 use crate::ui::team_object::TeamObject;
 use gtk::glib;
@@ -5,10 +8,6 @@ use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use std::cell::RefCell;
 use std::sync::OnceLock;
-
-use crate::squad::ui::player_list::create_player_model;
-use gtk::prelude::*;
-use log::{error, info, warn};
 
 mod imp {
     use super::*;
@@ -258,7 +257,10 @@ impl ContextObject {
         // 1. Players
         match crate::db::teams::get_players_for_team(&mut conn, team_id) {
             Ok(players) => {
-                let store = crate::ui::controllers::squad_tab::SquadTabController::create_player_list_store(&players);
+                let store =
+                    crate::ui::controllers::squad_tab::SquadTabController::create_player_list_store(
+                        &players,
+                    );
                 self.set_players(Some(store));
             }
             Err(e) => log::error!("ContextObject: Failed to load players: {}", e),
@@ -273,22 +275,35 @@ impl ContextObject {
         }
 
         if let Some(unit_id) = league_unit_id {
-            let db_league = crate::db::series::get_latest_league_details(&mut conn, unit_id).ok().flatten();
-            let db_matches = crate::db::series::get_latest_matches(&mut conn, team_id).ok().flatten();
+            let db_league = crate::db::series::get_latest_league_details(&mut conn, unit_id)
+                .ok()
+                .flatten();
+            let db_matches = crate::db::series::get_latest_matches(&mut conn, team_id)
+                .ok()
+                .flatten();
 
             if let (Some(league), Some(matches)) = (db_league, db_matches) {
-                let team_ids: Vec<i32> = league.Teams.iter().filter_map(|t| t.TeamID.parse::<i32>().ok()).collect();
-                let all_matches = crate::db::series::get_matches_for_teams(&mut conn, &team_ids).unwrap_or_default();
-                let logos = crate::db::teams::get_logo_urls_for_teams(&mut conn, &team_ids).unwrap_or_default();
-                let filtered = crate::series::ui::controller::filter_matches_for_season(&league, matches);
+                let team_ids: Vec<i32> = league
+                    .Teams
+                    .iter()
+                    .filter_map(|t| t.TeamID.parse::<i32>().ok())
+                    .collect();
+                let all_matches = crate::db::series::get_matches_for_teams(&mut conn, &team_ids)
+                    .unwrap_or_default();
+                let logos = crate::db::teams::get_logo_urls_for_teams(&mut conn, &team_ids)
+                    .unwrap_or_default();
+                let filtered =
+                    crate::series::ui::controller::filter_matches_for_season(&league, matches);
 
                 self.set_series_data(Some(league), Some(filtered), Some(all_matches), Some(logos));
             }
         }
 
         // 3. Upcoming Opponents
-        let list_store = gtk::gio::ListStore::new::<crate::opponent_analysis::ui::model::OpponentItem>();
-        if let Ok(opponents) = crate::db::series::get_upcoming_opponents_from_db(&mut conn, team_id) {
+        let list_store =
+            gtk::gio::ListStore::new::<crate::opponent_analysis::ui::model::OpponentItem>();
+        if let Ok(opponents) = crate::db::series::get_upcoming_opponents_from_db(&mut conn, team_id)
+        {
             for opp in opponents {
                 let logo_url = format!(
                     "https://res.hattrick.org/teamlogo/{}/{}/{}/{}/{}.png",

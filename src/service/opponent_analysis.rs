@@ -510,15 +510,13 @@ mod tests {
             _team_id: Option<u32>,
             _first_match_date: Option<String>,
             _last_match_date: Option<String>,
-        ) -> Result<MatchesData, Error> {
-            Ok(MatchesData {
-                Team: MatchesTeamWrapper {
+        ) -> Result<MatchesArchiveData, crate::chpp::Error> {
+            Ok(MatchesArchiveData {
+                Team: MatchesArchiveTeamWrapper {
                     TeamID: "0".to_string(),
                     TeamName: "".to_string(),
-                    ShortTeamName: None,
-                    League: None,
-                    LeagueLevelUnit: None,
                     MatchList: MatchesListWrapper { Matches: vec![] },
+                    ..Default::default()
                 },
             })
         }

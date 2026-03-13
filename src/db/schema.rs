@@ -79,6 +79,7 @@ diesel::table! {
         unit_id -> Integer,
         team_id -> Integer,
         download_id -> Integer,
+        season -> Nullable<Integer>,
         team_name -> Text,
         position -> Integer,
         points -> Integer,
@@ -95,6 +96,7 @@ diesel::table! {
     league_units (unit_id, download_id) {
         unit_id -> Integer,
         download_id -> Integer,
+        season -> Nullable<Integer>,
         unit_name -> Text,
         league_level -> Integer,
         max_number_of_teams -> Nullable<Integer>,

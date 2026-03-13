@@ -21,11 +21,13 @@
 use crate::chpp::client::HattrickClient;
 use crate::chpp::metadata::ChppEndpoints;
 use crate::chpp::model::{
-    AvatarsData, AvatarsPlayers, AvatarsTeam, HattrickData, LeagueDetailsData, MatchesData,
-    MatchesListWrapper, MatchesTeamWrapper, PlayersData, StaffListData, Team, Teams, User,
-    WorldDetails,
+    AvatarsData, AvatarsPlayers, AvatarsTeam, HattrickData, LeagueDetailsData, MatchesArchiveData,
+    MatchesData, MatchesListWrapper, MatchesTeamWrapper, PlayersData, StaffListData, Team, Teams,
+    User, WorldDetails,
 };
-use crate::chpp::{create_oauth_context, retry_with_default_config, ChppClient, Error};
+use crate::chpp::{
+    create_oauth_context, retry_with_default_config, ChppClient, Error as ChppError,
+};
 use crate::db::download_entries::{create_download_entry, update_entry_status, NewDownloadEntry};
 use crate::db::manager::DbManager;
 use crate::db::schema::downloads;
@@ -54,14 +56,14 @@ pub trait DataSyncService {
         access_token: String,
         access_secret: String,
         on_progress: ProgressCallback,
-    ) -> Pin<Box<dyn Future<Output = Result<(u32, i32), Error>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<(u32, i32), ChppError>> + Send + '_>>;
 
     fn perform_sync_with_stored_secrets(
         &self,
         consumer_key: String,
         consumer_secret: String,
         on_progress: ProgressCallback,
-    ) -> Pin<Box<dyn Future<Output = Result<Option<(u32, i32)>, Error>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<Option<(u32, i32)>, ChppError>> + Send + '_>>;
 
     fn perform_avatar_sync_with_stored_secrets(
         &self,
@@ -69,7 +71,15 @@ pub trait DataSyncService {
         consumer_secret: String,
         team_id: u32,
         download_id: i32,
-    ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<(), ChppError>> + Send + '_>>;
+
+    fn perform_series_form_sync_lazily(
+        &self,
+        consumer_key: String,
+        consumer_secret: String,
+        unit_id: i32,
+        download_id: i32,
+    ) -> Pin<Box<dyn Future<Output = Result<(), ChppError>> + Send + '_>>;
 }
 
 pub struct SyncService {
@@ -109,7 +119,7 @@ impl DataSyncService for SyncService {
         access_token: String,
         access_secret: String,
         on_progress: ProgressCallback,
-    ) -> Pin<Box<dyn Future<Output = Result<(u32, i32), Error>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(u32, i32), ChppError>> + Send + '_>> {
         let db_manager = self.db_manager.clone();
         let client = self.client.clone();
 
@@ -134,7 +144,7 @@ impl DataSyncService for SyncService {
         consumer_key: String,
         consumer_secret: String,
         on_progress: ProgressCallback,
-    ) -> Pin<Box<dyn Future<Output = Result<Option<(u32, i32)>, Error>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Option<(u32, i32)>, ChppError>> + Send + '_>> {
         let db_manager = self.db_manager.clone();
         let client = self.client.clone();
         let secret_service = self.secret_service.clone();
@@ -143,13 +153,13 @@ impl DataSyncService for SyncService {
             let access_token = match secret_service.get_secret("access_token").await {
                 Ok(Some(token)) => token,
                 Ok(None) => return Ok(None),
-                Err(e) => return Err(Error::Io(e.to_string())),
+                Err(e) => return Err(ChppError::Io(e.to_string())),
             };
 
             let access_secret = match secret_service.get_secret("access_secret").await {
                 Ok(Some(secret)) => secret,
                 Ok(None) => return Ok(None),
-                Err(e) => return Err(Error::Io(e.to_string())),
+                Err(e) => return Err(ChppError::Io(e.to_string())),
             };
 
             Self::do_full_sync(
@@ -172,7 +182,7 @@ impl DataSyncService for SyncService {
         consumer_secret: String,
         team_id: u32,
         download_id: i32,
-    ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(), ChppError>> + Send + '_>> {
         let db_manager = self.db_manager.clone();
         let client = self.client.clone();
         let secret_service = self.secret_service.clone();
@@ -180,14 +190,14 @@ impl DataSyncService for SyncService {
         Box::pin(async move {
             let access_token = match secret_service.get_secret("access_token").await {
                 Ok(Some(token)) => token,
-                Ok(None) => return Err(Error::Io("Missing access token".to_owned())),
-                Err(e) => return Err(Error::Io(e.to_string())),
+                Ok(None) => return Err(ChppError::Io("Missing access token".to_owned())),
+                Err(e) => return Err(ChppError::Io(e.to_string())),
             };
 
             let access_secret = match secret_service.get_secret("access_secret").await {
                 Ok(Some(secret)) => secret,
-                Ok(None) => return Err(Error::Io("Missing access secret".to_owned())),
-                Err(e) => return Err(Error::Io(e.to_string())),
+                Ok(None) => return Err(ChppError::Io("Missing access secret".to_owned())),
+                Err(e) => return Err(ChppError::Io(e.to_string())),
             };
 
             let get_auth = || {
@@ -203,15 +213,60 @@ impl DataSyncService for SyncService {
                 .await
         })
     }
+
+    fn perform_series_form_sync_lazily(
+        &self,
+        consumer_key: String,
+        consumer_secret: String,
+        unit_id: i32,
+        download_id: i32,
+    ) -> Pin<Box<dyn Future<Output = Result<(), ChppError>> + Send + '_>> {
+        let db_manager = self.db_manager.clone();
+        let client = self.client.clone();
+        let secret_service = self.secret_service.clone();
+
+        // TODO: What does Box::pin actually do here?
+        Box::pin(async move {
+            let access_token = match secret_service.get_secret("access_token").await {
+                Ok(Some(token)) => token,
+                Ok(None) => return Err(ChppError::Io("Missing access token".to_owned())),
+                Err(e) => return Err(ChppError::Io(e.to_string())),
+            };
+
+            let access_secret = match secret_service.get_secret("access_secret").await {
+                Ok(Some(secret)) => secret,
+                Ok(None) => return Err(ChppError::Io("Missing access secret".to_owned())),
+                Err(e) => return Err(ChppError::Io(e.to_string())),
+            };
+
+            let get_auth = || {
+                create_oauth_context(
+                    &consumer_key,
+                    &consumer_secret,
+                    &access_token,
+                    &access_secret,
+                )
+            };
+
+            Self::fetch_and_save_series_form_lazily(
+                db_manager,
+                client,
+                &get_auth,
+                unit_id,
+                download_id,
+            )
+            .await
+        })
+    }
 }
 
 impl SyncService {
-    async fn create_download_record(db_manager: Arc<DbManager>) -> Result<i32, Error> {
+    async fn create_download_record(db_manager: Arc<DbManager>) -> Result<i32, ChppError> {
         let db = db_manager.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = db
                 .get_connection()
-                .map_err(|e| Error::Db(format!("Failed to get database connection: {}", e)))?;
+                .map_err(|e| ChppError::Db(format!("Failed to get database connection: {}", e)))?;
 
             let timestamp = Utc::now().to_rfc3339();
 
@@ -221,24 +276,24 @@ impl SyncService {
                     downloads::status.eq("in_progress"),
                 ))
                 .execute(&mut conn)
-                .map_err(|e| Error::Db(format!("Failed to create download record: {}", e)))?;
+                .map_err(|e| ChppError::Db(format!("Failed to create download record: {}", e)))?;
 
             let id: i32 = downloads::table
                 .select(downloads::id)
                 .order(downloads::id.desc())
                 .first(&mut conn)
-                .map_err(|e| Error::Db(format!("Failed to get download ID: {}", e)))?;
+                .map_err(|e| ChppError::Db(format!("Failed to get download ID: {}", e)))?;
 
             Ok(id)
         })
         .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))?
+        .map_err(|e| ChppError::Io(format!("Join error: {}", e)))?
     }
 
     async fn complete_download_record(
         db_manager: Arc<DbManager>,
         download_id: i32,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ChppError> {
         let db = db_manager.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = db.get_connection()?;
@@ -247,12 +302,12 @@ impl SyncService {
             diesel::update(downloads.filter(id.eq(download_id)))
                 .set(status.eq("completed"))
                 .execute(&mut conn)
-                .map_err(|e| Error::Io(format!("Failed to update download status: {}", e)))?;
+                .map_err(|e| ChppError::Io(format!("Failed to update download status: {}", e)))?;
 
-            Ok::<(), Error>(())
+            Ok::<(), ChppError>(())
         })
         .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+        .map_err(|e| ChppError::Io(format!("Join error: {}", e)))??;
         Ok(())
     }
 
@@ -263,7 +318,7 @@ impl SyncService {
         endpoint: &str,
         version: &str,
         user_id: Option<i32>,
-    ) -> Result<i32, Error> {
+    ) -> Result<i32, ChppError> {
         let db = db_manager.clone();
         let endpoint = endpoint.to_string();
         let version = version.to_string();
@@ -272,7 +327,7 @@ impl SyncService {
         tokio::task::spawn_blocking(move || {
             let mut conn = db
                 .get_connection()
-                .map_err(|e| Error::Db(format!("Failed to get database connection: {}", e)))?;
+                .map_err(|e| ChppError::Db(format!("Failed to get database connection: {}", e)))?;
 
             let entry = NewDownloadEntry {
                 download_id,
@@ -286,10 +341,10 @@ impl SyncService {
             };
 
             create_download_entry(&mut conn, entry)
-                .map_err(|e| Error::Db(format!("Failed to create download entry: {}", e)))
+                .map_err(|e| ChppError::Db(format!("Failed to create download entry: {}", e)))
         })
         .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))?
+        .map_err(|e| ChppError::Io(format!("Join error: {}", e)))?
     }
 
     /// Update download entry status (success or error).
@@ -304,22 +359,22 @@ impl SyncService {
         entry_id: i32,
         status: &str,
         error_msg: Option<String>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ChppError> {
         let db = db_manager.clone();
         let status = status.to_string();
 
         tokio::task::spawn_blocking(move || {
             let mut conn = db
                 .get_connection()
-                .map_err(|e| Error::Db(format!("Failed to get database connection: {}", e)))?;
+                .map_err(|e| ChppError::Db(format!("Failed to get database connection: {}", e)))?;
 
             update_entry_status(&mut conn, entry_id, &status, error_msg, false)
-                .map_err(|e| Error::Db(format!("Failed to update download entry: {}", e)))?;
+                .map_err(|e| ChppError::Db(format!("Failed to update download entry: {}", e)))?;
 
-            Ok::<(), Error>(())
+            Ok::<(), ChppError>(())
         })
         .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))?
+        .map_err(|e| ChppError::Io(format!("Join error: {}", e)))?
     }
 
     /// Downloads user data, including Teams details.
@@ -328,7 +383,7 @@ impl SyncService {
         client: Arc<dyn ChppClient>,
         get_auth: &F,
         download_id: i32,
-    ) -> Result<(u32, Option<u32>), Error>
+    ) -> Result<(u32, Option<u32>), ChppError>
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
@@ -378,7 +433,7 @@ impl SyncService {
         let teams_clone = teams.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = db.get_connection()?;
-            conn.transaction::<_, Error, _>(|conn| {
+            conn.transaction::<_, ChppError, _>(|conn| {
                 for team in &teams_clone {
                     info!("Saving team: {} ({})", team.TeamName, team.TeamID);
                     save_team(conn, team, &user, download_id, true)?;
@@ -387,7 +442,7 @@ impl SyncService {
             })
         })
         .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+        .map_err(|e| ChppError::Io(format!("Join error: {}", e)))??;
 
         let league_unit_id_opt = teams
             .first()
@@ -409,7 +464,7 @@ impl SyncService {
         team_id: u32,
         league_unit_id_opt: Option<u32>,
         download_id: i32,
-    ) -> Result<(), Error>
+    ) -> Result<(), ChppError>
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
@@ -431,12 +486,12 @@ impl SyncService {
                     let db = db_manager.clone();
                     tokio::task::spawn_blocking(move || {
                         let mut conn = db.get_connection()?;
-                        conn.transaction::<_, Error, _>(|conn| {
+                        conn.transaction::<_, ChppError, _>(|conn| {
                             save_league_details(conn, download_id, &league_details)
                         })
                     })
                     .await
-                    .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+                    .map_err(|e| ChppError::Io(format!("Join error: {}", e)))??;
                 }
                 Err(e) => {
                     Self::update_download_entry(
@@ -495,19 +550,25 @@ impl SyncService {
                     Some(e.to_string()),
                 )
                 .await?;
-                warn!("Failed to fetch upcoming matches for team {}: {}", team_id, e);
+                warn!(
+                    "Failed to fetch upcoming matches for team {}: {}",
+                    team_id, e
+                );
             }
         }
 
         // 2. Process archived matches
         match archived_res {
-            Ok(archived_data) => {
+            Ok(mut archived_data) => {
                 debug!(
                     "[sync] Found {} archived matches for team {}",
                     archived_data.Team.MatchList.Matches.len(),
                     team_id
                 );
-                for m in archived_data.Team.MatchList.Matches {
+                for mut m in archived_data.Team.MatchList.Matches {
+                    if m.Status.is_empty() {
+                        m.Status = "FINISHED".to_string();
+                    }
                     if seen_ids.insert(m.MatchID) {
                         all_matches.push(m);
                     }
@@ -538,13 +599,134 @@ impl SyncService {
             };
             tokio::task::spawn_blocking(move || {
                 let mut conn = db.get_connection()?;
-                conn.transaction::<_, Error, _>(|conn| {
+                conn.transaction::<_, ChppError, _>(|conn| {
                     save_matches(conn, download_id, &matches_to_save)
                 })
             })
             .await
-            .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+            .map_err(|e| ChppError::Io(format!("Join error: {}", e)))??;
         }
+
+        Ok(())
+    }
+
+    pub async fn fetch_and_save_series_form_lazily<F>(
+        db_manager: Arc<DbManager>,
+        client: Arc<dyn ChppClient>,
+        get_auth: &F,
+        unit_id: i32,
+        download_id: i32,
+    ) -> Result<(), ChppError>
+    where
+        F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
+    {
+        info!(
+            "[sync] Starting background form sync for series {}",
+            unit_id
+        );
+
+        let team_ids = {
+            let db = db_manager.clone();
+            tokio::task::spawn_blocking(move || {
+                let mut conn = db.get_connection()?;
+                crate::db::series::get_league_unit_teams(&mut conn, unit_id)
+            })
+            .await
+            .map_err(|e| ChppError::Io(format!("Join error: {}", e)))??
+        };
+
+        info!(
+            "[sync] Fetching form matches for {} teams in series {}",
+            team_ids.len(),
+            unit_id
+        );
+
+        use futures::stream::{self, StreamExt};
+        let mut stream = stream::iter(team_ids)
+            .map(|tid| {
+                let db = db_manager.clone();
+                let client = client.clone();
+                async move {
+                    if let Err(e) = Self::fetch_and_save_archived_league_matches(
+                        db,
+                        client,
+                        get_auth,
+                        tid.0,
+                        download_id,
+                    )
+                    .await
+                    {
+                        warn!(
+                            "[sync] Failed to fetch form matches for team {}: {}",
+                            tid.0, e
+                        );
+                    }
+                }
+            })
+            .buffer_unordered(4);
+
+        while let Some(_) = stream.next().await {}
+
+        Ok(())
+    }
+
+    async fn fetch_and_save_archived_league_matches<F>(
+        db_manager: Arc<DbManager>,
+        client: Arc<dyn ChppClient>,
+        get_auth: &F,
+        team_id: i32,
+        download_id: i32,
+    ) -> Result<(), ChppError>
+    where
+        F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
+    {
+        let (data, key) = get_auth();
+        let team_id = team_id as u32;
+
+        let mut archive = client
+            .matches_archive(data, key, Some(team_id), None, None)
+            .await?;
+
+        for m in &mut archive.Team.MatchList.Matches {
+            if m.Status.is_empty() {
+                m.Status = "FINISHED".to_string();
+            }
+        }
+
+        let league_matches: Vec<crate::chpp::model::MatchDetails> = archive
+            .Team
+            .MatchList
+            .Matches
+            .into_iter()
+            .filter(|m| m.MatchType == 1) // League matches
+            .take(10) // Take a few more to be safe for the "most recent 5" limit
+            .collect();
+
+        if league_matches.is_empty() {
+            return Ok(());
+        }
+
+        // Convert back to MatchesData for save_matches
+        let matches_to_save = crate::chpp::model::MatchesData {
+            Team: crate::chpp::model::MatchesTeamWrapper {
+                TeamID: team_id.to_string(),
+                TeamName: archive.Team.TeamName,
+                MatchList: crate::chpp::model::MatchesListWrapper {
+                    Matches: league_matches,
+                },
+                ..Default::default()
+            },
+        };
+
+        let db_manager_clone = db_manager.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = db_manager_clone.get_connection()?;
+            conn.transaction::<_, ChppError, _>(|conn| {
+                save_matches(conn, download_id, &matches_to_save)
+            })
+        })
+        .await
+        .map_err(|e| ChppError::Io(format!("Join error: {}", e)))??;
 
         Ok(())
     }
@@ -554,7 +736,7 @@ impl SyncService {
         client: Arc<dyn ChppClient>,
         get_auth: &F,
         download_id: i32,
-    ) -> Result<(), Error>
+    ) -> Result<(), ChppError>
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
@@ -599,7 +781,7 @@ impl SyncService {
             save_world_details(&mut conn, &wd, download_id)
         })
         .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+        .map_err(|e| ChppError::Io(format!("Join error: {}", e)))??;
 
         Ok(())
     }
@@ -610,7 +792,7 @@ impl SyncService {
         get_auth: &F,
         team_id: u32,
         download_id: i32,
-    ) -> Result<(), Error>
+    ) -> Result<(), ChppError>
     where
         // Send is for concurrency, F safe to be sent to another thread, Sync means muliple threads can safely access
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
@@ -648,7 +830,7 @@ impl SyncService {
             pl
         } else {
             warn!("No player list found for team");
-            return Err(Error::Parse("No player list in response".to_string()));
+            return Err(ChppError::Parse("No player list in response".to_string()));
         };
 
         let players_list = {
@@ -764,12 +946,12 @@ impl SyncService {
         let db = db_manager.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = db.get_connection()?;
-            conn.transaction::<_, Error, _>(|conn| {
+            conn.transaction::<_, ChppError, _>(|conn| {
                 save_players(conn, &players_list, team_id, download_id)
             })
         })
         .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+        .map_err(|e| ChppError::Io(format!("Join error: {}", e)))??;
 
         Ok(())
     }
@@ -780,7 +962,7 @@ impl SyncService {
         get_auth: &F,
         team_id: u32,
         download_id: i32,
-    ) -> Result<(), Error>
+    ) -> Result<(), ChppError>
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
@@ -848,12 +1030,12 @@ impl SyncService {
         if !avatars_to_save.is_empty() {
             tokio::task::spawn_blocking(move || {
                 let mut conn = db_manager_clone.get_connection()?;
-                conn.transaction::<_, Error, _>(|conn| {
+                conn.transaction::<_, ChppError, _>(|conn| {
                     save_avatars(conn, &avatars_to_save, download_id)
                 })
             })
             .await
-            .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+            .map_err(|e| ChppError::Io(format!("Join error: {}", e)))??;
         }
 
         let _ = Self::update_download_entry(db_manager, entry_id, "success", None).await;
@@ -867,7 +1049,7 @@ impl SyncService {
         get_auth: &F,
         team_id: u32,
         download_id: i32,
-    ) -> Result<(), Error>
+    ) -> Result<(), ChppError>
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
@@ -895,10 +1077,10 @@ impl SyncService {
                 tokio::task::spawn_blocking(move || {
                     let mut conn = db.get_connection()?;
                     save_staff(&mut conn, &sl, team_id, download_id)
-                        .map_err(|e| Error::Db(format!("Failed to save staff: {}", e)))
+                        .map_err(|e| ChppError::Db(format!("Failed to save staff: {}", e)))
                 })
                 .await
-                .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+                .map_err(|e| ChppError::Io(format!("Join error: {}", e)))??;
 
                 info!("Saved {} staff members", staff_count);
             }
@@ -925,7 +1107,7 @@ impl SyncService {
         access_token: String,
         access_secret: String,
         on_progress: ProgressCallback,
-    ) -> Result<(u32, i32), Error> {
+    ) -> Result<(u32, i32), ChppError> {
         on_progress(0.0, "Checking credentials...");
 
         debug!("consumer_key: {}", consumer_key);
@@ -1044,7 +1226,7 @@ mod tests {
             &self,
             _data: OAuthData,
             _key: SigningKey,
-        ) -> Result<WorldDetails, Error> {
+        ) -> Result<WorldDetails, ChppError> {
             Ok(WorldDetails {
                 LeagueList: WorldLeagueList {
                     Leagues: vec![WorldLeague {
@@ -1083,7 +1265,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _team_id: Option<u32>,
-        ) -> Result<HattrickData, Error> {
+        ) -> Result<HattrickData, ChppError> {
             Ok(HattrickData {
                 User: User {
                     UserID: 12345,
@@ -1144,7 +1326,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _team_id: Option<u32>,
-        ) -> Result<PlayersData, Error> {
+        ) -> Result<PlayersData, ChppError> {
             Ok(PlayersData {
                 Team: Team {
                     TeamID: "123".to_string(),
@@ -1241,7 +1423,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _player_id: u32,
-        ) -> Result<Player, Error> {
+        ) -> Result<Player, ChppError> {
             Ok(Player {
                 PlayerID: 1001,
                 FirstName: "John".to_string(),
@@ -1300,7 +1482,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _team_id: Option<u32>,
-        ) -> Result<AvatarsData, Error> {
+        ) -> Result<AvatarsData, ChppError> {
             Ok(AvatarsData {
                 file_name: "avatars.xml".to_string(),
                 version: "1.0".to_string(),
@@ -1317,7 +1499,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _league_level_unit_id: u32,
-        ) -> Result<LeagueDetailsData, Error> {
+        ) -> Result<LeagueDetailsData, ChppError> {
             // Return dummy league details
             Ok(LeagueDetailsData {
                 LeagueID: 0,
@@ -1337,7 +1519,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _team_id: Option<u32>,
-        ) -> Result<MatchesData, Error> {
+        ) -> Result<MatchesData, ChppError> {
             // Return dummy matches
             Ok(MatchesData {
                 Team: MatchesTeamWrapper {
@@ -1356,7 +1538,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _team_id: Option<u32>,
-        ) -> Result<StaffListData, Error> {
+        ) -> Result<StaffListData, ChppError> {
             Ok(StaffListData {
                 file_name: "stafflist.xml".to_string(),
                 version: "1.2".to_string(),
@@ -1378,16 +1560,14 @@ mod tests {
             _team_id: Option<u32>,
             _first_match_date: Option<String>,
             _last_match_date: Option<String>,
-        ) -> Result<MatchesData, Error> {
+        ) -> Result<MatchesArchiveData, ChppError> {
             // Return empty archive in tests
-            Ok(MatchesData {
-                Team: MatchesTeamWrapper {
+            Ok(MatchesArchiveData {
+                Team: MatchesArchiveTeamWrapper {
                     TeamID: "54321".to_string(),
                     TeamName: "Test Team".to_string(),
-                    ShortTeamName: None,
-                    League: None,
-                    LeagueLevelUnit: None,
                     MatchList: MatchesListWrapper { Matches: vec![] },
+                    ..Default::default()
                 },
             })
         }
@@ -1398,7 +1578,7 @@ mod tests {
             _key: SigningKey,
             _match_id: u32,
             _source_system: &str,
-        ) -> Result<MatchDetailsData, Error> {
+        ) -> Result<MatchDetailsData, ChppError> {
             unimplemented!()
         }
 
@@ -1409,7 +1589,7 @@ mod tests {
             _match_id: u32,
             _team_id: u32,
             _source_system: &str,
-        ) -> Result<MatchLineupData, Error> {
+        ) -> Result<MatchLineupData, ChppError> {
             unimplemented!()
         }
     }

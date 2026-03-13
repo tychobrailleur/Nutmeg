@@ -1,6 +1,4 @@
-use crate::chpp::client::HattrickClient;
-use crate::opponent_analysis::ui::model;
-use crate::service::opponent_analysis::OpponentAnalysisService;
+use crate::db::manager::DbManager;
 use crate::ui::context_object::ContextObject;
 use crate::ui::team_object::TeamObject;
 use gtk::gio;

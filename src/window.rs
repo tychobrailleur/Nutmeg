@@ -25,6 +25,7 @@ use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, gio, glib, CompositeTemplate, TemplateChild};
 use log::info;
+use std::sync::Arc;
 
 use crate::rating::ui::page::FormationOptimiserWidget;
 use crate::training::ui::page::TrainingPlannerPage;
@@ -413,10 +414,33 @@ impl NutmegWindow {
             });
         });
 
+        let context = imp.context_object.clone();
         // Notebook page switch handler (no longer needs to demand data loading)
-        imp.notebook.connect_switch_page(move |_, _page, _| {
-            // ContextObject is now autonomous; data should already be present
-            // when switching to the Series tab.
+        imp.notebook.connect_switch_page(move |_, _page, index| {
+            if index == 1 {
+                // Series Tab
+                let key = crate::config::consumer_key();
+                let secret = crate::config::consumer_secret();
+                if !key.is_empty() && !secret.is_empty() {
+                    if let Some(league_unit_id) =
+                        context.league_details().map(|ld| ld.LeagueLevelUnitID)
+                    {
+                        info!(
+                            "Spawning background refresh for series page with league unit ID {}",
+                            league_unit_id
+                        );
+                        let db = Arc::new(crate::db::manager::DbManager::new());
+                        crate::ui::controllers::sync::SyncController::spawn_series_form_refresh(
+                            db,
+                            context.clone(),
+                            key,
+                            secret,
+                            league_unit_id as i32,
+                            None,
+                        );
+                    }
+                }
+            }
         });
     }
 

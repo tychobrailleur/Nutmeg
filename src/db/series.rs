@@ -11,6 +11,7 @@ use diesel::sqlite::SqliteConnection;
 use crate::chpp::error::Error;
 use crate::chpp::model::{LeagueDetailsData, MatchesData};
 use crate::db::schema::{league_unit_teams, league_units, matches};
+use log::info;
 
 #[derive(Queryable, Identifiable, Debug)]
 #[diesel(table_name = league_units)]
@@ -18,6 +19,7 @@ use crate::db::schema::{league_unit_teams, league_units, matches};
 pub struct LeagueUnit {
     pub unit_id: i32,
     pub download_id: i32,
+    pub season: Option<i32>,
     pub unit_name: String,
     pub league_level: i32,
     pub max_number_of_teams: Option<i32>,
@@ -29,6 +31,7 @@ pub struct LeagueUnit {
 pub struct NewLeagueUnit<'a> {
     pub unit_id: i32,
     pub download_id: i32,
+    pub season: Option<i32>,
     pub unit_name: &'a str,
     pub league_level: i32,
     pub max_number_of_teams: Option<i32>,
@@ -42,6 +45,7 @@ pub struct LeagueUnitTeam {
     pub unit_id: i32,
     pub team_id: i32,
     pub download_id: i32,
+    pub season: Option<i32>,
     pub team_name: String,
     pub position: i32,
     pub points: i32,
@@ -59,6 +63,7 @@ pub struct NewLeagueUnitTeam<'a> {
     pub unit_id: i32,
     pub team_id: i32,
     pub download_id: i32,
+    pub season: Option<i32>,
     pub team_name: &'a str,
     pub position: i32,
     pub points: i32,
@@ -121,38 +126,34 @@ pub fn save_league_details(
 
     let unit_id = data.LeagueLevelUnitID as i32;
 
+    let season: Option<i32> = {
+        use crate::db::schema::leagues;
+        leagues::table
+            .filter(leagues::id.eq(data.LeagueID as i32))
+            .order(leagues::download_id.desc())
+            .select(leagues::season)
+            .first(conn)
+            .optional()
+            .unwrap_or(None)
+            .flatten()
+    };
+
     let new_unit = NewLeagueUnit {
         unit_id,
         download_id,
+        season,
         unit_name: &data.LeagueLevelUnitName,
         league_level: data.LeagueLevel as i32,
         max_number_of_teams: data.MaxLevel.map(|v| v as i32),
         current_match_round: data.CurrentMatchRound.map(|v| v as i32),
     };
 
-    let latest_unit: Option<LeagueUnit> = league_units::table
-        .filter(league_units::unit_id.eq(unit_id))
-        .order(league_units::download_id.desc())
-        .first(conn)
-        .optional()
-        .map_err(|e| Error::Io(format!("Failed to query league unit: {}", e)))?;
-    let unit_changed = match &latest_unit {
-        None => true,
-        Some(existing) => {
-            existing.unit_name != new_unit.unit_name
-                || existing.league_level != new_unit.league_level
-                || existing.max_number_of_teams != new_unit.max_number_of_teams
-                || existing.current_match_round != new_unit.current_match_round
-        }
-    };
-    if unit_changed {
-        diesel::insert_into(league_units::table)
-            .values(&new_unit)
-            .execute(conn)
-            .map_err(|e| Error::Io(format!("Failed to insert league unit: {}", e)))?;
-    }
+    diesel::insert_or_ignore_into(league_units::table)
+        .values(&new_unit)
+        .execute(conn)
+        .map_err(|e| Error::Io(format!("Failed to insert league unit: {}", e)))?;
 
-    save_league_teams(conn, download_id, unit_id, data)?;
+    save_league_teams(conn, download_id, season, unit_id, data)?;
 
     Ok(())
 }
@@ -160,6 +161,7 @@ pub fn save_league_details(
 fn save_league_teams(
     conn: &mut SqliteConnection,
     download_id: i32,
+    season: Option<i32>,
     unit_id: i32,
     data: &LeagueDetailsData,
 ) -> Result<(), Error> {
@@ -172,6 +174,7 @@ fn save_league_teams(
             unit_id,
             team_id: team.TeamID.parse::<i32>().unwrap_or(0),
             download_id,
+            season,
             team_name: &team.TeamName,
             position: team.Position as i32,
             points: team.Points as i32,
@@ -184,53 +187,15 @@ fn save_league_teams(
         })
         .collect();
 
-    // Load the latest stored row per team for this league unit, across all
-    // downloads, so we can detect whether anything has changed.
-    let all_stored: Vec<LeagueUnitTeam> = league_unit_teams::table
-        .filter(league_unit_teams::unit_id.eq(unit_id))
-        .order(league_unit_teams::download_id.desc())
-        .load(conn)
-        .unwrap_or_default();
-    let mut latest_by_team: std::collections::HashMap<i32, &LeagueUnitTeam> =
-        std::collections::HashMap::with_capacity(all_stored.len());
-    for row in &all_stored {
-        latest_by_team.entry(row.team_id).or_insert(row);
-    }
-
-    // Load all stored rows for these teams and this download_id to avoid UNIQUE violations
-    let already_in_download: std::collections::HashSet<i32> = league_unit_teams::table
-        .filter(league_unit_teams::unit_id.eq(unit_id))
-        .filter(league_unit_teams::download_id.eq(download_id))
-        .select(league_unit_teams::team_id)
-        .load::<i32>(conn)
-        .unwrap_or_default()
-        .into_iter()
-        .collect();
-
-    // Within-batch dedup, then keep only new or changed rows, and NOT already in this download.
+    // Filter out rows strictly within this batch (in case the API payload has duplicate IDs)
     let mut seen_pks = std::collections::HashSet::new();
     let records: Vec<NewLeagueUnitTeam> = records
         .into_iter()
         .filter(|r| seen_pks.insert(r.team_id))
-        .filter(|r| !already_in_download.contains(&r.team_id))
-        .filter(|r| match latest_by_team.get(&r.team_id) {
-            None => true,
-            Some(existing) => {
-                existing.team_name != r.team_name
-                    || existing.position != r.position
-                    || existing.points != r.points
-                    || existing.matches_played != r.matches_played
-                    || existing.goals_for != r.goals_for
-                    || existing.goals_against != r.goals_against
-                    || existing.won != r.won
-                    || existing.draws != r.draws
-                    || existing.lost != r.lost
-            }
-        })
         .collect();
 
     if !records.is_empty() {
-        diesel::insert_into(league_unit_teams::table)
+        diesel::insert_or_ignore_into(league_unit_teams::table)
             .values(&records)
             .execute(conn)
             .map_err(|e| Error::Io(format!("Failed to insert league teams: {}", e)))?;
@@ -267,54 +232,15 @@ pub fn save_matches(
         })
         .collect();
 
-    // Collect the match_ids in this batch so we can scope the DB query.
-    let incoming_ids: Vec<i32> = records.iter().map(|r| r.match_id).collect();
-
-    // Load the latest stored row for each match_id present in the batch.
-    let all_stored: Vec<Match> = matches::table
-        .filter(matches::match_id.eq_any(&incoming_ids))
-        .order(matches::download_id.desc())
-        .load(conn)
-        .unwrap_or_default();
-    let mut latest_by_match: std::collections::HashMap<i32, &Match> =
-        std::collections::HashMap::with_capacity(all_stored.len());
-    for row in &all_stored {
-        latest_by_match.entry(row.match_id).or_insert(row);
-    }
-
-    // Load all match_ids already present in this download to avoid UNIQUE violations
-    let already_in_download: std::collections::HashSet<i32> = matches::table
-        .filter(matches::download_id.eq(download_id))
-        .filter(matches::match_id.eq_any(&incoming_ids))
-        .select(matches::match_id)
-        .load::<i32>(conn)
-        .unwrap_or_default()
-        .into_iter()
-        .collect();
-
-    // Within-batch dedup, then keep only new or changed rows, and NOT already in this download.
+    // Filter out rows strictly within this batch (in case the API payload has duplicate IDs)
     let mut seen_ids = std::collections::HashSet::new();
     let records: Vec<NewMatch> = records
         .into_iter()
         .filter(|r| seen_ids.insert(r.match_id))
-        .filter(|r| !already_in_download.contains(&r.match_id))
-        .filter(|r| match latest_by_match.get(&r.match_id) {
-            None => true,
-            Some(existing) => {
-                existing.status != r.status
-                    || existing.home_goals != r.home_goals
-                    || existing.away_goals != r.away_goals
-                    || existing.home_team_id != r.home_team_id
-                    || existing.away_team_id != r.away_team_id
-                    || existing.match_date != r.match_date
-                    || existing.match_type != r.match_type
-                    || existing.match_context_id != r.match_context_id
-            }
-        })
         .collect();
 
     if !records.is_empty() {
-        diesel::insert_into(matches::table)
+        diesel::insert_or_ignore_into(matches::table)
             .values(&records)
             .execute(conn)
             .map_err(|e| Error::Io(format!("Failed to insert matches: {}", e)))?;
@@ -469,6 +395,12 @@ pub fn get_matches_for_teams(
         return Ok(Vec::new());
     }
 
+    info!(
+        "Querying matches for {} teams from DB (team IDs: {:?})",
+        team_ids.len(),
+        team_ids
+    );
+
     let db_matches: Vec<Match> = matches::table
         .filter(
             matches::home_team_id
@@ -485,6 +417,11 @@ pub fn get_matches_for_teams(
     for m in db_matches {
         unique_matches.entry(m.match_id).or_insert(m);
     }
+
+    info!(
+        "Fetched {} unique matches from DB for the specified teams",
+        unique_matches.len()
+    );
 
     let details: Vec<crate::chpp::model::MatchDetails> = unique_matches
         .into_values()
@@ -563,6 +500,47 @@ pub fn get_upcoming_opponents_from_db(
     Ok(opponents)
 }
 
+/// Returns all teams belonging to a specific league unit version.
+pub fn get_league_unit_teams(
+    conn: &mut SqliteConnection,
+    unit_id: i32,
+) -> Result<Vec<(i32, String)>, Error> {
+    use crate::db::schema::league_unit_teams::dsl;
+
+    info!("Querying league unit teams for unit_id {} from DB", unit_id);
+
+    let latest_download_id: Option<i32> = league_unit_teams::table
+        .filter(dsl::unit_id.eq(unit_id))
+        .select(diesel::dsl::max(dsl::download_id))
+        .first(conn)
+        .optional()
+        .map_err(|e| Error::Db(format!("Failed to query latest download_id: {}", e)))?
+        .flatten();
+
+    info!(
+        "Latest download_id for league unit {} is {:?}",
+        unit_id, latest_download_id
+    );
+
+    if let Some(dl_id) = latest_download_id {
+        let rows = league_unit_teams::table
+            .filter(dsl::unit_id.eq(unit_id))
+            .filter(dsl::download_id.eq(dl_id))
+            .select((dsl::team_id, dsl::team_name))
+            .load::<(i32, String)>(conn)
+            .map_err(|e| Error::Db(format!("Failed to load league unit teams: {}", e)))?;
+
+        info!(
+            "Fetched {} teams for league unit {} from DB",
+            rows.len(),
+            unit_id
+        );
+        Ok(rows)
+    } else {
+        Ok(vec![])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -587,7 +565,7 @@ mod tests {
         let mut conn = establish_connection();
 
         // Create a download record
-        diesel::insert_into(downloads::table)
+        diesel::insert_or_ignore_into(downloads::table)
             .values(NewDownload {
                 timestamp: "2026-02-15T12:00:00Z".to_string(),
                 status: "completed".to_string(),

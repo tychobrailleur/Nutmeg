@@ -388,37 +388,11 @@ pub fn save_players(
     players_list: &[crate::chpp::model::Player],
     team_id: u32,
     download_id: i32,
-) -> Result<(), Error> {    let incoming_ids: Vec<i32> = players_list.iter().map(|p| p.PlayerID as i32).collect();
-
-    // 1. Load latest stored version for each player to detect changes
-    let all_stored: Vec<PlayerEntity> = players::table
-        .filter(players::id.eq_any(&incoming_ids))
-        .order(players::download_id.desc())
-        .load(conn)
-        .unwrap_or_default();
-    let mut latest_by_player: std::collections::HashMap<i32, PlayerEntity> =
-        std::collections::HashMap::with_capacity(all_stored.len());
-    for row in all_stored {
-        latest_by_player.entry(row.id).or_insert(row);
-    }
-
-    // 2. Load match_ids already present in this download to avoid UNIQUE violations
-    let already_in_download: std::collections::HashSet<i32> = players::table
-        .filter(players::download_id.eq(download_id))
-        .filter(players::id.eq_any(&incoming_ids))
-        .select(players::id)
-        .load::<i32>(conn)
-        .unwrap_or_default()
-        .into_iter()
-        .collect();
+) -> Result<(), Error> {
+    let incoming_ids: Vec<i32> = players_list.iter().map(|p| p.PlayerID as i32).collect();
 
     for player in players_list {
         let player_id = player.PlayerID as i32;
-
-        // Skip if already inserted in this download
-        if already_in_download.contains(&player_id) {
-            continue;
-        }
 
         let entity = PlayerEntity {
             id: player_id,
@@ -532,40 +506,10 @@ pub fn save_players(
             career_assists: player.CareerAssists.map(|v| v as i32),
             gender_id: player.GenderID.unwrap_or(1) as i32,
         };
-
-        // Check for changes
-        let changed = match latest_by_player.get(&player_id) {
-            None => true,
-            Some(existing) => {
-                existing.team_id != entity.team_id
-                    || existing.first_name != entity.first_name
-                    || existing.last_name != entity.last_name
-                    || existing.player_number != entity.player_number
-                    || existing.age != entity.age
-                    || existing.age_days != entity.age_days
-                    || existing.tsi != entity.tsi
-                    || existing.player_form != entity.player_form
-                    || existing.experience != entity.experience
-                    || existing.loyalty != entity.loyalty
-                    || existing.stamina_skill != entity.stamina_skill
-                    || existing.keeper_skill != entity.keeper_skill
-                    || existing.playmaker_skill != entity.playmaker_skill
-                    || existing.scorer_skill != entity.scorer_skill
-                    || existing.passing_skill != entity.passing_skill
-                    || existing.winger_skill != entity.winger_skill
-                    || existing.defender_skill != entity.defender_skill
-                    || existing.set_pieces_skill != entity.set_pieces_skill
-                    || existing.injury_level != entity.injury_level
-                    || existing.last_match_id != entity.last_match_id
-            }
-        };
-
-        if changed {
-            diesel::insert_into(players::table)
-                .values(&entity)
-                .execute(conn)
-                .map_err(|e| Error::Io(format!("Database error saving player {}: {}", player_id, e)))?;
-        }
+        diesel::insert_or_ignore_into(players::table)
+            .values(&entity)
+            .execute(conn)
+            .map_err(|e| Error::Io(format!("Database error saving player {}: {}", player_id, e)))?;
     }
 
     Ok(())
@@ -576,37 +520,8 @@ pub fn save_avatars(
     avatars_list: &[(u32, Vec<u8>)],
     download_id: i32,
 ) -> Result<(), Error> {
-    let incoming_ids: Vec<i32> = avatars_list.iter().map(|(id, _)| *id as i32).collect();
-
-    // 1. Load latest stored version for each avatar to detect changes
-    let all_stored: Vec<AvatarEntity> = avatars::table
-        .filter(avatars::player_id.eq_any(&incoming_ids))
-        .order(avatars::download_id.desc())
-        .load(conn)
-        .unwrap_or_default();
-    let mut latest_by_player: std::collections::HashMap<i32, AvatarEntity> =
-        std::collections::HashMap::with_capacity(all_stored.len());
-    for row in all_stored {
-        latest_by_player.entry(row.player_id).or_insert(row);
-    }
-
-    // 2. Load player_ids already present in this download to avoid UNIQUE violations
-    let already_in_download: std::collections::HashSet<i32> = avatars::table
-        .filter(avatars::download_id.eq(download_id))
-        .filter(avatars::player_id.eq_any(&incoming_ids))
-        .select(avatars::player_id)
-        .load::<i32>(conn)
-        .unwrap_or_default()
-        .into_iter()
-        .collect();
-
     for (player_id, image) in avatars_list {
         let p_id = *player_id as i32;
-
-        // Skip if already inserted in this download
-        if already_in_download.contains(&p_id) {
-            continue;
-        }
 
         let entity = AvatarEntity {
             player_id: p_id,
@@ -614,18 +529,10 @@ pub fn save_avatars(
             image: image.clone(),
         };
 
-        // Check for changes
-        let changed = match latest_by_player.get(&p_id) {
-            None => true,
-            Some(existing) => existing.image != entity.image,
-        };
-
-        if changed {
-            diesel::insert_into(avatars::table)
-                .values(&entity)
-                .execute(conn)
-                .map_err(|e| Error::Io(format!("Database error saving avatar for {}: {}", p_id, e)))?;
-        }
+        diesel::insert_or_ignore_into(avatars::table)
+            .values(&entity)
+            .execute(conn)
+            .map_err(|e| Error::Io(format!("Database error saving avatar for {}: {}", p_id, e)))?;
     }
     Ok(())
 }
@@ -644,22 +551,10 @@ pub fn save_language(
         download_id,
         name: language.LanguageName.clone(),
     };
-    let latest: Option<LanguageEntity> = languages::table
-        .filter(languages::id.eq(entity.id))
-        .order(languages::download_id.desc())
-        .first(conn)
-        .optional()
-        .map_err(|e| Error::Io(format!("Database error querying language: {}", e)))?;
-    let changed = match &latest {
-        None => true,
-        Some(existing) => existing.name != entity.name,
-    };
-    if changed {
-        diesel::insert_into(languages::table)
-            .values(&entity)
-            .execute(conn)
-            .map_err(|e| Error::Io(format!("Database error saving language: {}", e)))?;
-    }
+    diesel::insert_or_ignore_into(languages::table)
+        .values(&entity)
+        .execute(conn)
+        .map_err(|e| Error::Io(format!("Database error saving language: {}", e)))?;
     Ok(())
 }
 
@@ -678,26 +573,10 @@ pub fn save_currency(
         rate: currency.Rate,
         symbol: currency.Symbol.clone(),
     };
-    let latest: Option<CurrencyEntity> = currencies::table
-        .filter(currencies::id.eq(entity.id))
-        .order(currencies::download_id.desc())
-        .first(conn)
-        .optional()
-        .map_err(|e| Error::Io(format!("Database error querying currency: {}", e)))?;
-    let changed = match &latest {
-        None => true,
-        Some(existing) => {
-            existing.name != entity.name
-                || existing.rate != entity.rate
-                || existing.symbol != entity.symbol
-        }
-    };
-    if changed {
-        diesel::insert_into(currencies::table)
-            .values(&entity)
-            .execute(conn)
-            .map_err(|e| Error::Io(format!("Database error saving currency: {}", e)))?;
-    }
+    diesel::insert_or_ignore_into(currencies::table)
+        .values(&entity)
+        .execute(conn)
+        .map_err(|e| Error::Io(format!("Database error saving currency: {}", e)))?;
     Ok(())
 }
 
@@ -733,7 +612,7 @@ fn save_user(
         is_bot: Some(is_bot),
     };
 
-    diesel::insert_into(users::table)
+    diesel::insert_or_ignore_into(users::table)
         .values(&entity)
         .execute(conn)
         .map_err(|e| Error::Io(format!("Database error saving user: {}", e)))?;
@@ -758,28 +637,10 @@ pub fn save_country(
         time_format: country.TimeFormat.clone(),
         flag,
     };
-    let latest: Option<CountryEntity> = countries::table
-        .filter(countries::id.eq(entity.id))
-        .order(countries::download_id.desc())
-        .first(conn)
-        .optional()
-        .map_err(|e| Error::Io(format!("Database error querying country: {}", e)))?;
-    let changed = match &latest {
-        None => true,
-        Some(existing) => {
-            existing.name != entity.name
-                || existing.currency_id != entity.currency_id
-                || existing.country_code != entity.country_code
-                || existing.date_format != entity.date_format
-                || existing.time_format != entity.time_format
-        }
-    };
-    if changed {
-        diesel::insert_into(countries::table)
-            .values(&entity)
-            .execute(conn)
-            .map_err(|e| Error::Io(format!("Database error saving country: {}", e)))?;
-    }
+    diesel::insert_or_ignore_into(countries::table)
+        .values(&entity)
+        .execute(conn)
+        .map_err(|e| Error::Io(format!("Database error saving country: {}", e)))?;
     Ok(())
 }
 
@@ -798,24 +659,10 @@ fn save_region(
             name: region.RegionName.clone(),
             country_id: country_id as i32,
         };
-        let latest: Option<RegionEntity> = regions::table
-            .filter(regions::id.eq(entity.id))
-            .order(regions::download_id.desc())
-            .first(conn)
-            .optional()
-            .map_err(|e| Error::Io(format!("Database error querying region: {}", e)))?;
-        let changed = match &latest {
-            None => true,
-            Some(existing) => {
-                existing.name != entity.name || existing.country_id != entity.country_id
-            }
-        };
-        if changed {
-            diesel::insert_into(regions::table)
-                .values(&entity)
-                .execute(conn)
-                .map_err(|e| Error::Io(format!("Database error saving region: {}", e)))?;
-        }
+        diesel::insert_or_ignore_into(regions::table)
+            .values(&entity)
+            .execute(conn)
+            .map_err(|e| Error::Io(format!("Database error saving region: {}", e)))?;
     }
 
     Ok(())
@@ -848,39 +695,10 @@ fn save_league(
         number_of_levels: league.NumberOfLevels.map(|v| v as i32),
         league_system_id: league.LeagueSystemId.unwrap_or(1) as i32,
     };
-    let latest: Option<LeagueEntity> = leagues::table
-        .filter(leagues::id.eq(entity.id))
-        .order(leagues::download_id.desc())
-        .first(conn)
-        .optional()
-        .map_err(|e| Error::Io(format!("Database error querying league: {}", e)))?;
-    let changed = match &latest {
-        None => true,
-        Some(existing) => {
-            existing.name != entity.name
-                || existing.country_id != entity.country_id
-                || existing.short_name != entity.short_name
-                || existing.continent != entity.continent
-                || existing.season != entity.season
-                || existing.season_offset != entity.season_offset
-                || existing.match_round != entity.match_round
-                || existing.zone_name != entity.zone_name
-                || existing.english_name != entity.english_name
-                || existing.language_id != entity.language_id
-                || existing.national_team_id != entity.national_team_id
-                || existing.u20_team_id != entity.u20_team_id
-                || existing.active_teams != entity.active_teams
-                || existing.active_users != entity.active_users
-                || existing.number_of_levels != entity.number_of_levels
-                || existing.league_system_id != entity.league_system_id
-        }
-    };
-    if changed {
-        diesel::insert_into(leagues::table)
-            .values(&entity)
-            .execute(conn)
-            .map_err(|e| Error::Io(format!("Database error saving league: {}", e)))?;
-    }
+    diesel::insert_or_ignore_into(leagues::table)
+        .values(&entity)
+        .execute(conn)
+        .map_err(|e| Error::Io(format!("Database error saving league: {}", e)))?;
     Ok(())
 }
 
@@ -898,7 +716,7 @@ fn save_cup(conn: &mut SqliteConnection, cup: &Cup, download_id: i32) -> Result<
             match_round: cup.MatchRound.map(|v| v as i32),
             match_rounds_left: cup.MatchRoundsLeft.map(|v| v as i32),
         };
-        diesel::insert_into(cups::table)
+        diesel::insert_or_ignore_into(cups::table)
             .values(&entity)
             .execute(conn)
             .map_err(|e| Error::Io(format!("Database error saving cup: {}", e)))?;
@@ -1047,7 +865,7 @@ pub fn save_team(
         gender_id: team.GenderID.unwrap_or(1) as i32,
     };
 
-    diesel::insert_into(teams::table)
+    diesel::insert_or_ignore_into(teams::table)
         .values(&entity)
         .execute(conn)
         .map_err(|e| Error::Io(format!("Database error: {}", e)))?;
@@ -1571,7 +1389,7 @@ mod tests {
             timestamp: Utc::now().to_rfc3339(),
             status: "completed".to_string(),
         };
-        diesel::insert_into(downloads::table)
+        diesel::insert_or_ignore_into(downloads::table)
             .values(&download_entity)
             .execute(&mut conn)
             .expect("Failed to create download");
@@ -1739,7 +1557,7 @@ mod tests {
             timestamp: "2023-01-01T00:00:00Z".to_string(),
             status: "completed".to_string(),
         };
-        diesel::insert_into(crate::db::schema::downloads::table)
+        diesel::insert_or_ignore_into(crate::db::schema::downloads::table)
             .values(&d1)
             .execute(&mut conn)
             .expect("Failed to create download 1");
@@ -1750,7 +1568,7 @@ mod tests {
             timestamp: "2023-01-02T00:00:00Z".to_string(),
             status: "completed".to_string(),
         };
-        diesel::insert_into(crate::db::schema::downloads::table)
+        diesel::insert_or_ignore_into(crate::db::schema::downloads::table)
             .values(&d2)
             .execute(&mut conn)
             .expect("Failed to create download 2");
@@ -1797,7 +1615,7 @@ mod tests {
             timestamp: "2023-01-01T00:00:00Z".to_string(),
             status: "completed".to_string(),
         };
-        diesel::insert_into(crate::db::schema::downloads::table)
+        diesel::insert_or_ignore_into(crate::db::schema::downloads::table)
             .values(&d1)
             .execute(&mut conn)
             .unwrap();
@@ -1897,7 +1715,7 @@ mod tests {
             timestamp: "2023-01-02T00:00:00Z".to_string(),
             status: "completed".to_string(),
         };
-        diesel::insert_into(crate::db::schema::downloads::table)
+        diesel::insert_or_ignore_into(crate::db::schema::downloads::table)
             .values(&d2)
             .execute(&mut conn)
             .unwrap();

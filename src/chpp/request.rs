@@ -28,8 +28,8 @@ use crate::chpp::error::Error;
 use crate::chpp::metadata::ChppEndpoints;
 use crate::chpp::model::{
     AvatarsData, ChppErrorResponse, HattrickData, LeagueDetailsData, MatchDetailsData,
-    MatchLineupData, MatchesData, Player, PlayerDetailsData, PlayersData, StaffListData,
-    WorldDetails,
+    MatchLineupData, MatchesArchiveData, MatchesData, Player, PlayerDetailsData, PlayersData,
+    StaffListData, WorldDetails,
 };
 use crate::chpp::{CHPP_URL, NUTMEG_USER_AGENT};
 
@@ -383,7 +383,7 @@ pub async fn matches_archive_request(
     team_id: Option<u32>,
     first_match_date: Option<String>,
     last_match_date: Option<String>,
-) -> Result<MatchesData, Error> {
+) -> Result<MatchesArchiveData, Error> {
     let mut params = Vec::new();
     let tid_str;
     if let Some(tid) = team_id {
@@ -400,7 +400,7 @@ pub async fn matches_archive_request(
         params.push(("LastMatchDate", lmd.as_str()));
     }
 
-    chpp_request::<MatchesData>(
+    chpp_request::<MatchesArchiveData>(
         ChppEndpoints::MATCHES_ARCHIVE.name,
         ChppEndpoints::MATCHES_ARCHIVE.version,
         Some(&params),

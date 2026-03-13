@@ -1,3 +1,4 @@
+use crate::chpp::Error as ChppError;
 use crate::db::manager::DbManager;
 use crate::service::auth::{AuthenticationService, HattrickAuthService};
 use crate::service::secret::{SecretStorageService, SystemSecretService};
@@ -35,6 +36,58 @@ impl SyncController {
                 if let Some(_selected) = ctx_clone.selected_team() {
                     ctx_clone.refresh_from_db();
                 }
+            }
+        });
+    }
+
+    /// Spawns a background task that fetches archival matches for all teams in a series.
+    pub fn spawn_series_form_refresh(
+        db: Arc<DbManager>,
+        context: ContextObject,
+        key: String,
+        secret: String,
+        unit_id: i32,
+        download_id: Option<i32>,
+    ) {
+        let sync_clone = Arc::new(SyncService::new(db.clone()));
+        let ctx_clone = context.clone();
+        glib::MainContext::default().spawn_local(async move {
+            info!(
+                "[sync] Spawning background form refresh for series {}",
+                unit_id
+            );
+
+            let actual_download_id = match download_id {
+                Some(id) => id,
+                None => {
+                    let db_inner = db.clone();
+                    match tokio::task::spawn_blocking(move || {
+                        let mut conn = db_inner.get_connection()?;
+                        crate::db::download_entries::get_latest_download_id(&mut conn)
+                            .map_err(|e| ChppError::Db(e.to_string()))
+                    })
+                    .await
+                    {
+                        Ok(Ok(id)) => id,
+                        _ => {
+                            warn!("Failed to get latest download ID for background sync");
+                            return;
+                        }
+                    }
+                }
+            };
+
+            if let Err(e) = sync_clone
+                .perform_series_form_sync_lazily(key, secret, unit_id, actual_download_id)
+                .await
+            {
+                warn!("Background series form fetch failed: {}", e);
+            } else {
+                info!(
+                    "[sync] Background series form fetch completed for series {}.",
+                    unit_id
+                );
+                ctx_clone.refresh_from_db();
             }
         });
     }

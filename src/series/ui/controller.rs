@@ -175,8 +175,23 @@ impl SeriesController {
             )
             .await
             {
+                let mut match_list = archived.Team.MatchList.clone();
+                for m in &mut match_list.Matches {
+                    if m.Status.is_empty() {
+                        m.Status = "FINISHED".to_string();
+                    }
+                }
+
                 // Save to DB so get_matches_for_teams will find them
-                let _ = crate::db::series::save_matches(&mut conn, download_id, &archived);
+                let matches_to_save = crate::chpp::model::MatchesData {
+                    Team: crate::chpp::model::MatchesTeamWrapper {
+                        TeamID: archived.Team.TeamID.clone(),
+                        TeamName: archived.Team.TeamName.clone(),
+                        MatchList: match_list,
+                        ..Default::default()
+                    },
+                };
+                let _ = crate::db::series::save_matches(&mut conn, download_id, &matches_to_save);
             }
         }
 
@@ -304,11 +319,16 @@ impl SeriesController {
         let mut matches = upcoming_matches;
 
         match archived_matches_res {
-            Ok(archived) => {
+            Ok(mut archived) => {
                 log::debug!(
                     "Fetched {} archived matches",
                     archived.Team.MatchList.Matches.len()
                 );
+                for m in &mut archived.Team.MatchList.Matches {
+                    if m.Status.is_empty() {
+                        m.Status = "FINISHED".to_string();
+                    }
+                }
                 let mut all_matches = archived.Team.MatchList.Matches;
                 all_matches.extend(matches.Team.MatchList.Matches);
                 matches.Team.MatchList.Matches = all_matches;

@@ -84,6 +84,16 @@ fn compute_form(
 
     let limit = max_results.min(season_match_count);
 
+    println!(
+        "compute_form for team {}: total incoming matches={}, finished league matches={}, season_match_count={}, max_results={}, limit={}",
+        team_id,
+        matches.len(),
+        finished.len(),
+        season_match_count,
+        max_results,
+        limit
+    );
+
     finished
         .into_iter()
         .take(limit)
@@ -382,7 +392,9 @@ impl SeriesPage {
         // ── Matches ───────────────────────────────────────────────────────────
         let matches_view = &imp.matches_list_view;
 
-        self.add_match_column(matches_view, &gettext("Date"), false, |m| m.MatchDate.clone());
+        self.add_match_column(matches_view, &gettext("Date"), false, |m| {
+            m.MatchDate.clone()
+        });
         self.add_match_column(matches_view, &gettext("Home"), true, |m| {
             m.HomeTeam.HomeTeamName.clone()
         });
@@ -660,12 +672,13 @@ impl SeriesPage {
                                     // {date} = match date, {home} = home team name,
                                     // {hg} = home goals, {ag} = away goals,
                                     // {away} = away team name.
-                                    let tooltip = gettext("{date}\n{home} {hg} \u{2013} {ag} {away}")
-                                        .replace("{date}", &entry.match_date)
-                                        .replace("{home}", &entry.home_team)
-                                        .replace("{hg}", &entry.home_goals.to_string())
-                                        .replace("{ag}", &entry.away_goals.to_string())
-                                        .replace("{away}", &entry.away_team);
+                                    let tooltip =
+                                        gettext("{date}\n{home} {hg} \u{2013} {ag} {away}")
+                                            .replace("{date}", &entry.match_date)
+                                            .replace("{home}", &entry.home_team)
+                                            .replace("{hg}", &entry.home_goals.to_string())
+                                            .replace("{ag}", &entry.away_goals.to_string())
+                                            .replace("{away}", &entry.away_team);
                                     disc.set_tooltip_text(Some(&tooltip));
                                 } else {
                                     // No game for this slot in the current season.
