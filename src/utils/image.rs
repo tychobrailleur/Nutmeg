@@ -20,13 +20,27 @@ pub async fn load_image_from_url(url: &str) -> Result<gdk::Texture, Box<dyn std:
         }
     }
 
-    use gdk_pixbuf::Pixbuf;
+    use gtk::prelude::Cast;
+
     let response = reqwest::get(url).await?;
     let bytes = response.bytes().await?;
-    let gbytes = glib::Bytes::from(&bytes[..]);
-    let stream = gio::MemoryInputStream::from_bytes(&gbytes);
-    let pixbuf = Pixbuf::from_stream(&stream, gio::Cancellable::NONE)?;
-    let texture = gdk::Texture::for_pixbuf(&pixbuf);
+
+    let img =
+        image::load_from_memory(&bytes).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    let rgba = img.into_rgba8();
+    let width = rgba.width() as i32;
+    let height = rgba.height() as i32;
+    let stride = width * 4;
+    let glib_bytes = glib::Bytes::from(rgba.as_raw());
+
+    let mem_texture = gdk::MemoryTexture::new(
+        width,
+        height,
+        gdk::MemoryFormat::R8g8b8a8,
+        &glib_bytes,
+        stride as usize,
+    );
+    let texture = mem_texture.upcast::<gdk::Texture>();
 
     // 2. Store in cache
     if let Ok(mut cache) = IMAGE_CACHE.lock() {
