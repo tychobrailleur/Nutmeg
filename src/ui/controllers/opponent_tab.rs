@@ -1,8 +1,4 @@
-use crate::db::manager::DbManager;
 use crate::ui::context_object::ContextObject;
-use crate::ui::team_object::TeamObject;
-use gtk::gio;
-use std::sync::Arc;
 
 pub struct OpponentTabController {
     context: ContextObject,

@@ -53,6 +53,10 @@ mod imp {
         pub check_international: TemplateChild<gtk::CheckButton>,
         #[template_child]
         pub lbl_tactical_summary: TemplateChild<Label>,
+        #[template_child]
+        pub lbl_prediction: TemplateChild<Label>,
+        #[template_child]
+        pub pb_win_prob: TemplateChild<gtk::ProgressBar>,
 
         pub selected_team: std::cell::RefCell<Option<crate::ui::team_object::TeamObject>>,
         pub selected_opponent: std::cell::RefCell<Option<model::OpponentItem>>,
@@ -113,17 +117,47 @@ mod imp {
                 "selected-team" => {
                     let team = value
                         .get::<Option<crate::ui::team_object::TeamObject>>()
-                        .expect("Value must be Option<TeamObject>");
-                    self.selected_team.replace(team);
+                        .ok();
+                    if let Some(t) = team {
+                        self.selected_team.replace(t);
+                    } else {
+                        self.selected_team.replace(None);
+                    }
                     self.obj().notify("selected-team");
                 }
                 "context" => {
                     let ctx = value
                         .get::<Option<crate::ui::context_object::ContextObject>>()
-                        .expect("Value must be Option<ContextObject>");
+                        .ok()
+                        .flatten();
+
                     if let Some(c) = &ctx {
+                        let self_weak = self.obj().downgrade();
+
+                        let self_weak_1 = self_weak.clone();
+                        c.connect_notify_local(Some("has-best-lineups"), move |_, _| {
+                            if let Some(obj) = self_weak_1.upgrade() {
+                                obj.update_prediction();
+                            }
+                        });
+
+                        let self_weak_2 = self_weak.clone();
+                        c.connect_notify_local(Some("has-opponent-ratings"), move |_, _| {
+                            if let Some(obj) = self_weak_2.upgrade() {
+                                obj.update_prediction();
+                            }
+                        });
+
                         let dropdown: &gtk::DropDown = &self.dropdown_team;
                         c.bind_property("upcoming-opponents", dropdown, "model")
+                            .flags(glib::BindingFlags::SYNC_CREATE)
+                            .build();
+
+                        c.bind_property("prediction-text", &self.lbl_prediction.get(), "label")
+                            .flags(glib::BindingFlags::SYNC_CREATE)
+                            .build();
+
+                        c.bind_property("win-probability", &self.pb_win_prob.get(), "fraction")
                             .flags(glib::BindingFlags::SYNC_CREATE)
                             .build();
                     }
@@ -131,9 +165,7 @@ mod imp {
                     self.obj().notify("context");
                 }
                 "selected-opponent" => {
-                    let item = value
-                        .get::<Option<model::OpponentItem>>()
-                        .expect("Value must be Option<OpponentItem>");
+                    let item = value.get::<Option<model::OpponentItem>>().ok().flatten();
                     self.selected_opponent.replace(item);
                     self.obj().notify("selected-opponent");
                 }
@@ -283,7 +315,7 @@ mod imp {
                     .unwrap();
 
                 // Format Score & Match Name
-                let is_home = match_item.is_home();
+                let _is_home = match_item.is_home();
                 let hg = match_item.home_goals();
                 let ag = match_item.away_goals();
 
@@ -370,7 +402,6 @@ mod imp {
                         let pitch_container_clone = pitch_container.clone();
 
                         glib::MainContext::default().spawn_local(async move {
-                            // TODO Check whether this should be in a service
                             let secret_service = crate::service::secret::SystemSecretService::new();
                             use crate::service::secret::SecretStorageService;
 
@@ -378,7 +409,8 @@ mod imp {
                             let secret_res = secret_service.get_secret("access_secret").await;
 
                             if let (Ok(Some(token)), Ok(Some(secret))) = (token_res, secret_res) {
-                                let client = Arc::new(crate::chpp::client::HattrickClient::new());
+                                let client =
+                                    std::sync::Arc::new(crate::chpp::client::HattrickClient::new());
                                 let service =
                                     crate::service::opponent_analysis::OpponentAnalysisService::new(
                                         client,
@@ -421,13 +453,10 @@ mod imp {
                 .build();
 
             // Preload matches from DB when opponent is selected (reactive property notification)
-            let obj_for_notify = self.obj().clone();
             self.obj()
                 .connect_notify_local(Some("selected-opponent"), move |obj, _| {
                     obj.handle_opponent_selected();
                 });
-
-            // Handle match selection
 
             self.obj().setup_handlers();
         }
@@ -594,12 +623,12 @@ impl OpponentAnalysis {
 
             let weakest_def = def_sectors
                 .iter()
-                .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
-                .unwrap();
+                .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+                .unwrap_or(&("Unknown", 0.0));
             let strongest_att = att_sectors
                 .iter()
-                .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
-                .unwrap();
+                .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+                .unwrap_or(&("Unknown", 0.0));
 
             let summary = format!(
                 "<b>{}</b>: {} ({:.1})\n<b>{}</b>: {} ({:.1})",
@@ -634,13 +663,151 @@ impl OpponentAnalysis {
                 avg_pitch.remove(&child);
             }
             avg_pitch.append(&sector_view);
+
+            self.update_prediction();
         } else {
             lbl_formations.set_text(&gettext("No data yet."));
             lbl_tactical_summary.set_text(&gettext("No data yet."));
             while let Some(child) = avg_pitch.first_child() {
                 avg_pitch.remove(&child);
             }
+            self.imp().lbl_prediction.set_text(&gettext("No data yet."));
+            self.imp().pb_win_prob.set_fraction(0.0);
         }
+    }
+
+    fn update_prediction(&self) {
+        let imp = self.imp();
+        let ctx = imp.context.borrow().clone();
+        let Some(ctx) = ctx else {
+            return;
+        };
+        let Some(opp_ratings) = ctx.get_opponent_avg_ratings() else {
+            return;
+        };
+        let Some(best_lineups) = ctx.best_lineups() else {
+            return;
+        };
+
+        if best_lineups.is_empty() {
+            return;
+        }
+
+        // Use the first (best) hatstats lineup for prediction baseline
+        let our_best = &best_lineups[0];
+
+        // Map [f32; 7] to HashMap<RatingSector, f64>
+        use crate::rating::types::RatingSector;
+        let mut opp_map = std::collections::HashMap::new();
+        opp_map.insert(RatingSector::AttackLeft, opp_ratings[0] as f64);
+        opp_map.insert(RatingSector::AttackCentral, opp_ratings[1] as f64);
+        opp_map.insert(RatingSector::AttackRight, opp_ratings[2] as f64);
+        opp_map.insert(RatingSector::Midfield, opp_ratings[3] as f64);
+        opp_map.insert(RatingSector::DefenceLeft, opp_ratings[4] as f64);
+        opp_map.insert(RatingSector::DefenceCentral, opp_ratings[5] as f64);
+        opp_map.insert(RatingSector::DefenceRight, opp_ratings[6] as f64);
+
+        let result = crate::rating::match_predictor::MatchPredictor::predict(
+            &our_best.sector_ratings,
+            &opp_map,
+            crate::rating::types::TacticType::Normal, // Assume normal for now
+            crate::rating::types::TacticType::Normal,
+        );
+
+        ctx.set_prediction_result(Some(result.clone()));
+
+        // UI updates are now handled by property bindings in ContextObject
+    }
+
+    fn on_optimize_opponent_clicked(&self) {
+        let imp = self.imp();
+        let ctx = imp.context.borrow().clone();
+        let Some(ctx) = ctx else {
+            return;
+        };
+        let Some(opp_ratings) = ctx.get_opponent_avg_ratings() else {
+            return;
+        };
+        let Some(team) = ctx.selected_team() else {
+            return;
+        };
+
+        imp.spinner.set_spinning(true);
+
+        use crate::rating::types::RatingSector;
+        let mut opp_map = std::collections::HashMap::new();
+        opp_map.insert(RatingSector::AttackLeft, opp_ratings[0] as f64);
+        opp_map.insert(RatingSector::AttackCentral, opp_ratings[1] as f64);
+        opp_map.insert(RatingSector::AttackRight, opp_ratings[2] as f64);
+        opp_map.insert(RatingSector::Midfield, opp_ratings[3] as f64);
+        opp_map.insert(RatingSector::DefenceLeft, opp_ratings[4] as f64);
+        opp_map.insert(RatingSector::DefenceCentral, opp_ratings[5] as f64);
+        opp_map.insert(RatingSector::DefenceRight, opp_ratings[6] as f64);
+
+        let team_id = team.team_data().id;
+        let self_clone = self.clone();
+        let ctx_clone = ctx.clone();
+
+        glib::MainContext::default().spawn_local(async move {
+            let result = tokio::task::spawn_blocking(move || {
+                let db = crate::db::manager::DbManager::new();
+                let Ok(mut conn) = db.get_connection() else {
+                    return None;
+                };
+                let Ok(players) = crate::db::teams::get_players_for_team(&mut conn, team_id) else {
+                    return None;
+                };
+
+                let team = crate::rating::model::Team::default();
+                let model = crate::rating::RatingPredictionModel::new(team);
+                let optimiser = crate::rating::optimiser::LineupOptimiser::new(&model, &players);
+                use crate::rating::optimiser::{Formation, OptimisationGoal};
+
+                let mut best_overall: Option<crate::rating::optimiser::OptimisedLineup> = None;
+                let mut max_win_prob = -1.0;
+
+                for formation in Formation::all() {
+                    let opt_lineup = optimiser.optimise(
+                        formation,
+                        OptimisationGoal::MaxWinProbability {
+                            opponent_ratings: opp_map.clone(),
+                            opponent_tactic: crate::rating::types::TacticType::Normal,
+                        },
+                    );
+
+                    // To get the win prob, we need to predict (or reuse the score if it's win prob)
+                    // Let's just predict again to be sure of the probability value
+                    let res = crate::rating::match_predictor::MatchPredictor::predict(
+                        &opt_lineup.sector_ratings,
+                        &opp_map,
+                        crate::rating::types::TacticType::Normal,
+                        crate::rating::types::TacticType::Normal,
+                    );
+
+                    if res.win_prob > max_win_prob {
+                        max_win_prob = res.win_prob;
+                        best_overall = Some(opt_lineup);
+                    }
+                }
+                best_overall
+            })
+            .await;
+
+            let imp = self_clone.imp();
+            imp.spinner.set_spinning(false);
+
+            if let Ok(Some(best_lineup)) = result {
+                // Update context with the new best lineup
+                // We'll put it at the start of the list so update_prediction uses it
+                if let Some(mut current) = ctx_clone.best_lineups() {
+                    current.insert(0, best_lineup);
+                    ctx_clone.set_best_lineups(Some(current));
+                } else {
+                    ctx_clone.set_best_lineups(Some(vec![best_lineup]));
+                }
+                self_clone.update_prediction();
+            }
+        });
     }
 
     fn on_filters_changed(&self) {
@@ -701,7 +868,7 @@ impl OpponentAnalysis {
                     .get_stored_match_ratings(team_id)
                     .unwrap_or_default();
 
-                let mut mapped_matches: Vec<_> = finished
+                let mapped_matches: Vec<_> = finished
                     .into_iter()
                     .map(|m| {
                         let is_home = m.HomeTeam.HomeTeamID.parse::<u32>().unwrap_or(0) == team_id;
@@ -826,7 +993,7 @@ impl OpponentAnalysis {
         let spinner = imp.spinner.clone();
         let lbl_formations = imp.lbl_formations.clone();
         let lbl_unavailable = imp.lbl_unavailable.clone();
-        let match_list_view = imp.match_list_view.clone();
+        let _match_list_view = imp.match_list_view.clone();
         let pitch_container = imp.pitch_container.clone();
         let check_league = imp.check_league.clone();
         let check_cup = imp.check_cup.clone();
@@ -1049,75 +1216,8 @@ impl OpponentAnalysis {
                                 local_imp.latest_matches.replace(analysis.matches.clone());
                                 local_obj.populate_match_list();
 
-                                // Calculate and display the best counter formation
-                                if let Some(ctx) = local_imp.context.borrow().as_ref() {
-                                    if let Some(lineups) = ctx.best_lineups() {
-                                        use crate::rating::types::RatingSector;
-
-                                        let mut best_lineup_name = String::new();
-                                        let mut best_score = -9999.0;
-
-                                        for lineup in lineups {
-                                            let m = lineup
-                                                .sector_ratings
-                                                .get(&RatingSector::Midfield)
-                                                .unwrap_or(&0.0)
-                                                - mid_avg;
-
-                                            let al = lineup
-                                                .sector_ratings
-                                                .get(&RatingSector::AttackLeft)
-                                                .unwrap_or(&0.0)
-                                                - rd_avg;
-                                            let ac = lineup
-                                                .sector_ratings
-                                                .get(&RatingSector::AttackCentral)
-                                                .unwrap_or(&0.0)
-                                                - cd_avg;
-                                            let ar = lineup
-                                                .sector_ratings
-                                                .get(&RatingSector::AttackRight)
-                                                .unwrap_or(&0.0)
-                                                - ld_avg;
-
-                                            let dl = lineup
-                                                .sector_ratings
-                                                .get(&RatingSector::DefenceLeft)
-                                                .unwrap_or(&0.0)
-                                                - ra_avg;
-                                            let dc = lineup
-                                                .sector_ratings
-                                                .get(&RatingSector::DefenceCentral)
-                                                .unwrap_or(&0.0)
-                                                - ca_avg;
-                                            let dr = lineup
-                                                .sector_ratings
-                                                .get(&RatingSector::DefenceRight)
-                                                .unwrap_or(&0.0)
-                                                - la_avg;
-
-                                            let score = (m * 3.0) + al + ac + ar + dl + dc + dr;
-
-                                            if score > best_score {
-                                                best_score = score;
-                                                best_lineup_name =
-                                                    lineup.formation.name().to_string();
-                                            }
-                                        }
-
-                                        if !best_lineup_name.is_empty() {
-                                            let current =
-                                                local_imp.lbl_tactical_summary.label().to_string();
-                                            let summary = format!(
-                                                "{}\n\n<b>{}</b>: {}",
-                                                current,
-                                                gettext("Recommended Counter"),
-                                                best_lineup_name
-                                            );
-                                            local_imp.lbl_tactical_summary.set_markup(&summary);
-                                        }
-                                    }
-                                }
+                                // Auto-trigger optimization for this opponent
+                                local_obj.on_optimize_opponent_clicked();
                             } else {
                                 local_obj.update_tactical_analysis(&[]);
                                 let msg = gtk::Label::new(Some(&gettext("No matches found.")));

@@ -345,6 +345,7 @@ pub enum Weather {
 
 /// Match tactic types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[repr(u32)]
 pub enum TacticType {
     #[default]
     Normal = 0,
@@ -354,6 +355,27 @@ pub enum TacticType {
     AttackOnWings = 4,
     PlayCreatively = 7,
     LongShots = 8,
+}
+
+impl TacticType {
+    pub fn name(&self) -> &'static str {
+        match self {
+            TacticType::Normal => "Normal",
+            TacticType::Pressing => "Pressing",
+            TacticType::CounterAttacks => "Counter-Attacks",
+            TacticType::AttackInTheMiddle => "Attack in the Middle",
+            TacticType::AttackOnWings => "Attack on Wings",
+            TacticType::PlayCreatively => "Play Creatively",
+            TacticType::LongShots => "Long Shots",
+        }
+    }
+
+    pub fn default_skill_level(&self) -> f64 {
+        match self {
+            TacticType::Normal => 0.0,
+            _ => 10.0, // Default to a reasonable "Solid" skill level for simulations
+        }
+    }
 }
 
 /// Match attitude

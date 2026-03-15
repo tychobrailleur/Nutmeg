@@ -433,7 +433,7 @@ impl SeriesPage {
                         .data
                         .borrow()
                         .as_ref()
-                        .map(|t| ext(t))
+                        .map(&ext)
                         .unwrap_or_default();
                     label.set_text(&text);
                 }
@@ -725,7 +725,7 @@ impl SeriesPage {
                         .data
                         .borrow()
                         .as_ref()
-                        .map(|m| ext(m))
+                        .map(&ext)
                         .unwrap_or_default();
                     label.set_text(&text);
                 }

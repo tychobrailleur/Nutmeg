@@ -20,8 +20,7 @@
 
 use crate::chpp::error::Error;
 use crate::chpp::model::{
-    Country, Cup, Currency, Language, League, Player, Region, SupporterTier, Team, User,
-    WorldDetails,
+    Country, Cup, Currency, Language, League, Region, SupporterTier, Team, User, WorldDetails,
 };
 use crate::db::schema::{
     avatars, countries, cups, currencies, downloads, languages, leagues, players, regions, teams,
@@ -389,8 +388,6 @@ pub fn save_players(
     team_id: u32,
     download_id: i32,
 ) -> Result<(), Error> {
-    let incoming_ids: Vec<i32> = players_list.iter().map(|p| p.PlayerID as i32).collect();
-
     for player in players_list {
         let player_id = player.PlayerID as i32;
 

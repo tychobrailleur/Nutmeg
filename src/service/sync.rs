@@ -20,11 +20,7 @@
 
 use crate::chpp::client::HattrickClient;
 use crate::chpp::metadata::ChppEndpoints;
-use crate::chpp::model::{
-    AvatarsData, AvatarsPlayers, AvatarsTeam, HattrickData, LeagueDetailsData, MatchesArchiveData,
-    MatchesData, MatchesListWrapper, MatchesTeamWrapper, PlayersData, StaffListData, Team, Teams,
-    User, WorldDetails,
-};
+use crate::chpp::model::{MatchesData, MatchesListWrapper, MatchesTeamWrapper};
 use crate::chpp::{
     create_oauth_context, retry_with_default_config, ChppClient, Error as ChppError,
 };
@@ -40,7 +36,6 @@ use chrono::Utc;
 use diesel::prelude::*;
 use log::{debug, info, warn};
 use oauth_1a::{OAuthData, SigningKey};
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -172,7 +167,7 @@ impl DataSyncService for SyncService {
                 on_progress,
             )
             .await
-            .map(|r| Some(r))
+            .map(Some)
         })
     }
 
@@ -559,7 +554,7 @@ impl SyncService {
 
         // 2. Process archived matches
         match archived_res {
-            Ok(mut archived_data) => {
+            Ok(archived_data) => {
                 debug!(
                     "[sync] Found {} archived matches for team {}",
                     archived_data.Team.MatchList.Matches.len(),
@@ -665,7 +660,7 @@ impl SyncService {
             })
             .buffer_unordered(4);
 
-        while let Some(_) = stream.next().await {}
+        while (stream.next().await).is_some() {}
 
         Ok(())
     }
@@ -1000,16 +995,11 @@ impl SyncService {
             .into_iter()
             .map(|avatar_player| async move {
                 let player_id = avatar_player.player_id;
-                if let Some(avatar_blob) = AvatarService::fetch_and_composite_avatar(
+                AvatarService::fetch_and_composite_avatar(
                     player_id,
                     &avatar_player.avatar.layers,
                 )
-                .await
-                {
-                    Some((player_id, avatar_blob))
-                } else {
-                    None
-                }
+                .await.map(|avatar_blob| (player_id, avatar_blob))
             });
 
         // 8 concurrent composites: each player fetches ~4 layer images over the network.

@@ -1,5 +1,3 @@
-use crate::db::manager::DbManager;
-use crate::rating::model::Team;
 use crate::squad::ui::player_list::create_player_model;
 use crate::ui::player_object::PlayerObject;
 use crate::ui::team_object::TeamObject;
@@ -30,6 +28,7 @@ mod imp {
         pub matches: RefCell<Option<crate::chpp::model::MatchesData>>,
         pub all_series_matches: RefCell<Option<Vec<crate::chpp::model::MatchDetails>>>,
         pub series_logo_urls: RefCell<Option<std::collections::HashMap<i32, String>>>,
+        pub prediction_result: RefCell<Option<crate::rating::match_predictor::PredictionResult>>,
     }
 
     #[glib::object_subclass]
@@ -67,6 +66,15 @@ mod imp {
                     glib::ParamSpecBoolean::builder("data-loaded")
                         .explicit_notify()
                         .build(),
+                    glib::ParamSpecBoolean::builder("has-prediction")
+                        .read_only()
+                        .build(),
+                    glib::ParamSpecString::builder("prediction-text")
+                        .read_only()
+                        .build(),
+                    glib::ParamSpecDouble::builder("win-probability")
+                        .read_only()
+                        .build(),
                 ]
             })
         }
@@ -83,6 +91,37 @@ mod imp {
                 "data-loaded" => (self.league_details.borrow().is_some()
                     && self.matches.borrow().is_some())
                 .to_value(),
+                "has-prediction" => self.prediction_result.borrow().is_some().to_value(),
+                "prediction-text" => {
+                    let res = self.prediction_result.borrow();
+                    let lineups = self.best_lineups.borrow();
+                    if let (Some(r), Some(l)) = (res.as_ref(), lineups.as_ref()) {
+                        if !l.is_empty() {
+                            let best = &l[0];
+                            format!(
+                                "<b>{} ({})</b>\nWin: {:.1}% | Draw: {:.1}% | Loss: {:.1}%",
+                                best.formation.name(),
+                                best.tactic.name(),
+                                r.win_prob * 100.0,
+                                r.draw_prob * 100.0,
+                                r.loss_prob * 100.0
+                            )
+                            .to_value()
+                        } else {
+                            "No data yet.".to_value()
+                        }
+                    } else {
+                        "No data yet.".to_value()
+                    }
+                }
+                "win-probability" => {
+                    let res = self.prediction_result.borrow();
+                    if let Some(r) = res.as_ref() {
+                        r.win_prob.to_value()
+                    } else {
+                        0.0f64.to_value()
+                    }
+                }
                 _ => unimplemented!(),
             }
         }
@@ -90,9 +129,7 @@ mod imp {
         fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
             match pspec.name() {
                 "selected-team" => {
-                    let team = value
-                        .get::<Option<TeamObject>>()
-                        .expect("Value must be TeamObject");
+                    let team = value.get::<Option<TeamObject>>().ok().flatten();
                     let mut current_team = self.selected_team.borrow_mut();
 
                     *current_team = team.clone();
@@ -101,9 +138,7 @@ mod imp {
                     self.obj().notify_selected_team();
                 }
                 "selected-player" => {
-                    let player = value
-                        .get::<Option<PlayerObject>>()
-                        .expect("Value must be PlayerObject");
+                    let player = value.get::<Option<PlayerObject>>().ok().flatten();
                     self.selected_player.replace(player);
                     self.obj().notify_selected_player();
                 }
@@ -190,6 +225,20 @@ impl ContextObject {
         self.imp().series_logo_urls.borrow().clone()
     }
 
+    pub fn set_prediction_result(
+        &self,
+        result: Option<crate::rating::match_predictor::PredictionResult>,
+    ) {
+        *self.imp().prediction_result.borrow_mut() = result;
+        self.notify("has-prediction");
+        self.notify("prediction-text");
+        self.notify("win-probability");
+    }
+
+    pub fn prediction_result(&self) -> Option<crate::rating::match_predictor::PredictionResult> {
+        self.imp().prediction_result.borrow().clone()
+    }
+
     fn clear_context(&self) {
         // Clear players list
         let store = create_player_model(&[]);
@@ -203,6 +252,7 @@ impl ContextObject {
         self.imp().matches.replace(None);
         self.imp().all_series_matches.replace(None);
         self.imp().series_logo_urls.replace(None);
+        self.set_prediction_result(None);
         self.notify("data-loaded");
 
         // Clear selected player
@@ -262,6 +312,21 @@ impl ContextObject {
                         &players,
                     );
                 self.set_players(Some(store));
+
+                let weak_self = self.downgrade();
+                glib::MainContext::default().spawn_local(async move {
+                    let results = tokio::task::spawn_blocking(move || {
+                        crate::rating::controller::RatingController::calculate_best_lineups(
+                            &players,
+                        )
+                    })
+                    .await
+                    .unwrap_or_default();
+
+                    if let Some(obj) = weak_self.upgrade() {
+                        obj.set_best_lineups(Some(results));
+                    }
+                });
             }
             Err(e) => log::error!("ContextObject: Failed to load players: {}", e),
         }
@@ -314,7 +379,7 @@ impl ContextObject {
                     opp.team_id
                 );
                 let item = crate::opponent_analysis::ui::model::OpponentItem::new(
-                    opp.team_id as u32,
+                    opp.team_id,
                     &opp.team_name,
                     &opp.match_date,
                     &logo_url,

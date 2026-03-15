@@ -11,5 +11,6 @@ pub mod weather;
 pub use model::RatingPredictionModel;
 pub use types::*;
 pub mod controller;
+pub mod match_predictor;
 pub mod optimiser;
 pub mod ui;

@@ -1,14 +1,11 @@
-use crate::db::manager::DbManager;
 use crate::rating::model::{Lineup, RatingPredictionModel, Team};
 use crate::rating::position_eval::evaluate_all_positions;
 use crate::rating::types::{Attitude, Location, TacticType, Weather};
 use crate::ui::context_object::ContextObject;
 use crate::ui::player_display::PlayerDisplay;
 use crate::ui::player_object::PlayerObject;
-use crate::ui::team_object::TeamObject;
 use gtk::glib;
-use gtk::prelude::*;
-use log::{debug, error, info, warn};
+use log::{debug, warn};
 use num_format::SystemLocale;
 
 pub struct SquadTabController {

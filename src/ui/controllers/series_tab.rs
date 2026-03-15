@@ -1,8 +1,4 @@
-use crate::db::manager::DbManager;
-use crate::series::ui::controller::filter_matches_for_season;
 use crate::ui::context_object::ContextObject;
-use crate::ui::team_object::TeamObject;
-use log::{info, warn};
 
 pub struct SeriesTabController {
     context: ContextObject,

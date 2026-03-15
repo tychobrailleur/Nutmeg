@@ -349,7 +349,7 @@ pub fn filter_matches_for_season(
 ) -> MatchesData {
     // Filter matches to show only those for this league and current season
     let league_unit_id = league_details.LeagueLevelUnitID;
-    let current_round = league_details.CurrentMatchRound.unwrap_or(14); // Default to full season if unknown
+    let _current_round = league_details.CurrentMatchRound.unwrap_or(14); // Default to full season if unknown
 
     let league_matches: Vec<crate::chpp::model::MatchDetails> = matches
         .Team
