@@ -47,7 +47,11 @@ pub struct PlayerDisplay {
 
 impl PlayerDisplay {
     pub fn new(p: &Player, locale: &SystemLocale, preferred_position: Option<&str>) -> Self {
-        let name = format!("{} {}", p.FirstName, p.LastName);
+        // translators: Player full name format. {first} = given name, {last} = family name.
+        // Swap to "{last} {first}" for cultures where family name comes first.
+        let name = gettext("{first} {last}")
+            .replace("{first}", &p.FirstName)
+            .replace("{last}", &p.LastName);
         let flag = p.Flag.clone().unwrap_or_else(|| "🏳️".to_string());
         let number = p
             .PlayerNumber
@@ -110,7 +114,9 @@ impl PlayerDisplay {
 
         let injured = match p.InjuryLevel {
             Some(0) => "🩹".to_string(),
-            Some(i) if i > 0 => format!("🚑 {}w", i),
+            // translators: Injury duration abbreviation, e.g. "3w" = 3 weeks out.
+            // {n} is the number of weeks. Replace "w" with the local abbreviation.
+            Some(i) if i > 0 => gettext("🚑 {n}w").replace("{n}", &i.to_string()),
             _ => "".to_string(),
         };
 

@@ -2,6 +2,7 @@ use super::model::{Lineup, LineupPosition};
 use super::position_eval::evaluate_all_positions;
 use super::types::{Attitude, Behaviour, Location, PositionId, RatingSector, TacticType, Weather};
 use crate::chpp::model::Player;
+use crate::rating::match_predictor::MatchPredictor;
 use crate::rating::RatingPredictionModel;
 use std::collections::{HashMap, HashSet};
 
@@ -206,10 +207,24 @@ impl Formation {
 pub struct OptimisedLineup {
     pub formation: Formation,
     pub lineup: Lineup,
+    pub tactic: TacticType,
     pub sector_ratings: HashMap<RatingSector, f64>,
     pub hatstats: f64,
     pub captain: Option<Player>,
     pub set_pieces_taker: Option<Player>,
+}
+
+/// Goals to optimise for
+#[derive(Debug, Clone)]
+pub enum OptimisationGoal {
+    MaxHatstats,
+    MaxWinProbability {
+        opponent_ratings: HashMap<RatingSector, f64>,
+        opponent_tactic: TacticType,
+    },
+    MaxMidfield,
+    MaxDefence,
+    MaxAttack,
 }
 
 /// Optimiser that finds the best lineup for a formation using Hill Climbing
@@ -223,10 +238,10 @@ impl<'a> LineupOptimiser<'a> {
         Self { model, players }
     }
 
-    pub fn optimise(&self, formation: Formation) -> OptimisedLineup {
+    pub fn optimise(&self, formation: Formation, goal: OptimisationGoal) -> OptimisedLineup {
         let slots = formation.get_slots();
         let mut best_lineup = self.create_initial_lineup(&slots);
-        let mut best_hatstats = self.model.calc_hatstats(&best_lineup, 0);
+        let mut best_score = self.calculate_score(&best_lineup, &goal);
 
         // Hill Climbing Configuration
         let max_iterations = 1000;
@@ -238,10 +253,10 @@ impl<'a> LineupOptimiser<'a> {
 
             // Try to swap a player in lineup with a bench player
             if let Some(new_lineup) = self.try_swap_bench(&best_lineup, &slots) {
-                let new_hatstats = self.model.calc_hatstats(&new_lineup, 0);
-                if new_hatstats > best_hatstats {
+                let new_score = self.calculate_score(&new_lineup, &goal);
+                if new_score > best_score {
                     best_lineup = new_lineup;
-                    best_hatstats = new_hatstats;
+                    best_score = new_score;
                     improved = true;
                 }
             }
@@ -249,10 +264,10 @@ impl<'a> LineupOptimiser<'a> {
             // Try to swap two players within the lineup
             if !improved {
                 if let Some(new_lineup) = self.try_swap_roles(&best_lineup) {
-                    let new_hatstats = self.model.calc_hatstats(&new_lineup, 0);
-                    if new_hatstats > best_hatstats {
+                    let new_score = self.calculate_score(&new_lineup, &goal);
+                    if new_score > best_score {
                         best_lineup = new_lineup;
-                        best_hatstats = new_hatstats;
+                        best_score = new_score;
                         improved = true;
                     }
                 }
@@ -261,10 +276,22 @@ impl<'a> LineupOptimiser<'a> {
             // Try changing behaviour of a player
             if !improved {
                 if let Some(new_lineup) = self.try_change_behaviour(&best_lineup) {
-                    let new_hatstats = self.model.calc_hatstats(&new_lineup, 0);
-                    if new_hatstats > best_hatstats {
+                    let new_score = self.calculate_score(&new_lineup, &goal);
+                    if new_score > best_score {
                         best_lineup = new_lineup;
-                        best_hatstats = new_hatstats;
+                        best_score = new_score;
+                        improved = true;
+                    }
+                }
+            }
+
+            // Try changing tactic
+            if !improved {
+                if let Some(new_lineup) = self.try_change_tactic(&best_lineup) {
+                    let new_score = self.calculate_score(&new_lineup, &goal);
+                    if new_score > best_score {
+                        best_lineup = new_lineup;
+                        best_score = new_score;
                         improved = true;
                     }
                 }
@@ -292,11 +319,52 @@ impl<'a> LineupOptimiser<'a> {
 
         OptimisedLineup {
             formation,
-            lineup: best_lineup,
+            lineup: best_lineup.clone(),
+            tactic: best_lineup.tactic,
             sector_ratings,
-            hatstats: best_hatstats,
+            hatstats: self.model.calc_hatstats(&best_lineup, 0),
             captain,
             set_pieces_taker,
+        }
+    }
+
+    fn calculate_score(&self, lineup: &Lineup, goal: &OptimisationGoal) -> f64 {
+        match goal {
+            OptimisationGoal::MaxHatstats => self.model.calc_hatstats(lineup, 0),
+            OptimisationGoal::MaxWinProbability {
+                opponent_ratings,
+                opponent_tactic,
+            } => {
+                let mut our_ratings = HashMap::new();
+                for sector in RatingSector::all() {
+                    our_ratings.insert(sector, self.model.get_rating(lineup, sector, 0));
+                }
+                let prediction = MatchPredictor::predict(
+                    &our_ratings,
+                    opponent_ratings,
+                    lineup.tactic,
+                    *opponent_tactic,
+                );
+                // We want to maximise win probability
+                prediction.win_prob
+            }
+            OptimisationGoal::MaxMidfield => {
+                self.model.get_rating(lineup, RatingSector::Midfield, 0)
+            }
+            OptimisationGoal::MaxDefence => {
+                self.model.get_rating(lineup, RatingSector::DefenceLeft, 0)
+                    + self
+                        .model
+                        .get_rating(lineup, RatingSector::DefenceCentral, 0)
+                    + self.model.get_rating(lineup, RatingSector::DefenceRight, 0)
+            }
+            OptimisationGoal::MaxAttack => {
+                self.model.get_rating(lineup, RatingSector::AttackLeft, 0)
+                    + self
+                        .model
+                        .get_rating(lineup, RatingSector::AttackCentral, 0)
+                    + self.model.get_rating(lineup, RatingSector::AttackRight, 0)
+            }
         }
     }
 
@@ -548,6 +616,25 @@ impl<'a> LineupOptimiser<'a> {
         let mut new_lineup = lineup.clone();
         new_lineup.positions[idx].behaviour = new_behaviour;
 
+        Some(new_lineup)
+    }
+
+    fn try_change_tactic(&self, lineup: &Lineup) -> Option<Lineup> {
+        let tactics = [
+            TacticType::Normal,
+            TacticType::CounterAttacks,
+            TacticType::AttackInTheMiddle,
+            TacticType::AttackOnWings,
+            TacticType::Pressing,
+        ];
+        let new_tactic = tactics[fastrand::usize(0..tactics.len())];
+
+        if lineup.tactic == new_tactic {
+            return None;
+        }
+
+        let mut new_lineup = lineup.clone();
+        new_lineup.tactic = new_tactic;
         Some(new_lineup)
     }
 }

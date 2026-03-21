@@ -20,7 +20,11 @@
 
 use crate::chpp::client::HattrickClient;
 use crate::chpp::metadata::ChppEndpoints;
-use crate::chpp::{create_oauth_context, retry_with_default_config, ChppClient, Error};
+use crate::chpp::model::{MatchesData, MatchesListWrapper, MatchesTeamWrapper};
+use crate::chpp::{
+    create_oauth_context, retry_with_default_config, ChppClient,
+};
+use crate::error::NutmegError;
 use crate::db::download_entries::{create_download_entry, update_entry_status, NewDownloadEntry};
 use crate::db::manager::DbManager;
 use crate::db::schema::downloads;
@@ -33,10 +37,10 @@ use chrono::Utc;
 use diesel::prelude::*;
 use log::{debug, info, warn};
 use oauth_1a::{OAuthData, SigningKey};
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Instant;
 
 pub type ProgressCallback = Box<dyn Fn(f64, &str) + Send + Sync>;
 
@@ -48,14 +52,30 @@ pub trait DataSyncService {
         access_token: String,
         access_secret: String,
         on_progress: ProgressCallback,
-    ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<(u32, i32), NutmegError>> + Send + '_>>;
 
     fn perform_sync_with_stored_secrets(
         &self,
         consumer_key: String,
         consumer_secret: String,
         on_progress: ProgressCallback,
-    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<Option<(u32, i32)>, NutmegError>> + Send + '_>>;
+
+    fn perform_avatar_sync_with_stored_secrets(
+        &self,
+        consumer_key: String,
+        consumer_secret: String,
+        team_id: u32,
+        download_id: i32,
+    ) -> Pin<Box<dyn Future<Output = Result<(), NutmegError>> + Send + '_>>;
+
+    fn perform_series_form_sync_lazily(
+        &self,
+        consumer_key: String,
+        consumer_secret: String,
+        unit_id: i32,
+        download_id: i32,
+    ) -> Pin<Box<dyn Future<Output = Result<(), NutmegError>> + Send + '_>>;
 }
 
 pub struct SyncService {
@@ -95,12 +115,12 @@ impl DataSyncService for SyncService {
         access_token: String,
         access_secret: String,
         on_progress: ProgressCallback,
-    ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(u32, i32), NutmegError>> + Send + '_>> {
         let db_manager = self.db_manager.clone();
         let client = self.client.clone();
 
         Box::pin(async move {
-            Self::do_full_sync(
+            let res = Self::do_full_sync(
                 db_manager,
                 client,
                 consumer_key,
@@ -109,7 +129,9 @@ impl DataSyncService for SyncService {
                 access_secret,
                 on_progress,
             )
-            .await
+            .await?;
+
+            Ok(res)
         })
     }
 
@@ -118,7 +140,7 @@ impl DataSyncService for SyncService {
         consumer_key: String,
         consumer_secret: String,
         on_progress: ProgressCallback,
-    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Option<(u32, i32)>, NutmegError>> + Send + '_>> {
         let db_manager = self.db_manager.clone();
         let client = self.client.clone();
         let secret_service = self.secret_service.clone();
@@ -126,14 +148,14 @@ impl DataSyncService for SyncService {
         Box::pin(async move {
             let access_token = match secret_service.get_secret("access_token").await {
                 Ok(Some(token)) => token,
-                Ok(None) => return Ok(false),
-                Err(e) => return Err(Error::Io(e.to_string())),
+                Ok(None) => return Ok(None),
+                Err(e) => return Err(NutmegError::Io(e.to_string())),
             };
 
             let access_secret = match secret_service.get_secret("access_secret").await {
                 Ok(Some(secret)) => secret,
-                Ok(None) => return Ok(false),
-                Err(e) => return Err(Error::Io(e.to_string())),
+                Ok(None) => return Ok(None),
+                Err(e) => return Err(NutmegError::Io(e.to_string())),
             };
 
             Self::do_full_sync(
@@ -146,18 +168,101 @@ impl DataSyncService for SyncService {
                 on_progress,
             )
             .await
-            .map(|_| true)
+            .map(Some)
+        })
+    }
+
+    fn perform_avatar_sync_with_stored_secrets(
+        &self,
+        consumer_key: String,
+        consumer_secret: String,
+        team_id: u32,
+        download_id: i32,
+    ) -> Pin<Box<dyn Future<Output = Result<(), NutmegError>> + Send + '_>> {
+        let db_manager = self.db_manager.clone();
+        let client = self.client.clone();
+        let secret_service = self.secret_service.clone();
+
+        Box::pin(async move {
+            let access_token = match secret_service.get_secret("access_token").await {
+                Ok(Some(token)) => token,
+                Ok(None) => return Err(NutmegError::Io("Missing access token".to_owned())),
+                Err(e) => return Err(NutmegError::Io(e.to_string())),
+            };
+
+            let access_secret = match secret_service.get_secret("access_secret").await {
+                Ok(Some(secret)) => secret,
+                Ok(None) => return Err(NutmegError::Io("Missing access secret".to_owned())),
+                Err(e) => return Err(NutmegError::Io(e.to_string())),
+            };
+
+            let get_auth = || {
+                create_oauth_context(
+                    &consumer_key,
+                    &consumer_secret,
+                    &access_token,
+                    &access_secret,
+                )
+            };
+
+            Self::fetch_and_save_avatars_lazily(db_manager, client, &get_auth, team_id, download_id)
+                .await
+        })
+    }
+
+    fn perform_series_form_sync_lazily(
+        &self,
+        consumer_key: String,
+        consumer_secret: String,
+        unit_id: i32,
+        download_id: i32,
+    ) -> Pin<Box<dyn Future<Output = Result<(), NutmegError>> + Send + '_>> {
+        let db_manager = self.db_manager.clone();
+        let client = self.client.clone();
+        let secret_service = self.secret_service.clone();
+
+        // TODO: What does Box::pin actually do here?
+        Box::pin(async move {
+            let access_token = match secret_service.get_secret("access_token").await {
+                Ok(Some(token)) => token,
+                Ok(None) => return Err(NutmegError::Io("Missing access token".to_owned())),
+                Err(e) => return Err(NutmegError::Io(e.to_string())),
+            };
+
+            let access_secret = match secret_service.get_secret("access_secret").await {
+                Ok(Some(secret)) => secret,
+                Ok(None) => return Err(NutmegError::Io("Missing access secret".to_owned())),
+                Err(e) => return Err(NutmegError::Io(e.to_string())),
+            };
+
+            let get_auth = || {
+                create_oauth_context(
+                    &consumer_key,
+                    &consumer_secret,
+                    &access_token,
+                    &access_secret,
+                )
+            };
+
+            Self::fetch_and_save_series_form_lazily(
+                db_manager,
+                client,
+                &get_auth,
+                unit_id,
+                download_id,
+            )
+            .await
         })
     }
 }
 
 impl SyncService {
-    async fn create_download_record(db_manager: Arc<DbManager>) -> Result<i32, Error> {
+    async fn create_download_record(db_manager: Arc<DbManager>) -> Result<i32, NutmegError> {
         let db = db_manager.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = db
                 .get_connection()
-                .map_err(|e| Error::Db(format!("Failed to get database connection: {}", e)))?;
+                .map_err(|e| NutmegError::Db(format!("Failed to get database connection: {}", e)))?;
 
             let timestamp = Utc::now().to_rfc3339();
 
@@ -167,24 +272,24 @@ impl SyncService {
                     downloads::status.eq("in_progress"),
                 ))
                 .execute(&mut conn)
-                .map_err(|e| Error::Db(format!("Failed to create download record: {}", e)))?;
+                .map_err(|e| NutmegError::Db(format!("Failed to create download record: {}", e)))?;
 
             let id: i32 = downloads::table
                 .select(downloads::id)
                 .order(downloads::id.desc())
                 .first(&mut conn)
-                .map_err(|e| Error::Db(format!("Failed to get download ID: {}", e)))?;
+                .map_err(|e| NutmegError::Db(format!("Failed to get download ID: {}", e)))?;
 
             Ok(id)
         })
         .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))?
+        .map_err(|e| NutmegError::Io(format!("Join error: {}", e)))?
     }
 
     async fn complete_download_record(
         db_manager: Arc<DbManager>,
         download_id: i32,
-    ) -> Result<(), Error> {
+    ) -> Result<(), NutmegError> {
         let db = db_manager.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = db.get_connection()?;
@@ -193,12 +298,12 @@ impl SyncService {
             diesel::update(downloads.filter(id.eq(download_id)))
                 .set(status.eq("completed"))
                 .execute(&mut conn)
-                .map_err(|e| Error::Io(format!("Failed to update download status: {}", e)))?;
+                .map_err(|e| NutmegError::Io(format!("Failed to update download status: {}", e)))?;
 
-            Ok::<(), Error>(())
+            Ok::<(), NutmegError>(())
         })
         .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+        .map_err(|e| NutmegError::Io(format!("Join error: {}", e)))??;
         Ok(())
     }
 
@@ -209,7 +314,7 @@ impl SyncService {
         endpoint: &str,
         version: &str,
         user_id: Option<i32>,
-    ) -> Result<i32, Error> {
+    ) -> Result<i32, NutmegError> {
         let db = db_manager.clone();
         let endpoint = endpoint.to_string();
         let version = version.to_string();
@@ -218,7 +323,7 @@ impl SyncService {
         tokio::task::spawn_blocking(move || {
             let mut conn = db
                 .get_connection()
-                .map_err(|e| Error::Db(format!("Failed to get database connection: {}", e)))?;
+                .map_err(|e| NutmegError::Db(format!("Failed to get database connection: {}", e)))?;
 
             let entry = NewDownloadEntry {
                 download_id,
@@ -232,10 +337,10 @@ impl SyncService {
             };
 
             create_download_entry(&mut conn, entry)
-                .map_err(|e| Error::Db(format!("Failed to create download entry: {}", e)))
+                .map_err(|e| NutmegError::Db(format!("Failed to create download entry: {}", e)))
         })
         .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))?
+        .map_err(|e| NutmegError::Io(format!("Join error: {}", e)))?
     }
 
     /// Update download entry status (success or error).
@@ -250,22 +355,22 @@ impl SyncService {
         entry_id: i32,
         status: &str,
         error_msg: Option<String>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), NutmegError> {
         let db = db_manager.clone();
         let status = status.to_string();
 
         tokio::task::spawn_blocking(move || {
             let mut conn = db
                 .get_connection()
-                .map_err(|e| Error::Db(format!("Failed to get database connection: {}", e)))?;
+                .map_err(|e| NutmegError::Db(format!("Failed to get database connection: {}", e)))?;
 
             update_entry_status(&mut conn, entry_id, &status, error_msg, false)
-                .map_err(|e| Error::Db(format!("Failed to update download entry: {}", e)))?;
+                .map_err(|e| NutmegError::Db(format!("Failed to update download entry: {}", e)))?;
 
-            Ok::<(), Error>(())
+            Ok::<(), NutmegError>(())
         })
         .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))?
+        .map_err(|e| NutmegError::Io(format!("Join error: {}", e)))?
     }
 
     /// Downloads user data, including Teams details.
@@ -274,7 +379,7 @@ impl SyncService {
         client: Arc<dyn ChppClient>,
         get_auth: &F,
         download_id: i32,
-    ) -> Result<(u32, Option<u32>), Error>
+    ) -> Result<(u32, Option<u32>), NutmegError>
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
@@ -306,10 +411,9 @@ impl SyncService {
             }
         };
 
-        log::info!(
+        info!(
             "User: {} ({})",
-            hattrick_data.User.UserID,
-            hattrick_data.User.Loginname
+            hattrick_data.User.UserID, hattrick_data.User.Loginname
         );
 
         let user = hattrick_data.User;
@@ -325,16 +429,16 @@ impl SyncService {
         let teams_clone = teams.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = db.get_connection()?;
-            conn.transaction::<_, Error, _>(|conn| {
+            conn.transaction::<_, NutmegError, _>(|conn| {
                 for team in &teams_clone {
-                    log::info!("Saving team: {} ({})", team.TeamName, team.TeamID);
+                    info!("Saving team: {} ({})", team.TeamName, team.TeamID);
                     save_team(conn, team, &user, download_id, true)?;
                 }
                 Ok(())
             })
         })
         .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+        .map_err(|e| NutmegError::Io(format!("Join error: {}", e)))??;
 
         let league_unit_id_opt = teams
             .first()
@@ -342,8 +446,8 @@ impl SyncService {
             .map(|unit| unit.LeagueLevelUnitID);
 
         match league_unit_id_opt {
-            Some(series) => log::info!("Team {} belongs to series {}", team_id, series),
-            None => log::warn!("No series found for team {}", team_id),
+            Some(series) => info!("Team {} belongs to series {}", team_id, series),
+            None => warn!("No series found for team {}", team_id),
         }
 
         Ok((team_id, league_unit_id_opt))
@@ -356,7 +460,7 @@ impl SyncService {
         team_id: u32,
         league_unit_id_opt: Option<u32>,
         download_id: i32,
-    ) -> Result<(), Error>
+    ) -> Result<(), NutmegError>
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
@@ -378,12 +482,12 @@ impl SyncService {
                     let db = db_manager.clone();
                     tokio::task::spawn_blocking(move || {
                         let mut conn = db.get_connection()?;
-                        conn.transaction::<_, Error, _>(|conn| {
+                        conn.transaction::<_, NutmegError, _>(|conn| {
                             save_league_details(conn, download_id, &league_details)
                         })
                     })
                     .await
-                    .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+                    .map_err(|e| NutmegError::Io(format!("Join error: {}", e)))??;
                 }
                 Err(e) => {
                     Self::update_download_entry(
@@ -393,7 +497,7 @@ impl SyncService {
                         Some(e.to_string()),
                     )
                     .await?;
-                    log::warn!("Failed to fetch league details: {}", e);
+                    warn!("Failed to fetch league details: {}", e);
                 }
             }
         }
@@ -407,22 +511,32 @@ impl SyncService {
         )
         .await?;
 
-        let (data, key) = get_auth();
-        let upcoming_matches_res = client.matches(data, key, Some(team_id)).await;
+        // Fire upcoming and archived fetches concurrently — they are independent.
+        let t_fetch = Instant::now();
+        let (data_up, key_up) = get_auth();
+        let (data_arc, key_arc) = get_auth();
+        let (upcoming_res, archived_res) = tokio::join!(
+            client.matches(data_up, key_up, Some(team_id)),
+            client.matches_archive(data_arc, key_arc, Some(team_id), None, None)
+        );
+        info!(
+            "[sync] matches fetch (upcoming+archived) for team {}: {:.2}s",
+            team_id,
+            t_fetch.elapsed().as_secs_f64()
+        );
 
-        match upcoming_matches_res {
+        let mut all_matches = Vec::new();
+        let mut seen_ids = std::collections::HashSet::new();
+
+        // 1. Process upcoming matches
+        match upcoming_res {
             Ok(matches_data) => {
                 Self::update_download_entry(db_manager.clone(), entry_id, "success", None).await?;
-
-                let db = db_manager.clone();
-                tokio::task::spawn_blocking(move || {
-                    let mut conn = db.get_connection()?;
-                    conn.transaction::<_, Error, _>(|conn| {
-                        save_matches(conn, download_id, &matches_data)
-                    })
-                })
-                .await
-                .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+                for m in matches_data.Team.MatchList.Matches {
+                    if seen_ids.insert(m.MatchID) {
+                        all_matches.push(m);
+                    }
+                }
             }
             Err(e) => {
                 Self::update_download_entry(
@@ -432,34 +546,183 @@ impl SyncService {
                     Some(e.to_string()),
                 )
                 .await?;
-                log::warn!("Failed to fetch matches: {}", e);
+                warn!(
+                    "Failed to fetch upcoming matches for team {}: {}",
+                    team_id, e
+                );
             }
         }
 
-        // Also fetch archived (already-played) matches so the full season is available in the DB
-        let (data, key) = get_auth();
-        match client
-            .matches_archive(data, key, Some(team_id), None, None)
-            .await
-        {
+        // 2. Process archived matches
+        match archived_res {
             Ok(archived_data) => {
-                log::debug!(
-                    "Fetched {} archived matches during sync",
-                    archived_data.Team.MatchList.Matches.len()
+                debug!(
+                    "[sync] Found {} archived matches for team {}",
+                    archived_data.Team.MatchList.Matches.len(),
+                    team_id
                 );
-                let db = db_manager.clone();
-                tokio::task::spawn_blocking(move || {
-                    let mut conn = db.get_connection()?;
-                    save_matches(&mut conn, download_id, &archived_data)
-                })
-                .await
-                .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+                for mut m in archived_data.Team.MatchList.Matches {
+                    if m.Status.is_empty() {
+                        m.Status = "FINISHED".to_string();
+                    }
+                    if seen_ids.insert(m.MatchID) {
+                        all_matches.push(m);
+                    }
+                }
             }
             Err(e) => {
-                log::warn!("Failed to fetch archived matches during sync: {}", e);
-                // Non-fatal: upcoming matches are already saved
+                warn!(
+                    "[sync] Failed to fetch archived matches for team {}: {}",
+                    team_id, e
+                );
             }
         }
+
+        // 3. Save all unique matches in one transaction
+        if !all_matches.is_empty() {
+            let db = db_manager.clone();
+            let matches_to_save = MatchesData {
+                Team: MatchesTeamWrapper {
+                    TeamID: team_id.to_string(),
+                    TeamName: "Unknown".to_string(),
+                    ShortTeamName: None,
+                    League: None,
+                    LeagueLevelUnit: None,
+                    MatchList: MatchesListWrapper {
+                        Matches: all_matches,
+                    },
+                },
+            };
+            tokio::task::spawn_blocking(move || {
+                let mut conn = db.get_connection()?;
+                conn.transaction::<_, NutmegError, _>(|conn| {
+                    save_matches(conn, download_id, &matches_to_save)
+                })
+            })
+            .await
+            .map_err(|e| NutmegError::Io(format!("Join error: {}", e)))??;
+        }
+
+        Ok(())
+    }
+
+    pub async fn fetch_and_save_series_form_lazily<F>(
+        db_manager: Arc<DbManager>,
+        client: Arc<dyn ChppClient>,
+        get_auth: &F,
+        unit_id: i32,
+        download_id: i32,
+    ) -> Result<(), NutmegError>
+    where
+        F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
+    {
+        info!(
+            "[sync] Starting background form sync for series {}",
+            unit_id
+        );
+
+        let team_ids = {
+            let db = db_manager.clone();
+            tokio::task::spawn_blocking(move || {
+                let mut conn = db.get_connection()?;
+                crate::db::series::get_league_unit_teams(&mut conn, unit_id)
+            })
+            .await
+            .map_err(|e| NutmegError::Io(format!("Join error: {}", e)))??
+        };
+
+        info!(
+            "[sync] Fetching form matches for {} teams in series {}",
+            team_ids.len(),
+            unit_id
+        );
+
+        use futures::stream::{self, StreamExt};
+        let mut stream = stream::iter(team_ids)
+            .map(|tid| {
+                let db = db_manager.clone();
+                let client = client.clone();
+                async move {
+                    if let Err(e) = Self::fetch_and_save_archived_league_matches(
+                        db,
+                        client,
+                        get_auth,
+                        tid.0,
+                        download_id,
+                    )
+                    .await
+                    {
+                        warn!(
+                            "[sync] Failed to fetch form matches for team {}: {}",
+                            tid.0, e
+                        );
+                    }
+                }
+            })
+            .buffer_unordered(4);
+
+        while (stream.next().await).is_some() {}
+
+        Ok(())
+    }
+
+    async fn fetch_and_save_archived_league_matches<F>(
+        db_manager: Arc<DbManager>,
+        client: Arc<dyn ChppClient>,
+        get_auth: &F,
+        team_id: i32,
+        download_id: i32,
+    ) -> Result<(), NutmegError>
+    where
+        F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
+    {
+        let (data, key) = get_auth();
+        let team_id = team_id as u32;
+
+        let mut archive = client
+            .matches_archive(data, key, Some(team_id), None, None)
+            .await?;
+
+        for m in &mut archive.Team.MatchList.Matches {
+            if m.Status.is_empty() {
+                m.Status = "FINISHED".to_string();
+            }
+        }
+
+        let league_matches: Vec<crate::chpp::model::MatchDetails> = archive
+            .Team
+            .MatchList
+            .Matches
+            .into_iter()
+            .filter(|m| m.MatchType == 1) // League matches
+            .take(10) // Take a few more to be safe for the "most recent 5" limit
+            .collect();
+
+        if league_matches.is_empty() {
+            return Ok(());
+        }
+
+        // Convert back to MatchesData for save_matches
+        let matches_to_save = crate::chpp::model::MatchesData {
+            Team: crate::chpp::model::MatchesTeamWrapper {
+                TeamID: team_id.to_string(),
+                TeamName: archive.Team.TeamName,
+                MatchList: crate::chpp::model::MatchesListWrapper {
+                    Matches: league_matches,
+                },
+                ..Default::default()
+            },
+        };
+
+        let db_manager_clone = db_manager.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = db_manager_clone.get_connection()?;
+            conn.transaction::<_, NutmegError, _>(|conn| {
+                save_matches(conn, download_id, &matches_to_save)
+            })
+        })
+        .await
+        .map_err(|e| NutmegError::Io(format!("Join error: {}", e)))??;
 
         Ok(())
     }
@@ -469,7 +732,7 @@ impl SyncService {
         client: Arc<dyn ChppClient>,
         get_auth: &F,
         download_id: i32,
-    ) -> Result<(), Error>
+    ) -> Result<(), NutmegError>
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
@@ -501,7 +764,7 @@ impl SyncService {
             }
         };
 
-        log::info!(
+        info!(
             "Fetched world details with {} leagues",
             world_details.LeagueList.Leagues.len()
         );
@@ -514,7 +777,7 @@ impl SyncService {
             save_world_details(&mut conn, &wd, download_id)
         })
         .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+        .map_err(|e| NutmegError::Io(format!("Join error: {}", e)))??;
 
         Ok(())
     }
@@ -525,7 +788,7 @@ impl SyncService {
         get_auth: &F,
         team_id: u32,
         download_id: i32,
-    ) -> Result<(), Error>
+    ) -> Result<(), NutmegError>
     where
         // Send is for concurrency, F safe to be sent to another thread, Sync means muliple threads can safely access
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
@@ -562,51 +825,29 @@ impl SyncService {
         let player_list = if let Some(pl) = players_resp.Team.PlayerList {
             pl
         } else {
-            log::warn!("No player list found for team");
-            return Err(Error::Parse("No player list in response".to_string()));
+            warn!("No player list found for team");
+            return Err(NutmegError::Parse("No player list in response".to_string()));
         };
 
-        // Fetch detailed player data for each player and merge with basic data
-        let (players_list, avatars_list) = {
+        let players_list = {
+            let player_count = player_list.players.len();
             info!(
-                "Fetching detailed player data for {} players",
-                player_list.players.len()
+                "[sync] Fetching detailed data for {} players (concurrency=8)",
+                player_count
             );
-
-            // Fetch avatars for the team
-            let (data, key) = get_auth();
-            let avatar_map = match client.avatars(data, key, Some(team_id)).await {
-                Ok(avatars) => {
-                    info!(
-                        "Fetched {} player avatars for team {}",
-                        avatars.team.players.players.len(),
-                        team_id
-                    );
-                    let mut map = HashMap::new();
-                    for avatar_player in avatars.team.players.players {
-                        map.insert(avatar_player.player_id, avatar_player.avatar.layers);
-                    }
-                    map
-                }
-                Err(e) => {
-                    warn!("Failed to fetch avatars for team {}: {}", team_id, e);
-                    HashMap::new()
-                }
-            };
+            let player_detail_start = Instant::now();
 
             use futures::stream::{self, StreamExt};
 
             let mut merged_players = Vec::new();
-            let mut avatars_to_save = Vec::new();
 
             let futures = player_list.players.into_iter().map(|basic_player| {
                 let db_manager = db_manager.clone();
                 let client = client.clone();
-                let avatar_map = &avatar_map;
 
                 async move {
                     let player_id = basic_player.PlayerID;
-                    info!("Fetching details for player ID: {}", player_id);
+                    let t = Instant::now();
 
                     let operation_name = format!("player_details({})", player_id);
 
@@ -658,64 +899,137 @@ impl SyncService {
                         }
                     }
 
-                    // Merge detailed data with basic data
-                    let mut merged = match result {
+                    match result {
                         Ok(detailed_player) => {
                             debug!(
-                                "Successfully fetched detailed data for player {}",
-                                player_id
+                                "[sync] player_details({}): {:.2}s",
+                                player_id,
+                                t.elapsed().as_secs_f64()
                             );
                             basic_player
                                 .clone()
                                 .merge_player_data(Some(detailed_player))
                         }
                         Err(e) => {
-                            log::warn!(
-                                "Failed to fetch details for player {}: {}. Using basic data only.",
+                            warn!(
+                                "[sync] player_details({}) failed in {:.2}s: {}. Using basic data.",
                                 player_id,
+                                t.elapsed().as_secs_f64(),
                                 e
                             );
                             basic_player.clone().merge_player_data(None)
                         }
-                    };
-
-                    let mut avatar_tuple = None;
-                    if let Some(layers) = avatar_map.get(&player_id) {
-                        if let Some(avatar_blob) =
-                            AvatarService::fetch_and_composite_avatar(player_id, layers).await
-                        {
-                            merged.AvatarBlob = Some(avatar_blob.clone());
-                            avatar_tuple = Some((player_id, avatar_blob));
-                        }
                     }
-
-                    (merged, avatar_tuple)
                 }
             });
 
-            // Execute concurrently with a limit of 4
-            let mut stream = stream::iter(futures).buffer_unordered(4);
-            while let Some((merged, avatar_tuple)) = stream.next().await {
+            // Concurrency=8: balances API throughput against rate-limit risk.
+            // Raising further may trigger HTTP 429 from the CHPP API.
+            let mut stream = stream::iter(futures).buffer_unordered(8);
+            while let Some(merged) = stream.next().await {
                 merged_players.push(merged);
-                if let Some(avatar) = avatar_tuple {
-                    avatars_to_save.push(avatar);
-                }
             }
 
-            (merged_players, avatars_to_save)
+            info!(
+                "[sync] Fetched details for {} players in {:.2}s",
+                player_count,
+                player_detail_start.elapsed().as_secs_f64()
+            );
+            merged_players
         };
 
         // Save players
         let db = db_manager.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = db.get_connection()?;
-            conn.transaction::<_, Error, _>(|conn| {
-                save_players(conn, &players_list, team_id, download_id)?;
-                save_avatars(conn, &avatars_list, download_id)
+            conn.transaction::<_, NutmegError, _>(|conn| {
+                save_players(conn, &players_list, team_id, download_id)
             })
         })
         .await
-        .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+        .map_err(|e| NutmegError::Io(format!("Join error: {}", e)))??;
+
+        Ok(())
+    }
+
+    pub async fn fetch_and_save_avatars_lazily<F>(
+        db_manager: Arc<DbManager>,
+        client: Arc<dyn ChppClient>,
+        get_auth: &F,
+        team_id: u32,
+        download_id: i32,
+    ) -> Result<(), NutmegError>
+    where
+        F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
+    {
+        info!("[sync] Starting avatar fetch for team {}", team_id);
+        let t = Instant::now();
+        let (data, key) = get_auth();
+
+        let avatars = client.avatars(data, key, Some(team_id)).await?;
+        info!(
+            "[sync] avatars manifest for team {}: {:.2}s ({} players)",
+            team_id,
+            t.elapsed().as_secs_f64(),
+            avatars.team.players.players.len()
+        );
+
+        let entry_id = Self::log_download_entry(
+            db_manager.clone(),
+            download_id,
+            ChppEndpoints::AVATARS.name,
+            ChppEndpoints::AVATARS.version,
+            Some(team_id as i32),
+        )
+        .await?;
+
+        let mut avatars_to_save = Vec::new();
+        use futures::stream::{self, StreamExt};
+
+        let player_count = avatars.team.players.players.len();
+        let composite_start = Instant::now();
+        let db_manager_clone = db_manager.clone();
+        let futures = avatars
+            .team
+            .players
+            .players
+            .into_iter()
+            .map(|avatar_player| async move {
+                let player_id = avatar_player.player_id;
+                AvatarService::fetch_and_composite_avatar(
+                    player_id,
+                    &avatar_player.avatar.layers,
+                )
+                .await.map(|avatar_blob| (player_id, avatar_blob))
+            });
+
+        // 8 concurrent composites: each player fetches ~4 layer images over the network.
+        let mut stream = stream::iter(futures).buffer_unordered(8);
+        while let Some(avatar_opt) = stream.next().await {
+            if let Some(avatar) = avatar_opt {
+                avatars_to_save.push(avatar);
+            }
+        }
+        info!(
+            "[sync] composited {}/{} avatars for team {} in {:.2}s",
+            avatars_to_save.len(),
+            player_count,
+            team_id,
+            composite_start.elapsed().as_secs_f64()
+        );
+
+        if !avatars_to_save.is_empty() {
+            tokio::task::spawn_blocking(move || {
+                let mut conn = db_manager_clone.get_connection()?;
+                conn.transaction::<_, NutmegError, _>(|conn| {
+                    save_avatars(conn, &avatars_to_save, download_id)
+                })
+            })
+            .await
+            .map_err(|e| NutmegError::Io(format!("Join error: {}", e)))??;
+        }
+
+        let _ = Self::update_download_entry(db_manager, entry_id, "success", None).await;
 
         Ok(())
     }
@@ -726,7 +1040,7 @@ impl SyncService {
         get_auth: &F,
         team_id: u32,
         download_id: i32,
-    ) -> Result<(), Error>
+    ) -> Result<(), NutmegError>
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
@@ -754,12 +1068,12 @@ impl SyncService {
                 tokio::task::spawn_blocking(move || {
                     let mut conn = db.get_connection()?;
                     save_staff(&mut conn, &sl, team_id, download_id)
-                        .map_err(|e| Error::Db(format!("Failed to save staff: {}", e)))
+                        .map_err(|e| NutmegError::Db(format!("Failed to save staff: {}", e)))
                 })
                 .await
-                .map_err(|e| Error::Io(format!("Join error: {}", e)))??;
+                .map_err(|e| NutmegError::Io(format!("Join error: {}", e)))??;
 
-                log::info!("Saved {} staff members", staff_count);
+                info!("Saved {} staff members", staff_count);
             }
             Err(e) => {
                 Self::update_download_entry(
@@ -769,7 +1083,7 @@ impl SyncService {
                     Some(e.to_string()),
                 )
                 .await?;
-                log::warn!("Failed to fetch staff list: {}", e);
+                warn!("Failed to fetch staff list: {}", e);
             }
         }
 
@@ -784,7 +1098,7 @@ impl SyncService {
         access_token: String,
         access_secret: String,
         on_progress: ProgressCallback,
-    ) -> Result<(), Error> {
+    ) -> Result<(u32, i32), NutmegError> {
         on_progress(0.0, "Checking credentials...");
 
         debug!("consumer_key: {}", consumer_key);
@@ -800,6 +1114,9 @@ impl SyncService {
             )
         };
 
+        let sync_start = Instant::now();
+        info!("[sync] Starting full sync");
+
         on_progress(0.05, "Creating download record...");
         let download_id = Self::create_download_record(db_manager.clone()).await?;
 
@@ -807,6 +1124,7 @@ impl SyncService {
             0.1,
             "Fetching world details (countries, leagues, currencies)...",
         );
+        let t = Instant::now();
         Self::fetch_and_save_world_details(
             db_manager.clone(),
             client.clone(),
@@ -814,8 +1132,10 @@ impl SyncService {
             download_id,
         )
         .await?;
+        info!("[sync] world_details: {:.2}s", t.elapsed().as_secs_f64());
 
         on_progress(0.5, "Fetching user data...");
+        let t = Instant::now();
         let (team_id, league_unit_id_opt) = Self::fetch_and_save_user_data(
             db_manager.clone(),
             client.clone(),
@@ -823,8 +1143,14 @@ impl SyncService {
             download_id,
         )
         .await?;
+        info!(
+            "[sync] user_data (team {}): {:.2}s",
+            team_id,
+            t.elapsed().as_secs_f64()
+        );
 
         on_progress(0.6, "Fetching players...");
+        let t = Instant::now();
         Self::fetch_and_save_players(
             db_manager.clone(),
             client.clone(),
@@ -833,8 +1159,10 @@ impl SyncService {
             download_id,
         )
         .await?;
+        info!("[sync] players: {:.2}s", t.elapsed().as_secs_f64());
 
         on_progress(0.7, "Fetching staff...");
+        let t = Instant::now();
         Self::fetch_and_save_staff(
             db_manager.clone(),
             client.clone(),
@@ -843,8 +1171,10 @@ impl SyncService {
             download_id,
         )
         .await?;
+        info!("[sync] staff: {:.2}s", t.elapsed().as_secs_f64());
 
         on_progress(0.8, "Fetching series and matches...");
+        let t = Instant::now();
         Self::fetch_and_save_match_data(
             db_manager.clone(),
             client.clone(),
@@ -854,13 +1184,18 @@ impl SyncService {
             download_id,
         )
         .await?;
+        info!("[sync] match_data: {:.2}s", t.elapsed().as_secs_f64());
 
         on_progress(0.9, "Finalizing download...");
         Self::complete_download_record(db_manager.clone(), download_id).await?;
 
         on_progress(1.0, "Done.");
-        info!("Download {} completed successfully", download_id);
-        Ok(())
+        info!(
+            "[sync] Completed (download_id={}) in {:.2}s",
+            download_id,
+            sync_start.elapsed().as_secs_f64()
+        );
+        Ok((team_id, download_id))
     }
 }
 
@@ -882,7 +1217,7 @@ mod tests {
             &self,
             _data: OAuthData,
             _key: SigningKey,
-        ) -> Result<WorldDetails, Error> {
+        ) -> Result<WorldDetails, NutmegError> {
             Ok(WorldDetails {
                 LeagueList: WorldLeagueList {
                     Leagues: vec![WorldLeague {
@@ -921,7 +1256,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _team_id: Option<u32>,
-        ) -> Result<HattrickData, Error> {
+        ) -> Result<HattrickData, NutmegError> {
             Ok(HattrickData {
                 User: User {
                     UserID: 12345,
@@ -982,7 +1317,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _team_id: Option<u32>,
-        ) -> Result<PlayersData, Error> {
+        ) -> Result<PlayersData, NutmegError> {
             Ok(PlayersData {
                 Team: Team {
                     TeamID: "123".to_string(),
@@ -1079,7 +1414,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _player_id: u32,
-        ) -> Result<Player, Error> {
+        ) -> Result<Player, NutmegError> {
             Ok(Player {
                 PlayerID: 1001,
                 FirstName: "John".to_string(),
@@ -1138,7 +1473,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _team_id: Option<u32>,
-        ) -> Result<AvatarsData, Error> {
+        ) -> Result<AvatarsData, NutmegError> {
             Ok(AvatarsData {
                 file_name: "avatars.xml".to_string(),
                 version: "1.0".to_string(),
@@ -1155,7 +1490,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _league_level_unit_id: u32,
-        ) -> Result<LeagueDetailsData, Error> {
+        ) -> Result<LeagueDetailsData, NutmegError> {
             // Return dummy league details
             Ok(LeagueDetailsData {
                 LeagueID: 0,
@@ -1175,7 +1510,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _team_id: Option<u32>,
-        ) -> Result<MatchesData, Error> {
+        ) -> Result<MatchesData, NutmegError> {
             // Return dummy matches
             Ok(MatchesData {
                 Team: MatchesTeamWrapper {
@@ -1194,7 +1529,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _team_id: Option<u32>,
-        ) -> Result<StaffListData, Error> {
+        ) -> Result<StaffListData, NutmegError> {
             Ok(StaffListData {
                 file_name: "stafflist.xml".to_string(),
                 version: "1.2".to_string(),
@@ -1216,16 +1551,14 @@ mod tests {
             _team_id: Option<u32>,
             _first_match_date: Option<String>,
             _last_match_date: Option<String>,
-        ) -> Result<MatchesData, Error> {
+        ) -> Result<MatchesArchiveData, NutmegError> {
             // Return empty archive in tests
-            Ok(MatchesData {
-                Team: MatchesTeamWrapper {
+            Ok(MatchesArchiveData {
+                Team: MatchesArchiveTeamWrapper {
                     TeamID: "54321".to_string(),
                     TeamName: "Test Team".to_string(),
-                    ShortTeamName: None,
-                    League: None,
-                    LeagueLevelUnit: None,
                     MatchList: MatchesListWrapper { Matches: vec![] },
+                    ..Default::default()
                 },
             })
         }
@@ -1236,7 +1569,7 @@ mod tests {
             _key: SigningKey,
             _match_id: u32,
             _source_system: &str,
-        ) -> Result<MatchDetailsData, Error> {
+        ) -> Result<MatchDetailsData, NutmegError> {
             unimplemented!()
         }
 
@@ -1247,7 +1580,7 @@ mod tests {
             _match_id: u32,
             _team_id: u32,
             _source_system: &str,
-        ) -> Result<MatchLineupData, Error> {
+        ) -> Result<MatchLineupData, NutmegError> {
             unimplemented!()
         }
     }

@@ -6,15 +6,15 @@
  */
 
 use crate::chpp::client::ChppClient;
-use crate::chpp::error::Error;
+use crate::error::NutmegError;
 use crate::chpp::model::Player;
 use crate::db::manager::DbManager;
-use crate::db::match_ratings::MatchRating;
+use crate::db::match_ratings::{MatchRating, NewMatchRating};
 use crate::rating::types::{Behaviour, PositionId};
 use crate::ui::components::pitch_view::PitchPlayer;
 use oauth_1a::{OAuthData, SigningKey};
 use std::collections::HashMap;
-use std::error::Error as StdError;
+use std::error::Error;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Default)]
@@ -70,7 +70,7 @@ impl OpponentAnalysisService {
         &self,
         get_auth: &F,
         our_team_id: u32,
-    ) -> Result<Vec<UpcomingOpponent>, Error>
+    ) -> Result<Vec<UpcomingOpponent>, NutmegError>
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
@@ -113,7 +113,7 @@ impl OpponentAnalysisService {
         team_id: u32,
         limit: usize,
         match_type_filter: Option<Vec<u32>>,
-    ) -> Result<OpponentAnalysis, Error>
+    ) -> Result<OpponentAnalysis, NutmegError>
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
@@ -254,7 +254,7 @@ impl OpponentAnalysisService {
         get_auth: &F,
         match_id: u32,
         team_id: u32,
-    ) -> Result<Vec<PitchPlayer>, Error>
+    ) -> Result<Vec<PitchPlayer>, NutmegError>
     where
         F: Fn() -> (OAuthData, SigningKey) + Send + Sync,
     {
@@ -288,14 +288,14 @@ impl OpponentAnalysisService {
     pub fn get_stored_match_ratings(
         &self,
         team_id: u32,
-    ) -> Result<Vec<MatchRating>, Box<dyn StdError>> {
+    ) -> Result<Vec<MatchRating>, Box<dyn Error>> {
         let db_manager = DbManager::new();
         let mut conn = db_manager.get_connection()?;
         let ratings = crate::db::match_ratings::get_match_ratings(&mut conn, team_id)?;
         Ok(ratings)
     }
 
-    pub fn save_match_ratings(&self, ratings: &[MatchRating]) -> Result<(), Box<dyn StdError>> {
+    pub fn save_match_ratings(&self, ratings: &[NewMatchRating]) -> Result<(), Box<dyn Error>> {
         let db_manager = DbManager::new();
         let mut conn = db_manager.get_connection()?;
         crate::db::match_ratings::save_match_ratings(&mut conn, ratings)?;
@@ -305,7 +305,7 @@ impl OpponentAnalysisService {
     pub fn get_latest_matches_from_db(
         &self,
         team_id: u32,
-    ) -> Result<Option<crate::chpp::model::MatchesData>, Box<dyn StdError>> {
+    ) -> Result<Option<crate::chpp::model::MatchesData>, Box<dyn Error>> {
         let db_manager = DbManager::new();
         let mut conn = db_manager.get_connection()?;
         let matches = crate::db::series::get_latest_matches(&mut conn, team_id)?;
@@ -315,7 +315,7 @@ impl OpponentAnalysisService {
     pub fn get_upcoming_opponents_from_db(
         &self,
         our_team_id: u32,
-    ) -> Result<Vec<UpcomingOpponent>, Box<dyn StdError>> {
+    ) -> Result<Vec<UpcomingOpponent>, Box<dyn Error>> {
         let db_manager = DbManager::new();
         let mut conn = db_manager.get_connection()?;
         let opponents = crate::db::series::get_upcoming_opponents_from_db(&mut conn, our_team_id)?;
@@ -337,7 +337,7 @@ mod tests {
             &self,
             _data: OAuthData,
             _key: SigningKey,
-        ) -> Result<WorldDetails, Error> {
+        ) -> Result<WorldDetails, NutmegError> {
             unimplemented!()
         }
 
@@ -346,7 +346,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             team_id: Option<u32>,
-        ) -> Result<HattrickData, Error> {
+        ) -> Result<HattrickData, NutmegError> {
             let t = Team {
                 TeamID: team_id.unwrap_or(12345).to_string(),
                 ..Default::default()
@@ -365,7 +365,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             team_id: Option<u32>,
-        ) -> Result<PlayersData, Error> {
+        ) -> Result<PlayersData, NutmegError> {
             let mut list = Vec::new();
             if team_id == Some(10) {
                 // Return an injured player
@@ -414,7 +414,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _player_id: u32,
-        ) -> Result<Player, Error> {
+        ) -> Result<Player, NutmegError> {
             unimplemented!()
         }
 
@@ -423,7 +423,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _team_id: Option<u32>,
-        ) -> Result<AvatarsData, Error> {
+        ) -> Result<AvatarsData, NutmegError> {
             unimplemented!()
         }
 
@@ -432,7 +432,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _league_level_unit_id: u32,
-        ) -> Result<LeagueDetailsData, Error> {
+        ) -> Result<LeagueDetailsData, NutmegError> {
             unimplemented!()
         }
 
@@ -441,7 +441,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             team_id: Option<u32>,
-        ) -> Result<MatchesData, Error> {
+        ) -> Result<MatchesData, NutmegError> {
             let mut matches = Vec::new();
 
             if team_id == Some(10) || team_id == Some(12345) || team_id.is_none() {
@@ -510,15 +510,13 @@ mod tests {
             _team_id: Option<u32>,
             _first_match_date: Option<String>,
             _last_match_date: Option<String>,
-        ) -> Result<MatchesData, Error> {
-            Ok(MatchesData {
-                Team: MatchesTeamWrapper {
+        ) -> Result<MatchesArchiveData, NutmegError> {
+            Ok(MatchesArchiveData {
+                Team: MatchesArchiveTeamWrapper {
                     TeamID: "0".to_string(),
                     TeamName: "".to_string(),
-                    ShortTeamName: None,
-                    League: None,
-                    LeagueLevelUnit: None,
                     MatchList: MatchesListWrapper { Matches: vec![] },
+                    ..Default::default()
                 },
             })
         }
@@ -529,7 +527,7 @@ mod tests {
             _key: SigningKey,
             match_id: u32,
             _source_system: &str,
-        ) -> Result<MatchDetailsData, Error> {
+        ) -> Result<MatchDetailsData, NutmegError> {
             if match_id == 1 {
                 Ok(MatchDetailsData {
                     Match: MatchDetails {
@@ -567,7 +565,7 @@ mod tests {
                     },
                 })
             } else {
-                Err(Error::Network("Not Found".to_string()))
+                Err(NutmegError::Network("Not Found".to_string()))
             }
         }
 
@@ -578,7 +576,7 @@ mod tests {
             _match_id: u32,
             _team_id: u32,
             _source_system: &str,
-        ) -> Result<MatchLineupData, Error> {
+        ) -> Result<MatchLineupData, NutmegError> {
             unimplemented!()
         }
 
@@ -587,7 +585,7 @@ mod tests {
             _data: OAuthData,
             _key: SigningKey,
             _team_id: Option<u32>,
-        ) -> Result<StaffListData, Error> {
+        ) -> Result<StaffListData, NutmegError> {
             unimplemented!()
         }
     }

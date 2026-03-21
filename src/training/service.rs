@@ -205,6 +205,7 @@ impl TrainingService {
                         current_age as u8,
                         1.0,
                         0.15,
+                        7, // Default to Solid coach for now
                     );
 
                     current_skill_level += gain;

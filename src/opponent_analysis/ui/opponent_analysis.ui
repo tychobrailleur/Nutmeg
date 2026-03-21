@@ -76,7 +76,8 @@
 
         <child>
           <object class="GtkButton" id="btn_analyze">
-            <property name="label" translatable="yes">Analyse Opponent</property>
+            <property name="label" translatable="yes">Analyse &amp; Optimize</property>
+            <property name="css-classes">suggested-action</property>
           </object>
         </child>
 
@@ -164,7 +165,7 @@
                         </child>
                         <child>
                           <object class="GtkLabel" id="lbl_formations">
-                            <property name="label">No data yet.</property>
+                            <property name="label" translatable="yes">No data yet.</property>
                             <property name="xalign">0</property>
                           </object>
                         </child>
@@ -191,7 +192,7 @@
                         </child>
                         <child>
                           <object class="GtkLabel" id="lbl_tactical_summary">
-                            <property name="label">Calculating tendencies...</property>
+                            <property name="label" translatable="yes">Calculating tendencies...</property>
                             <property name="use-markup">true</property>
                             <property name="xalign">0</property>
                             <property name="wrap">true</property>
@@ -201,7 +202,41 @@
                     </child>
                   </object>
                 </child>
-                
+                <!-- Match Projection Area -->
+                <child>
+                  <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">12</property>
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="label" translatable="yes">&lt;b&gt;Match Projection vs Current Lineup:&lt;/b&gt;</property>
+                        <property name="use-markup">true</property>
+                        <property name="xalign">0</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="orientation">horizontal</property>
+                        <property name="spacing">12</property>
+                        <child>
+                          <object class="GtkLabel" id="lbl_prediction">
+                            <property name="label" translatable="yes">Load an opponent to see win probability.</property>
+                            <property name="xalign">0</property>
+                            <property name="hexpand">true</property>
+                            <property name="use-markup">true</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkProgressBar" id="pb_win_prob">
+                        <property name="show-text">true</property>
+                        <property name="fraction">0.0</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
                 <child>
                   <object class="GtkBox">
                     <property name="orientation">vertical</property>
@@ -215,7 +250,7 @@
                     </child>
                     <child>
                       <object class="GtkLabel" id="lbl_unavailable">
-                        <property name="label">No data yet.</property>
+                        <property name="label" translatable="yes">No data yet.</property>
                         <property name="xalign">0</property>
                         <property name="wrap">true</property>
                       </object>

@@ -1100,6 +1100,26 @@ pub struct MatchesListWrapper {
 }
 
 #[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+pub struct MatchesArchiveTeamWrapper {
+    #[serde(deserialize_with = "deserialize_team_id")]
+    pub TeamID: String,
+    pub TeamName: String,
+    pub FirstMatchDate: Option<String>,
+    pub LastMatchDate: Option<String>,
+    #[serde(rename = "MatchList", default)]
+    pub MatchList: MatchesListWrapper,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename = "HattrickData")]
+pub struct MatchesArchiveData {
+    #[serde(rename = "Team")]
+    pub Team: MatchesArchiveTeamWrapper,
+}
+
+#[allow(non_snake_case)]
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename = "HattrickData")]
 pub struct MatchDetailsData {

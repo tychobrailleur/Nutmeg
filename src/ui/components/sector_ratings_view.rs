@@ -19,7 +19,7 @@ impl SectorRatingsView {
             .build();
         grid.add_css_class("pitch-view");
 
-        let slot_size_group = gtk::SizeGroup::new(gtk::SizeGroupMode::Both);
+        let _slot_size_group = gtk::SizeGroup::new(gtk::SizeGroupMode::Both);
 
         let create_slot = |label_text: &str, rating: f64| -> gtk::Widget {
             let container = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -34,7 +34,7 @@ impl SectorRatingsView {
             container.append(&slot_label);
 
             let rating_label = gtk::Label::builder()
-                .label(&format!("{:.1}", rating))
+                .label(format!("{:.1}", rating))
                 .ellipsize(gtk::pango::EllipsizeMode::End)
                 .max_width_chars(10)
                 .css_classes(["body", "strong"])

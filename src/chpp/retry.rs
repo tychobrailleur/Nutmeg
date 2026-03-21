@@ -23,7 +23,7 @@
 //! This module provides helper functions for retrying operations with
 //! exponential backoff, handling transient failures transparently.
 
-use crate::chpp::error::Error;
+use crate::error::NutmegError;
 
 /// Configuration for retry behavior
 #[derive(Debug, Clone)]
@@ -47,10 +47,10 @@ impl Default for RetryConfig {
 }
 
 /// Determine if an error should trigger a retry
-pub fn should_retry(error: &Error) -> bool {
+pub fn should_retry(error: &NutmegError) -> bool {
     match error {
-        Error::Network(_) => true,
-        Error::ChppApi { code, .. } => {
+        NutmegError::Network(_) => true,
+        NutmegError::ChppApi { code, .. } => {
             // Retry on common transient error codes
             // 503 = Service unavailable, 429 = Rate limit
             matches!(code, 503 | 429)
@@ -75,11 +75,11 @@ pub async fn retry_with_backoff<T, F, G, Fut>(
     get_credentials: G,
     operation: F,
     config: &RetryConfig,
-) -> Result<T, Error>
+) -> Result<T, NutmegError>
 where
     F: Fn(oauth_1a::OAuthData, oauth_1a::SigningKey) -> Fut,
     G: Fn() -> (oauth_1a::OAuthData, oauth_1a::SigningKey),
-    Fut: std::future::Future<Output = Result<T, Error>>,
+    Fut: std::future::Future<Output = Result<T, NutmegError>>,
 {
     let mut backoff_ms = config.initial_backoff_ms;
 
@@ -127,11 +127,11 @@ pub async fn retry_with_default_config<T, F, G, Fut>(
     operation_name: &str,
     get_credentials: G,
     operation: F,
-) -> Result<T, Error>
+) -> Result<T, NutmegError>
 where
     F: Fn(oauth_1a::OAuthData, oauth_1a::SigningKey) -> Fut,
     G: Fn() -> (oauth_1a::OAuthData, oauth_1a::SigningKey),
-    Fut: std::future::Future<Output = Result<T, Error>>,
+    Fut: std::future::Future<Output = Result<T, NutmegError>>,
 {
     retry_with_backoff(
         operation_name,
@@ -169,7 +169,7 @@ mod tests {
                 let mut count = attempts.lock().unwrap();
                 *count += 1;
                 if *count < 3 {
-                    Err(Error::Network("Connection failed".to_string()))
+                    Err(NutmegError::Network("Connection failed".to_string()))
                 } else {
                     Ok("success")
                 }
@@ -209,7 +209,7 @@ mod tests {
             async move {
                 let mut count = attempts.lock().unwrap();
                 *count += 1;
-                Err::<&str, _>(Error::Auth("Unauthorized".to_string()))
+                Err::<&str, _>(NutmegError::Auth("Unauthorized".to_string()))
             }
         };
 
@@ -247,7 +247,7 @@ mod tests {
             async move {
                 let mut count = attempts.lock().unwrap();
                 *count += 1;
-                Err::<&str, _>(Error::Network("Persistent failure".to_string()))
+                Err::<&str, _>(NutmegError::Network("Persistent failure".to_string()))
             }
         };
 

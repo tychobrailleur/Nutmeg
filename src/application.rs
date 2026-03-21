@@ -126,14 +126,14 @@ impl NutmegApplication {
                 )
                 .await
             {
-                Ok(true) => {
+                Ok(Some((_team_id, _download_id))) => {
                     info!("Successfully synced with stored credentials");
                     // Synced successfully, open main window and close setup
                     let window = crate::window::NutmegWindow::new(&app_clone);
                     window.present();
                     setup_clone.close();
                 }
-                Ok(false) => {
+                Ok(None) => {
                     info!("No stored credentials found, staying on setup screen");
                     // No secrets, setup is already shown
                 }

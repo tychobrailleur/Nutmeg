@@ -87,7 +87,7 @@ impl PitchView {
                     );
 
                     let name = gtk::Label::builder()
-                        .label(&player.short_name())
+                        .label(player.short_name())
                         .ellipsize(gtk::pango::EllipsizeMode::End)
                         .max_width_chars(10)
                         .css_classes(["body", "strong"])

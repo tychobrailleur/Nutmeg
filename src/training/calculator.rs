@@ -44,14 +44,23 @@ pub fn calculate_training_progress(
     age_years: u8,
     training_intensity: f64, // 0.0 to 1.0 (usually 1.0)
     stamina_share: f64,      // 0.0 to 1.0 (usually 0.10 - 0.15)
+    coach_skill: u8,         // 1-8 (usually 7 for Solid, 8 for Excellent)
 ) -> f64 {
     let current_level_int = current_skill.floor() as u8;
     let weeks_needed =
         get_base_weeks_for_skill(skill_type, current_level_int) * get_age_factor(age_years);
 
+    // Coach effect (Solid=7 is baseline)
+    let coach_factor = match coach_skill {
+        8 => 0.90, // Excellent: ~10% faster
+        7 => 1.00, // Solid: Baseline
+        6 => 1.12, // Passable: ~12% slower
+        5 => 1.25, // Inadequate
+        _ => 1.50, // Very slow
+    };
+
     // Amount of skill gained in one week (1.0 = one full level)
-    // We assume 100% training position (e.g., IM in PM).
-    let weekly_gain = (1.0 / weeks_needed) * training_intensity;
+    let weekly_gain = (1.0 / (weeks_needed * coach_factor)) * training_intensity;
 
     // Stamina reduction (training efficiency reduced by stamina share)
     // Actually, stamina share *replaces* skill training.

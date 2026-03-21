@@ -99,6 +99,7 @@
                  <property name="use-underline">True</property>
                </object>
             </child>
+            <!--
             <child>
               <object class="TrainingPlannerPage" id="training_planner">
                  <property name="visible">True</property>
@@ -110,6 +111,7 @@
                  <property name="use-underline">True</property>
                </object>
              </child>
+             -->
 
             <!-- Optimizer Tab -->
             <child>

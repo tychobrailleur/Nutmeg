@@ -22,6 +22,8 @@ mod application;
 mod chpp;
 mod config;
 mod db;
+mod domain;
+mod error;
 mod opponent_analysis;
 mod rating;
 mod series;

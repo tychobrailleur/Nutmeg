@@ -8,9 +8,10 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::chpp::error::Error;
+use crate::error::NutmegError;
 use crate::chpp::model::{LeagueDetailsData, MatchesData};
 use crate::db::schema::{league_unit_teams, league_units, matches};
+use log::info;
 
 #[derive(Queryable, Identifiable, Debug)]
 #[diesel(table_name = league_units)]
@@ -18,6 +19,7 @@ use crate::db::schema::{league_unit_teams, league_units, matches};
 pub struct LeagueUnit {
     pub unit_id: i32,
     pub download_id: i32,
+    pub season: Option<i32>,
     pub unit_name: String,
     pub league_level: i32,
     pub max_number_of_teams: Option<i32>,
@@ -29,6 +31,7 @@ pub struct LeagueUnit {
 pub struct NewLeagueUnit<'a> {
     pub unit_id: i32,
     pub download_id: i32,
+    pub season: Option<i32>,
     pub unit_name: &'a str,
     pub league_level: i32,
     pub max_number_of_teams: Option<i32>,
@@ -42,6 +45,7 @@ pub struct LeagueUnitTeam {
     pub unit_id: i32,
     pub team_id: i32,
     pub download_id: i32,
+    pub season: Option<i32>,
     pub team_name: String,
     pub position: i32,
     pub points: i32,
@@ -59,6 +63,7 @@ pub struct NewLeagueUnitTeam<'a> {
     pub unit_id: i32,
     pub team_id: i32,
     pub download_id: i32,
+    pub season: Option<i32>,
     pub team_name: &'a str,
     pub position: i32,
     pub points: i32,
@@ -116,28 +121,39 @@ pub fn save_league_details(
     conn: &mut SqliteConnection,
     download_id: i32,
     data: &LeagueDetailsData,
-) -> Result<(), Error> {
+) -> Result<(), NutmegError> {
     use crate::db::schema::league_units;
 
     let unit_id = data.LeagueLevelUnitID as i32;
 
+    let season: Option<i32> = {
+        use crate::db::schema::leagues;
+        leagues::table
+            .filter(leagues::id.eq(data.LeagueID as i32))
+            .order(leagues::download_id.desc())
+            .select(leagues::season)
+            .first(conn)
+            .optional()
+            .unwrap_or(None)
+            .flatten()
+    };
+
     let new_unit = NewLeagueUnit {
         unit_id,
         download_id,
+        season,
         unit_name: &data.LeagueLevelUnitName,
         league_level: data.LeagueLevel as i32,
         max_number_of_teams: data.MaxLevel.map(|v| v as i32),
         current_match_round: data.CurrentMatchRound.map(|v| v as i32),
     };
 
-    diesel::insert_into(league_units::table)
+    diesel::insert_or_ignore_into(league_units::table)
         .values(&new_unit)
-        .on_conflict((league_units::unit_id, league_units::download_id))
-        .do_nothing()
         .execute(conn)
-        .map_err(|e| Error::Io(format!("Failed to insert league unit: {}", e)))?;
+        .map_err(|e| NutmegError::Io(format!("Failed to insert league unit: {}", e)))?;
 
-    save_league_teams(conn, download_id, unit_id, data)?;
+    save_league_teams(conn, download_id, season, unit_id, data)?;
 
     Ok(())
 }
@@ -145,9 +161,10 @@ pub fn save_league_details(
 fn save_league_teams(
     conn: &mut SqliteConnection,
     download_id: i32,
+    season: Option<i32>,
     unit_id: i32,
     data: &LeagueDetailsData,
-) -> Result<(), Error> {
+) -> Result<(), NutmegError> {
     use crate::db::schema::league_unit_teams;
 
     let records: Vec<NewLeagueUnitTeam> = data
@@ -157,6 +174,7 @@ fn save_league_teams(
             unit_id,
             team_id: team.TeamID.parse::<i32>().unwrap_or(0),
             download_id,
+            season,
             team_name: &team.TeamName,
             position: team.Position as i32,
             points: team.Points as i32,
@@ -169,12 +187,19 @@ fn save_league_teams(
         })
         .collect();
 
-    // Use INSERT OR IGNORE (insert_or_ignore_into) for batch inserts in SQLite.
-    // Diesel's on_conflict().do_nothing() is not supported on batch inserts for SQLite.
-    diesel::insert_or_ignore_into(league_unit_teams::table)
-        .values(&records)
-        .execute(conn)
-        .map_err(|e| Error::Io(format!("Failed to insert league teams: {}", e)))?;
+    // Filter out rows strictly within this batch (in case the API payload has duplicate IDs)
+    let mut seen_pks = std::collections::HashSet::new();
+    let records: Vec<NewLeagueUnitTeam> = records
+        .into_iter()
+        .filter(|r| seen_pks.insert(r.team_id))
+        .collect();
+
+    if !records.is_empty() {
+        diesel::insert_or_ignore_into(league_unit_teams::table)
+            .values(&records)
+            .execute(conn)
+            .map_err(|e| NutmegError::Io(format!("Failed to insert league teams: {}", e)))?;
+    }
 
     Ok(())
 }
@@ -183,7 +208,7 @@ pub fn save_matches(
     conn: &mut SqliteConnection,
     download_id: i32,
     data: &MatchesData,
-) -> Result<(), Error> {
+) -> Result<(), NutmegError> {
     use crate::db::schema::matches;
 
     let records: Vec<NewMatch> = data
@@ -207,12 +232,19 @@ pub fn save_matches(
         })
         .collect();
 
-    // Use INSERT OR IGNORE (insert_or_ignore_into) for batch inserts in SQLite.
-    // Diesel's on_conflict().do_nothing() is not supported on batch inserts for SQLite.
-    diesel::insert_or_ignore_into(matches::table)
-        .values(&records)
-        .execute(conn)
-        .map_err(|e| Error::Io(format!("Failed to insert matches: {}", e)))?;
+    // Filter out rows strictly within this batch (in case the API payload has duplicate IDs)
+    let mut seen_ids = std::collections::HashSet::new();
+    let records: Vec<NewMatch> = records
+        .into_iter()
+        .filter(|r| seen_ids.insert(r.match_id))
+        .collect();
+
+    if !records.is_empty() {
+        diesel::insert_or_ignore_into(matches::table)
+            .values(&records)
+            .execute(conn)
+            .map_err(|e| NutmegError::Io(format!("Failed to insert matches: {}", e)))?;
+    }
 
     Ok(())
 }
@@ -220,7 +252,7 @@ pub fn save_matches(
 pub fn get_latest_league_details(
     conn: &mut SqliteConnection,
     league_unit_id: u32,
-) -> Result<Option<LeagueDetailsData>, Error> {
+) -> Result<Option<LeagueDetailsData>, NutmegError> {
     use crate::db::schema::{league_unit_teams, league_units};
 
     // 1. Find the latest league_unit entry for this unit_id
@@ -229,7 +261,7 @@ pub fn get_latest_league_details(
         .order(league_units::download_id.desc())
         .first(conn)
         .optional()
-        .map_err(|e| Error::Io(format!("Failed to get league unit: {}", e)))?;
+        .map_err(|e| NutmegError::Io(format!("Failed to get league unit: {}", e)))?;
 
     if let Some(unit) = unit_opt {
         // 2. Fetch the teams using the composite FK (unit_id, download_id)
@@ -238,7 +270,7 @@ pub fn get_latest_league_details(
             .filter(league_unit_teams::download_id.eq(unit.download_id))
             .order(league_unit_teams::position.asc())
             .load(conn)
-            .map_err(|e| Error::Io(format!("Failed to get league teams: {}", e)))?;
+            .map_err(|e| NutmegError::Io(format!("Failed to get league teams: {}", e)))?;
 
         // 3. Convert back to CHPP model (LeagueDetailsData)
         let teams: Vec<crate::chpp::model::LeagueTeam> = db_teams
@@ -279,7 +311,7 @@ pub fn get_latest_league_details(
 pub fn get_latest_matches(
     conn: &mut SqliteConnection,
     team_id: u32,
-) -> Result<Option<MatchesData>, Error> {
+) -> Result<Option<MatchesData>, NutmegError> {
     use crate::db::schema::matches;
 
     // Fetch all matches involving the team
@@ -291,14 +323,14 @@ pub fn get_latest_matches(
         )
         .order(matches::download_id.desc())
         .load(conn)
-        .map_err(|e| Error::Io(format!("Failed to load matches: {}", e)))?;
+        .map_err(|e| NutmegError::Io(format!("Failed to load matches: {}", e)))?;
 
     if db_matches.is_empty() {
         return Ok(None);
     }
 
     // Deduplicate by match_id, keeping the latest download version
-    let mut unique_matches = std::collections::HashMap::new();
+    let mut unique_matches = std::collections::HashMap::with_capacity(db_matches.len());
     for m in db_matches {
         unique_matches.entry(m.match_id).or_insert(m);
     }
@@ -356,12 +388,18 @@ pub fn get_latest_matches(
 pub fn get_matches_for_teams(
     conn: &mut SqliteConnection,
     team_ids: &[i32],
-) -> Result<Vec<crate::chpp::model::MatchDetails>, Error> {
+) -> Result<Vec<crate::chpp::model::MatchDetails>, NutmegError> {
     use crate::db::schema::matches;
 
     if team_ids.is_empty() {
         return Ok(Vec::new());
     }
+
+    info!(
+        "Querying matches for {} teams from DB (team IDs: {:?})",
+        team_ids.len(),
+        team_ids
+    );
 
     let db_matches: Vec<Match> = matches::table
         .filter(
@@ -371,14 +409,19 @@ pub fn get_matches_for_teams(
         )
         .order(matches::download_id.desc())
         .load(conn)
-        .map_err(|e| Error::Io(format!("Failed to load team matches: {}", e)))?;
+        .map_err(|e| NutmegError::Io(format!("Failed to load team matches: {}", e)))?;
 
     // Keep only the most recent download per match_id
     let mut unique_matches: std::collections::HashMap<i32, Match> =
-        std::collections::HashMap::new();
+        std::collections::HashMap::with_capacity(db_matches.len());
     for m in db_matches {
         unique_matches.entry(m.match_id).or_insert(m);
     }
+
+    info!(
+        "Fetched {} unique matches from DB for the specified teams",
+        unique_matches.len()
+    );
 
     let details: Vec<crate::chpp::model::MatchDetails> = unique_matches
         .into_values()
@@ -413,7 +456,7 @@ pub fn get_matches_for_teams(
 pub fn get_upcoming_opponents_from_db(
     conn: &mut SqliteConnection,
     our_team_id: u32,
-) -> Result<Vec<crate::service::opponent_analysis::UpcomingOpponent>, Error> {
+) -> Result<Vec<crate::service::opponent_analysis::UpcomingOpponent>, NutmegError> {
     use crate::db::schema::matches;
 
     // Find all upcoming matches involving our team
@@ -426,7 +469,7 @@ pub fn get_upcoming_opponents_from_db(
         )
         .order(matches::download_id.desc())
         .load(conn)
-        .map_err(|e| Error::Io(format!("Failed to load upcoming matches: {}", e)))?;
+        .map_err(|e| NutmegError::Io(format!("Failed to load upcoming matches: {}", e)))?;
 
     // Deduplicate by match_id
     let mut unique_matches = std::collections::HashMap::new();
@@ -457,6 +500,47 @@ pub fn get_upcoming_opponents_from_db(
     Ok(opponents)
 }
 
+/// Returns all teams belonging to a specific league unit version.
+pub fn get_league_unit_teams(
+    conn: &mut SqliteConnection,
+    unit_id: i32,
+) -> Result<Vec<(i32, String)>, NutmegError> {
+    use crate::db::schema::league_unit_teams::dsl;
+
+    info!("Querying league unit teams for unit_id {} from DB", unit_id);
+
+    let latest_download_id: Option<i32> = league_unit_teams::table
+        .filter(dsl::unit_id.eq(unit_id))
+        .select(diesel::dsl::max(dsl::download_id))
+        .first(conn)
+        .optional()
+        .map_err(|e| NutmegError::Db(format!("Failed to query latest download_id: {}", e)))?
+        .flatten();
+
+    info!(
+        "Latest download_id for league unit {} is {:?}",
+        unit_id, latest_download_id
+    );
+
+    if let Some(dl_id) = latest_download_id {
+        let rows = league_unit_teams::table
+            .filter(dsl::unit_id.eq(unit_id))
+            .filter(dsl::download_id.eq(dl_id))
+            .select((dsl::team_id, dsl::team_name))
+            .load::<(i32, String)>(conn)
+            .map_err(|e| NutmegError::Db(format!("Failed to load league unit teams: {}", e)))?;
+
+        info!(
+            "Fetched {} teams for league unit {} from DB",
+            rows.len(),
+            unit_id
+        );
+        Ok(rows)
+    } else {
+        Ok(vec![])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -481,7 +565,7 @@ mod tests {
         let mut conn = establish_connection();
 
         // Create a download record
-        diesel::insert_into(downloads::table)
+        diesel::insert_or_ignore_into(downloads::table)
             .values(NewDownload {
                 timestamp: "2026-02-15T12:00:00Z".to_string(),
                 status: "completed".to_string(),
@@ -665,14 +749,6 @@ mod tests {
 
         // Verify upcoming opponents from DB
         // Add an UPCOMING match
-        let upcoming_data = MatchesData {
-            Team: crate::chpp::model::MatchesTeamWrapper {
-                TeamID: "1".to_string(),
-                TeamName: "Team A".to_string(),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
         // Explicitly constructing as MatchesListWrapper is easier for the test helper
         let mut m_list = Vec::new();
         m_list.push(crate::chpp::model::MatchDetails {

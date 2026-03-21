@@ -143,6 +143,18 @@ mod imp {
                     let ctx = value
                         .get::<Option<crate::ui::context_object::ContextObject>>()
                         .expect("Value must be ContextObject");
+
+                    if let Some(c) = &ctx {
+                        let self_weak = self.obj().downgrade();
+                        c.connect_notify_local(Some("has-best-lineups"), move |ctx_obj, _| {
+                            if let Some(obj) = self_weak.upgrade() {
+                                if let Some(lineups) = ctx_obj.best_lineups() {
+                                    obj.display_results(lineups);
+                                }
+                            }
+                        });
+                    }
+
                     self.context.replace(ctx);
                     self.obj().notify("context");
                 }
@@ -202,12 +214,13 @@ impl FormationOptimiserWidget {
                     attitude: Attitude::Normal,
                     location: Location::default(),
                 },
+                tactic: TacticType::Normal,
                 sector_ratings: HashMap::new(),
                 hatstats: 0.0,
                 captain: None,
                 set_pieces_taker: None,
             };
-            let card = self.create_formation_card(&empty_lineup);
+            let card = self.create_formation_card(&empty_lineup, false);
             imp.card_size_group.add_widget(&card);
             flowbox.append(&card);
         }
@@ -238,7 +251,12 @@ impl FormationOptimiserWidget {
             if let Some(obj) = weak_self.upgrade() {
                 obj.imp().calculate_button.set_sensitive(true);
                 match result {
-                    Ok(results) => obj.display_results(results),
+                    Ok(results) => {
+                        // Update ContextObject; the notification will trigger display_results
+                        if let Some(ctx) = obj.imp().context.borrow().as_ref() {
+                            ctx.set_best_lineups(Some(results));
+                        }
+                    }
                     Err(e) => error!("Optimisation task failed: {}", e),
                 }
             }
@@ -250,13 +268,8 @@ impl FormationOptimiserWidget {
         let flowbox = imp.formations_flowbox.get();
         flowbox.remove_all();
 
-        // Save results to ContextObject for sharing with other tabs (e.g. Opponent Analysis)
-        if let Some(ctx) = imp.context.borrow().as_ref() {
-            ctx.set_best_lineups(Some(results.clone()));
-        }
-
-        for result in results {
-            let card = self.create_formation_card(&result);
+        for (idx, result) in results.into_iter().enumerate() {
+            let card = self.create_formation_card(&result, idx == 0);
             imp.card_size_group.add_widget(&card);
             flowbox.append(&card);
         }
@@ -566,13 +579,21 @@ impl FormationOptimiserWidget {
     /// Creates a formation card. When `result` has an empty lineup (no positions),
     /// all slots are shown as dashes, producing a placeholder card.
     /// When called with a populated `OptimisedLineup` it shows the full lineup.
-    fn create_formation_card(&self, result: &OptimisedLineup) -> gtk::Widget {
+    fn create_formation_card(&self, result: &OptimisedLineup, is_optimal: bool) -> gtk::Widget {
         let card = gtk::Box::new(gtk::Orientation::Vertical, 6);
-        card.add_css_class("card");
-        card.set_margin_top(6);
-        card.set_margin_bottom(6);
-        card.set_margin_start(6);
         card.set_margin_end(6);
+
+        if is_optimal {
+            card.add_css_class("highlighted-formation");
+
+            let badge = gtk::Label::builder()
+                .label("BEST MATCH")
+                .css_classes(["caption", "accent"])
+                .halign(gtk::Align::Start)
+                .margin_bottom(4)
+                .build();
+            card.append(&badge);
+        }
 
         // ── Header: Formation Name + HatStats ──
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);

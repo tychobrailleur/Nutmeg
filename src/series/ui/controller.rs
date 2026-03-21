@@ -56,19 +56,23 @@ impl SeriesController {
                         .filter_map(|t| t.TeamID.parse::<i32>().ok())
                         .collect();
 
-                    let existing_teams = crate::db::teams::get_existing_team_ids(&mut conn, &team_ids)
-                        .unwrap_or_default();
+                    let existing_teams =
+                        crate::db::teams::get_existing_team_ids(&mut conn, &team_ids)
+                            .unwrap_or_default();
                     if existing_teams.len() == team_ids.len() {
                         let all_series_matches =
                             crate::db::series::get_matches_for_teams(&mut conn, &team_ids)
                                 .unwrap_or_default();
-                        let logo_urls = crate::db::teams::get_logo_urls_for_teams(&mut conn, &team_ids)
-                            .unwrap_or_default();
+                        let logo_urls =
+                            crate::db::teams::get_logo_urls_for_teams(&mut conn, &team_ids)
+                                .unwrap_or_default();
 
                         let filtered = filter_matches_for_season(&league_details, matches_data);
                         return Ok((league_details, filtered, all_series_matches, logo_urls));
                     } else {
-                        log::info!("Some opponent teams are missing from DB. Falling through to CHPP API.");
+                        log::info!(
+                            "Some opponent teams are missing from DB. Falling through to CHPP API."
+                        );
                     }
                 }
             }
@@ -137,11 +141,11 @@ impl SeriesController {
             if tid as u32 == team_id {
                 continue;
             }
-            
+
             // First perform team_details_request to fetch and update logos
             let (oauth_data1, signing_key1) =
                 crate::chpp::oauth::create_oauth_context(&key, &secret, &token, &token_secret);
-            
+
             if let Ok(team_data) = crate::chpp::request::team_details_request(
                 oauth_data1,
                 signing_key1,
@@ -150,7 +154,13 @@ impl SeriesController {
             .await
             {
                 if let Some(team) = team_data.Teams.Teams.first() {
-                    let _ = crate::db::teams::save_team(&mut conn, team, &team_data.User, download_id, false);
+                    let _ = crate::db::teams::save_team(
+                        &mut conn,
+                        team,
+                        &team_data.User,
+                        download_id,
+                        false,
+                    );
                 }
             }
 
@@ -165,8 +175,23 @@ impl SeriesController {
             )
             .await
             {
+                let mut match_list = archived.Team.MatchList.clone();
+                for m in &mut match_list.Matches {
+                    if m.Status.is_empty() {
+                        m.Status = "FINISHED".to_string();
+                    }
+                }
+
                 // Save to DB so get_matches_for_teams will find them
-                let _ = crate::db::series::save_matches(&mut conn, download_id, &archived);
+                let matches_to_save = crate::chpp::model::MatchesData {
+                    Team: crate::chpp::model::MatchesTeamWrapper {
+                        TeamID: archived.Team.TeamID.clone(),
+                        TeamName: archived.Team.TeamName.clone(),
+                        MatchList: match_list,
+                        ..Default::default()
+                    },
+                };
+                let _ = crate::db::series::save_matches(&mut conn, download_id, &matches_to_save);
             }
         }
 
@@ -294,11 +319,16 @@ impl SeriesController {
         let mut matches = upcoming_matches;
 
         match archived_matches_res {
-            Ok(archived) => {
+            Ok(mut archived) => {
                 log::debug!(
                     "Fetched {} archived matches",
                     archived.Team.MatchList.Matches.len()
                 );
+                for m in &mut archived.Team.MatchList.Matches {
+                    if m.Status.is_empty() {
+                        m.Status = "FINISHED".to_string();
+                    }
+                }
                 let mut all_matches = archived.Team.MatchList.Matches;
                 all_matches.extend(matches.Team.MatchList.Matches);
                 matches.Team.MatchList.Matches = all_matches;
@@ -313,13 +343,13 @@ impl SeriesController {
     }
 }
 
-fn filter_matches_for_season(
+pub fn filter_matches_for_season(
     league_details: &LeagueDetailsData,
     mut matches: MatchesData,
 ) -> MatchesData {
     // Filter matches to show only those for this league and current season
     let league_unit_id = league_details.LeagueLevelUnitID;
-    let current_round = league_details.CurrentMatchRound.unwrap_or(14); // Default to full season if unknown
+    let _current_round = league_details.CurrentMatchRound.unwrap_or(14); // Default to full season if unknown
 
     let league_matches: Vec<crate::chpp::model::MatchDetails> = matches
         .Team

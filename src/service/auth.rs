@@ -18,13 +18,14 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use crate::chpp::{exchange_verification_code, get_request_token_url, Error, OauthSettings};
+use crate::chpp::{exchange_verification_code, get_request_token_url, OauthSettings};
+use crate::error::NutmegError;
 use crate::config::{consumer_key, consumer_secret};
 
 // Trait for dependency injection and mocking
 pub trait AuthenticationService {
     /// Returns the authorization URL and the temporary request tokens (token, secret)
-    fn get_authorization_url(&self) -> Result<(String, String, String), Error>;
+    fn get_authorization_url(&self) -> Result<(String, String, String), NutmegError>;
 
     /// Exchanges verification code for access tokens (token, secret)
     fn verify_user(
@@ -32,7 +33,7 @@ pub trait AuthenticationService {
         verification_code: &str,
         request_token: &str,
         request_token_secret: &str,
-    ) -> Result<(String, String), Error>;
+    ) -> Result<(String, String), NutmegError>;
 }
 
 pub struct HattrickAuthService;
@@ -50,7 +51,7 @@ impl Default for HattrickAuthService {
 }
 
 impl AuthenticationService for HattrickAuthService {
-    fn get_authorization_url(&self) -> Result<(String, String, String), Error> {
+    fn get_authorization_url(&self) -> Result<(String, String, String), NutmegError> {
         let settings = OauthSettings::default();
         let key = consumer_key();
         let secret = consumer_secret();
@@ -67,7 +68,7 @@ impl AuthenticationService for HattrickAuthService {
         verification_code: &str,
         request_token: &str,
         request_token_secret: &str,
-    ) -> Result<(String, String), Error> {
+    ) -> Result<(String, String), NutmegError> {
         // Reconstruct settings for the exchange
         let settings = OauthSettings::default();
         settings.client_id.replace(consumer_key());
@@ -87,7 +88,7 @@ mod tests {
 
     struct MockAuthService;
     impl AuthenticationService for MockAuthService {
-        fn get_authorization_url(&self) -> Result<(String, String, String), Error> {
+        fn get_authorization_url(&self) -> Result<(String, String, String), NutmegError> {
             Ok((
                 "http://mock.url".to_string(),
                 "mock_tok".to_string(),
@@ -99,7 +100,7 @@ mod tests {
             _code: &str,
             _rt: &str,
             _rs: &str,
-        ) -> Result<(String, String), Error> {
+        ) -> Result<(String, String), NutmegError> {
             Ok(("access_tok".to_string(), "access_sec".to_string()))
         }
     }
