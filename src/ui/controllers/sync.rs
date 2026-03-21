@@ -1,4 +1,4 @@
-use crate::chpp::Error as ChppError;
+use crate::error::NutmegError;
 use crate::db::manager::DbManager;
 use crate::service::auth::{AuthenticationService, HattrickAuthService};
 use crate::service::secret::{SecretStorageService, SystemSecretService};
@@ -64,7 +64,7 @@ impl SyncController {
                     match tokio::task::spawn_blocking(move || {
                         let mut conn = db_inner.get_connection()?;
                         crate::db::download_entries::get_latest_download_id(&mut conn)
-                            .map_err(|e| ChppError::Db(e.to_string()))
+                            .map_err(|e| NutmegError::Db(e.to_string()))
                     })
                     .await
                     {

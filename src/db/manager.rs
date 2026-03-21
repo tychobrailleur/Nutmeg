@@ -18,7 +18,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use crate::chpp::error::Error;
+use crate::error::NutmegError;
 use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager, Pool};
 use diesel::sqlite::SqliteConnection;
@@ -119,13 +119,13 @@ impl DbManager {
 
     pub fn get_connection(
         &self,
-    ) -> Result<r2d2::PooledConnection<ConnectionManager<SqliteConnection>>, Error> {
+    ) -> Result<r2d2::PooledConnection<ConnectionManager<SqliteConnection>>, NutmegError> {
         self.pool
             .get()
-            .map_err(|e| Error::Io(format!("Failed to get connection from pool: {}", e)))
+            .map_err(|e| NutmegError::Io(format!("Failed to get connection from pool: {}", e)))
     }
 
-    pub fn run_migrations(&self) -> Result<(), Error> {
+    pub fn run_migrations(&self) -> Result<(), NutmegError> {
         let mut conn = self.get_connection()?;
 
         // Delete stale in-progress downloads before applying migrations.
@@ -138,23 +138,23 @@ impl DbManager {
             .ok();
 
         conn.run_pending_migrations(MIGRATIONS)
-            .map_err(|e| Error::Io(format!("Migration failed: {}", e)))?;
+            .map_err(|e| NutmegError::Io(format!("Migration failed: {}", e)))?;
         Ok(())
     }
 
-    pub fn has_users(&self) -> Result<bool, Error> {
+    pub fn has_users(&self) -> Result<bool, NutmegError> {
         use crate::db::schema::users::dsl::*;
         let mut conn = self.get_connection()?;
         let count = users
             .count()
             .get_result::<i64>(&mut conn)
-            .map_err(|e| Error::Io(format!("Failed to count users: {}", e)))?;
+            .map_err(|e| NutmegError::Io(format!("Failed to count users: {}", e)))?;
         Ok(count > 0)
     }
 
     /// Clear all data from the database (useful for debugging/reset)
     /// This deletes all rows from all tables but preserves the schema
-    pub fn clear_all_data(&self) -> Result<(), Error> {
+    pub fn clear_all_data(&self) -> Result<(), NutmegError> {
         use crate::db::schema::*;
         use diesel::prelude::*;
 
@@ -184,7 +184,26 @@ impl DbManager {
 
             Ok(())
         })
-        .map_err(|e| Error::Io(format!("Failed to clear database: {}", e)))
+        .map_err(|e| NutmegError::Io(format!("Failed to clear database: {}", e)))
+    }
+
+    /// Deletes all completed downloads except the `keep_count` most recent.
+    /// Child rows in all entity tables are removed via ON DELETE CASCADE.
+    pub fn prune_old_downloads(&self, keep_count: u32) -> Result<usize, NutmegError> {
+        let mut conn = self.get_connection()?;
+        diesel::sql_query(
+            "DELETE FROM downloads
+             WHERE status = 'completed'
+               AND id NOT IN (
+                   SELECT id FROM downloads
+                   WHERE status = 'completed'
+                   ORDER BY id DESC
+                   LIMIT ?
+               )",
+        )
+        .bind::<diesel::sql_types::Integer, _>(keep_count as i32)
+        .execute(&mut conn)
+        .map_err(|e| NutmegError::Db(format!("Prune failed: {}", e)))
     }
 }
 

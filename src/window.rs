@@ -28,7 +28,7 @@ use log::info;
 use std::sync::Arc;
 
 use crate::rating::ui::page::FormationOptimiserWidget;
-use crate::training::ui::page::TrainingPlannerPage;
+// use crate::training::ui::page::TrainingPlannerPage;
 use crate::ui::context_object::ContextObject;
 use crate::ui::player_object::PlayerObject;
 use crate::ui::team_object::TeamObject;
@@ -75,8 +75,10 @@ mod imp {
         #[template_child]
         pub series_page: TemplateChild<SeriesPage>,
 
+        /*
         #[template_child]
         pub training_planner: TemplateChild<TrainingPlannerPage>,
+        */
 
         #[template_child]
         pub opponent_analysis: TemplateChild<OpponentAnalysis>,
@@ -95,7 +97,7 @@ mod imp {
 
         fn class_init(klass: &mut Self::Class) {
             FormationOptimiserWidget::ensure_type();
-            TrainingPlannerPage::ensure_type();
+            // TrainingPlannerPage::ensure_type();
             OpponentAnalysis::ensure_type();
             klass.bind_template();
         }
@@ -125,10 +127,12 @@ mod imp {
             obj.imp().main_controller.replace(Some(controller.clone()));
             controller.refresh_all_teams();
 
+            /*
             // Inject ContextObject into sub-pages
             obj.imp()
                 .training_planner
                 .set_context_object(&obj.imp().context_object.clone());
+            */
 
             obj.setup_actions();
 

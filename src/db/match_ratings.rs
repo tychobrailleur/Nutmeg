@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use crate::chpp::error::Error;
+use crate::error::NutmegError;
 use crate::db::schema::match_ratings;
 use diesel::prelude::*;
 
@@ -49,18 +49,18 @@ pub struct MatchRating {
 pub fn save_match_ratings(
     conn: &mut SqliteConnection,
     ratings: &[NewMatchRating],
-) -> Result<(), Error> {
+) -> Result<(), NutmegError> {
     diesel::insert_into(match_ratings::table)
         .values(ratings)
         .execute(conn)
-        .map_err(|e| Error::Io(format!("Failed to save match ratings: {}", e)))?;
+        .map_err(|e| NutmegError::Io(format!("Failed to save match ratings: {}", e)))?;
     Ok(())
 }
 
 /// Load the most recent ratings for each (match_id, team_id) pair for a given
 /// team. Because the table is insert-only, multiple rows per (match_id, team_id)
 /// may exist; we keep the one with the highest download_id.
-pub fn get_match_ratings(conn: &mut SqliteConnection, tid: u32) -> Result<Vec<MatchRating>, Error> {
+pub fn get_match_ratings(conn: &mut SqliteConnection, tid: u32) -> Result<Vec<MatchRating>, NutmegError> {
     use crate::db::schema::match_ratings::dsl::*;
 
     // Fetch all rows for the team ordered so the latest download_id comes first.
@@ -68,7 +68,7 @@ pub fn get_match_ratings(conn: &mut SqliteConnection, tid: u32) -> Result<Vec<Ma
         .filter(team_id.eq(tid as i32))
         .order((match_id.asc(), download_id.desc()))
         .load::<MatchRating>(conn)
-        .map_err(|e| Error::Io(format!("Failed to load match ratings: {}", e)))?;
+        .map_err(|e| NutmegError::Io(format!("Failed to load match ratings: {}", e)))?;
 
     // Deduplicate: keep the first (= highest download_id) row per (match_id, team_id).
     let mut seen = std::collections::HashSet::new();

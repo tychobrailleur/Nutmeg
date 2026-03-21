@@ -18,7 +18,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use crate::chpp::error::Error;
+use crate::error::NutmegError;
 use crate::chpp::model::{
     Country, Cup, Currency, Language, League, Region, SupporterTier, Team, User, WorldDetails,
 };
@@ -292,8 +292,8 @@ pub fn save_world_details(
     conn: &mut SqliteConnection,
     world_details: &WorldDetails,
     download_id: i32,
-) -> Result<(), Error> {
-    conn.transaction::<_, Error, _>(|conn| {
+) -> Result<(), NutmegError> {
+    conn.transaction::<_, NutmegError, _>(|conn| {
         for world_league in &world_details.LeagueList.Leagues {
             // Save Language if present
             if let (Some(lang_id), Some(lang_name)) =
@@ -366,7 +366,7 @@ pub fn save_world_details(
                         .Country
                         .CountryName
                         .clone()
-                        .ok_or_else(|| Error::Db("Missing CountryName".to_string()))?,
+                        .ok_or_else(|| NutmegError::Db("Missing CountryName".to_string()))?,
                     Currency: currency,
                     CountryCode: world_league.Country.CountryCode.clone(),
                     DateFormat: world_league.Country.DateFormat.clone(),
@@ -387,7 +387,7 @@ pub fn save_players(
     players_list: &[crate::chpp::model::Player],
     team_id: u32,
     download_id: i32,
-) -> Result<(), Error> {
+) -> Result<(), NutmegError> {
     for player in players_list {
         let player_id = player.PlayerID as i32;
 
@@ -506,7 +506,7 @@ pub fn save_players(
         diesel::insert_or_ignore_into(players::table)
             .values(&entity)
             .execute(conn)
-            .map_err(|e| Error::Io(format!("Database error saving player {}: {}", player_id, e)))?;
+            .map_err(|e| NutmegError::Io(format!("Database error saving player {}: {}", player_id, e)))?;
     }
 
     Ok(())
@@ -516,7 +516,7 @@ pub fn save_avatars(
     conn: &mut SqliteConnection,
     avatars_list: &[(u32, Vec<u8>)],
     download_id: i32,
-) -> Result<(), Error> {
+) -> Result<(), NutmegError> {
     for (player_id, image) in avatars_list {
         let p_id = *player_id as i32;
 
@@ -529,7 +529,7 @@ pub fn save_avatars(
         diesel::insert_or_ignore_into(avatars::table)
             .values(&entity)
             .execute(conn)
-            .map_err(|e| Error::Io(format!("Database error saving avatar for {}: {}", p_id, e)))?;
+            .map_err(|e| NutmegError::Io(format!("Database error saving avatar for {}: {}", p_id, e)))?;
     }
     Ok(())
 }
@@ -542,7 +542,7 @@ pub fn save_language(
     conn: &mut SqliteConnection,
     language: &Language,
     download_id: i32,
-) -> Result<(), Error> {
+) -> Result<(), NutmegError> {
     let entity = LanguageEntity {
         id: language.LanguageID as i32,
         download_id,
@@ -551,7 +551,7 @@ pub fn save_language(
     diesel::insert_or_ignore_into(languages::table)
         .values(&entity)
         .execute(conn)
-        .map_err(|e| Error::Io(format!("Database error saving language: {}", e)))?;
+        .map_err(|e| NutmegError::Io(format!("Database error saving language: {}", e)))?;
     Ok(())
 }
 
@@ -562,7 +562,7 @@ pub fn save_currency(
     conn: &mut SqliteConnection,
     currency: &Currency,
     download_id: i32,
-) -> Result<(), Error> {
+) -> Result<(), NutmegError> {
     let entity = CurrencyEntity {
         id: currency.CurrencyID as i32,
         download_id,
@@ -573,7 +573,7 @@ pub fn save_currency(
     diesel::insert_or_ignore_into(currencies::table)
         .values(&entity)
         .execute(conn)
-        .map_err(|e| Error::Io(format!("Database error saving currency: {}", e)))?;
+        .map_err(|e| NutmegError::Io(format!("Database error saving currency: {}", e)))?;
     Ok(())
 }
 
@@ -585,7 +585,7 @@ fn save_user(
     download_id: i32,
     is_current_authenticated_user: bool,
     is_bot: bool,
-) -> Result<(), Error> {
+) -> Result<(), NutmegError> {
     // Save Language first to ensure the Foreign Key in 'users' is valid.
     if let Some(lang) = &user.Language {
         save_language(conn, lang, download_id)?;
@@ -612,7 +612,7 @@ fn save_user(
     diesel::insert_or_ignore_into(users::table)
         .values(&entity)
         .execute(conn)
-        .map_err(|e| Error::Io(format!("Database error saving user: {}", e)))?;
+        .map_err(|e| NutmegError::Io(format!("Database error saving user: {}", e)))?;
     Ok(())
 }
 
@@ -621,7 +621,7 @@ pub fn save_country(
     conn: &mut SqliteConnection,
     country: &Country,
     download_id: i32,
-) -> Result<(), Error> {
+) -> Result<(), NutmegError> {
     let flag = get_flag_emoji(country.CountryCode.as_deref());
 
     let entity = CountryEntity {
@@ -637,7 +637,7 @@ pub fn save_country(
     diesel::insert_or_ignore_into(countries::table)
         .values(&entity)
         .execute(conn)
-        .map_err(|e| Error::Io(format!("Database error saving country: {}", e)))?;
+        .map_err(|e| NutmegError::Io(format!("Database error saving country: {}", e)))?;
     Ok(())
 }
 
@@ -648,7 +648,7 @@ fn save_region(
     region: &Region,
     country_id_opt: Option<u32>,
     download_id: i32,
-) -> Result<(), Error> {
+) -> Result<(), NutmegError> {
     if let Some(country_id) = country_id_opt {
         let entity = RegionEntity {
             id: region.RegionID as i32,
@@ -659,7 +659,7 @@ fn save_region(
         diesel::insert_or_ignore_into(regions::table)
             .values(&entity)
             .execute(conn)
-            .map_err(|e| Error::Io(format!("Database error saving region: {}", e)))?;
+            .map_err(|e| NutmegError::Io(format!("Database error saving region: {}", e)))?;
     }
 
     Ok(())
@@ -671,7 +671,7 @@ fn save_league(
     league: &League,
     country_id_opt: Option<u32>,
     download_id: i32,
-) -> Result<(), Error> {
+) -> Result<(), NutmegError> {
     let entity = LeagueEntity {
         id: league.LeagueID as i32,
         download_id,
@@ -695,13 +695,13 @@ fn save_league(
     diesel::insert_or_ignore_into(leagues::table)
         .values(&entity)
         .execute(conn)
-        .map_err(|e| Error::Io(format!("Database error saving league: {}", e)))?;
+        .map_err(|e| NutmegError::Io(format!("Database error saving league: {}", e)))?;
     Ok(())
 }
 
 // Persists Cup details.
 // Persists Cup details.
-fn save_cup(conn: &mut SqliteConnection, cup: &Cup, download_id: i32) -> Result<(), Error> {
+fn save_cup(conn: &mut SqliteConnection, cup: &Cup, download_id: i32) -> Result<(), NutmegError> {
     if let (Some(id), Some(name)) = (cup.CupID, &cup.CupName) {
         let entity = CupEntity {
             id: id as i32,
@@ -716,7 +716,7 @@ fn save_cup(conn: &mut SqliteConnection, cup: &Cup, download_id: i32) -> Result<
         diesel::insert_or_ignore_into(cups::table)
             .values(&entity)
             .execute(conn)
-            .map_err(|e| Error::Io(format!("Database error saving cup: {}", e)))?;
+            .map_err(|e| NutmegError::Io(format!("Database error saving cup: {}", e)))?;
     }
     Ok(())
 }
@@ -729,7 +729,7 @@ pub fn save_team(
     user: &User,
     download_id: i32,
     is_current_authenticated_user: bool,
-) -> Result<(), Error> {
+) -> Result<(), NutmegError> {
     let is_bot = team.BotStatus.as_ref().map(|b| b.IsBot).unwrap_or(false);
     save_user(
         conn,
@@ -746,10 +746,10 @@ pub fn save_team(
     let team_id_num = team
         .TeamID
         .parse::<i32>()
-        .map_err(|e| Error::Parse(format!("Invalid TeamID: {}", e)))?;
+        .map_err(|e| NutmegError::Parse(format!("Invalid TeamID: {}", e)))?;
 
     let json_data = serde_json::to_string(team)
-        .map_err(|e| Error::Parse(format!("Failed to serialize team: {}", e)))?;
+        .map_err(|e| NutmegError::Parse(format!("Failed to serialize team: {}", e)))?;
 
     let entity = TeamEntity {
         download_id,
@@ -865,7 +865,7 @@ pub fn save_team(
     diesel::insert_or_ignore_into(teams::table)
         .values(&entity)
         .execute(conn)
-        .map_err(|e| Error::Io(format!("Database error: {}", e)))?;
+        .map_err(|e| NutmegError::Io(format!("Database error: {}", e)))?;
 
     Ok(())
 }
@@ -874,7 +874,7 @@ pub fn save_team(
 // Returns a list of (TeamID, TeamName) for all teams in the DB.
 pub fn get_teams_summary(
     conn: &mut SqliteConnection,
-) -> Result<Vec<(u32, String, Option<String>)>, Error> {
+) -> Result<Vec<(u32, String, Option<String>)>, NutmegError> {
     use diesel::prelude::*;
     use diesel::sql_query;
     use diesel::sql_types::{Integer, Nullable, Text};
@@ -910,7 +910,7 @@ pub fn get_teams_summary(
 
     let results = sql_query(query)
         .load::<TeamSummaryRow>(conn)
-        .map_err(|e| Error::Db(format!("Failed to load authenticated teams summary: {}", e)))?;
+        .map_err(|e| NutmegError::Db(format!("Failed to load authenticated teams summary: {}", e)))?;
 
     Ok(results
         .into_iter()
@@ -922,7 +922,7 @@ pub fn get_teams_summary(
 pub fn get_latest_country(
     conn: &mut SqliteConnection,
     country_id_val: i32,
-) -> Result<Option<crate::chpp::model::Country>, Error> {
+) -> Result<Option<crate::chpp::model::Country>, NutmegError> {
     use crate::db::schema::countries::dsl::*;
 
     let entity: Option<CountryEntity> = countries
@@ -930,7 +930,7 @@ pub fn get_latest_country(
         .order(download_id.desc())
         .first::<CountryEntity>(conn)
         .optional()
-        .map_err(|e| Error::Db(format!("Failed to get country: {}", e)))?;
+        .map_err(|e| NutmegError::Db(format!("Failed to get country: {}", e)))?;
 
     if let Some(e) = entity {
         // Fetch currency if available
@@ -957,7 +957,7 @@ pub fn get_latest_country(
 pub fn get_latest_currency(
     conn: &mut SqliteConnection,
     currency_id_val: i32,
-) -> Result<Option<crate::chpp::model::Currency>, Error> {
+) -> Result<Option<crate::chpp::model::Currency>, NutmegError> {
     use crate::db::schema::currencies::dsl::*;
 
     let entity: Option<CurrencyEntity> = currencies
@@ -965,7 +965,7 @@ pub fn get_latest_currency(
         .order(download_id.desc())
         .first::<CurrencyEntity>(conn)
         .optional()
-        .map_err(|e| Error::Db(format!("Failed to get currency: {}", e)))?;
+        .map_err(|e| NutmegError::Db(format!("Failed to get currency: {}", e)))?;
 
     Ok(entity.map(|e| crate::chpp::model::Currency {
         CurrencyID: e.id as u32,
@@ -979,7 +979,7 @@ pub fn get_latest_currency(
 pub fn get_latest_region(
     conn: &mut SqliteConnection,
     region_id_val: i32,
-) -> Result<Option<crate::chpp::model::Region>, Error> {
+) -> Result<Option<crate::chpp::model::Region>, NutmegError> {
     use crate::db::schema::regions::dsl::*;
 
     let entity: Option<RegionEntity> = regions
@@ -987,7 +987,7 @@ pub fn get_latest_region(
         .order(download_id.desc())
         .first::<RegionEntity>(conn)
         .optional()
-        .map_err(|e| Error::Db(format!("Failed to get region: {}", e)))?;
+        .map_err(|e| NutmegError::Db(format!("Failed to get region: {}", e)))?;
 
     Ok(entity.map(|e| crate::chpp::model::Region {
         RegionID: e.id as u32,
@@ -999,7 +999,7 @@ pub fn get_latest_region(
 pub fn get_latest_user(
     conn: &mut SqliteConnection,
     user_id_val: i32,
-) -> Result<Option<crate::chpp::model::User>, Error> {
+) -> Result<Option<crate::chpp::model::User>, NutmegError> {
     use crate::db::schema::users::dsl::*;
 
     let entity: Option<UserEntity> = users
@@ -1007,7 +1007,7 @@ pub fn get_latest_user(
         .order(download_id.desc())
         .first::<UserEntity>(conn)
         .optional()
-        .map_err(|e| Error::Db(format!("Failed to get user: {}", e)))?;
+        .map_err(|e| NutmegError::Db(format!("Failed to get user: {}", e)))?;
 
     if let Some(e) = entity {
         // We need language for User model
@@ -1046,7 +1046,7 @@ pub fn get_latest_user(
 pub fn get_user_id_for_team(
     conn: &mut SqliteConnection,
     team_id_val: i32,
-) -> Result<Option<i32>, Error> {
+) -> Result<Option<i32>, NutmegError> {
     use crate::db::schema::teams::dsl::*;
 
     teams
@@ -1055,14 +1055,14 @@ pub fn get_user_id_for_team(
         .select(user_id)
         .first::<Option<i32>>(conn)
         .optional()
-        .map_err(|e| Error::Db(format!("Failed to get user id for team: {}", e)))
+        .map_err(|e| NutmegError::Db(format!("Failed to get user id for team: {}", e)))
         .map(|res| res.flatten())
 }
 
 pub fn get_players_for_team(
     conn: &mut SqliteConnection,
     team_id_in: u32,
-) -> Result<Vec<crate::chpp::model::Player>, Error> {
+) -> Result<Vec<crate::chpp::model::Player>, NutmegError> {
     use diesel::prelude::*;
 
     // Find the latest download_id for which players of this specific team exist.
@@ -1072,7 +1072,7 @@ pub fn get_players_for_team(
         .filter(players::team_id.eq(team_id_in as i32))
         .select(diesel::dsl::max(players::download_id))
         .first::<Option<i32>>(conn)
-        .map_err(|e| Error::Db(format!("Failed to get max player download_id: {}", e)))?;
+        .map_err(|e| NutmegError::Db(format!("Failed to get max player download_id: {}", e)))?;
 
     let download_id_filter = match player_download_id_opt {
         Some(id) => id,
@@ -1116,7 +1116,7 @@ pub fn get_players_for_team(
         .filter(players::team_id.eq(team_id_in as i32))
         .filter(players::download_id.eq(download_id_filter))
         .load::<PlayerEntity>(conn)
-        .map_err(|e| Error::Db(format!("Failed to load players: {}", e)))?;
+        .map_err(|e| NutmegError::Db(format!("Failed to load players: {}", e)))?;
 
     let player_ids: Vec<i32> = results.iter().map(|p| p.id).collect();
 
@@ -1127,7 +1127,7 @@ pub fn get_players_for_team(
         .order((avatars::player_id.asc(), avatars::download_id.desc()))
         .select((avatars::player_id, avatars::image))
         .load::<(i32, Vec<u8>)>(conn)
-        .map_err(|e| Error::Db(format!("Failed to load avatars: {}", e)))?;
+        .map_err(|e| NutmegError::Db(format!("Failed to load avatars: {}", e)))?;
 
     let mut avatar_map = std::collections::HashMap::new();
     for (pid, img) in avatars_rows {
@@ -1236,7 +1236,7 @@ pub fn get_players_for_team(
     Ok(players)
 }
 
-pub fn get_team(conn: &mut SqliteConnection, team_id: u32) -> Result<Option<Team>, Error> {
+pub fn get_team(conn: &mut SqliteConnection, team_id: u32) -> Result<Option<Team>, NutmegError> {
     use crate::db::schema::teams::dsl::*;
 
     // Use the most recent download for *this specific team* rather than the
@@ -1248,12 +1248,12 @@ pub fn get_team(conn: &mut SqliteConnection, team_id: u32) -> Result<Option<Team
         .order(download_id.desc())
         .first::<TeamEntity>(conn)
         .optional()
-        .map_err(|e| Error::Io(format!("Database error: {}", e)))?;
+        .map_err(|e| NutmegError::Io(format!("Database error: {}", e)))?;
 
     match result {
         Some(entity) => {
             let team: Team = serde_json::from_str(&entity.raw_data).map_err(|e| {
-                Error::Parse(format!("Failed to deserialise team data from DB: {}", e))
+                NutmegError::Parse(format!("Failed to deserialise team data from DB: {}", e))
             })?;
             Ok(Some(team))
         }
@@ -1265,7 +1265,7 @@ pub fn get_team(conn: &mut SqliteConnection, team_id: u32) -> Result<Option<Team
 pub fn get_existing_team_ids(
     conn: &mut SqliteConnection,
     team_ids: &[i32],
-) -> Result<std::collections::HashSet<i32>, Error> {
+) -> Result<std::collections::HashSet<i32>, NutmegError> {
     if team_ids.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
@@ -1275,7 +1275,7 @@ pub fn get_existing_team_ids(
         .select(teams::id)
         .distinct()
         .load::<i32>(conn)
-        .map_err(|e| Error::Db(format!("Failed to load team IDs: {}", e)))?;
+        .map_err(|e| NutmegError::Db(format!("Failed to load team IDs: {}", e)))?;
 
     Ok(rows.into_iter().collect())
 }
@@ -1286,7 +1286,7 @@ pub fn get_existing_team_ids(
 pub fn get_logo_urls_for_teams(
     conn: &mut SqliteConnection,
     team_ids: &[i32],
-) -> Result<std::collections::HashMap<i32, String>, Error> {
+) -> Result<std::collections::HashMap<i32, String>, NutmegError> {
     if team_ids.is_empty() {
         return Ok(std::collections::HashMap::new());
     }
@@ -1299,7 +1299,7 @@ pub fn get_logo_urls_for_teams(
         .order((teams::id.asc(), teams::download_id.desc()))
         .select((teams::id, teams::logo_url))
         .load::<(i32, Option<String>)>(conn)
-        .map_err(|e| Error::Db(format!("Failed to load logo URLs: {}", e)))?;
+        .map_err(|e| NutmegError::Db(format!("Failed to load logo URLs: {}", e)))?;
 
     // Dedup: the first row per team_id is the most recent (ORDER BY download_id DESC).
     let mut map = std::collections::HashMap::new();

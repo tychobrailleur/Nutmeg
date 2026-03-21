@@ -18,7 +18,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use crate::chpp::error::Error;
+use crate::error::NutmegError;
 use crate::chpp::model::{
     AvatarsData, HattrickData, LeagueDetailsData, MatchDetailsData, MatchLineupData,
     MatchesArchiveData, MatchesData, Player, PlayersData, StaffListData, WorldDetails,
@@ -33,56 +33,56 @@ use async_trait::async_trait;
 
 #[async_trait]
 pub trait ChppClient: Send + Sync {
-    async fn world_details(&self, data: OAuthData, key: SigningKey) -> Result<WorldDetails, Error>;
+    async fn world_details(&self, data: OAuthData, key: SigningKey) -> Result<WorldDetails, NutmegError>;
 
     async fn team_details(
         &self,
         data: OAuthData,
         key: SigningKey,
         team_id: Option<u32>,
-    ) -> Result<HattrickData, Error>;
+    ) -> Result<HattrickData, NutmegError>;
 
     async fn players(
         &self,
         data: OAuthData,
         key: SigningKey,
         team_id: Option<u32>,
-    ) -> Result<PlayersData, Error>;
+    ) -> Result<PlayersData, NutmegError>;
 
     async fn player_details(
         &self,
         data: OAuthData,
         key: SigningKey,
         player_id: u32,
-    ) -> Result<Player, Error>;
+    ) -> Result<Player, NutmegError>;
 
     async fn avatars(
         &self,
         data: OAuthData,
         key: SigningKey,
         team_id: Option<u32>,
-    ) -> Result<AvatarsData, Error>;
+    ) -> Result<AvatarsData, NutmegError>;
 
     async fn league_details(
         &self,
         data: OAuthData,
         key: SigningKey,
         league_level_unit_id: u32,
-    ) -> Result<LeagueDetailsData, Error>;
+    ) -> Result<LeagueDetailsData, NutmegError>;
 
     async fn matches(
         &self,
         data: OAuthData,
         key: SigningKey,
         team_id: Option<u32>,
-    ) -> Result<MatchesData, Error>;
+    ) -> Result<MatchesData, NutmegError>;
 
     async fn staff_list(
         &self,
         data: OAuthData,
         key: SigningKey,
         team_id: Option<u32>,
-    ) -> Result<StaffListData, Error>;
+    ) -> Result<StaffListData, NutmegError>;
 
     async fn matches_archive(
         &self,
@@ -91,7 +91,7 @@ pub trait ChppClient: Send + Sync {
         team_id: Option<u32>,
         first_match_date: Option<String>,
         last_match_date: Option<String>,
-    ) -> Result<MatchesArchiveData, Error>;
+    ) -> Result<MatchesArchiveData, NutmegError>;
 
     async fn match_details(
         &self,
@@ -99,7 +99,7 @@ pub trait ChppClient: Send + Sync {
         key: SigningKey,
         match_id: u32,
         source_system: &str,
-    ) -> Result<MatchDetailsData, Error>;
+    ) -> Result<MatchDetailsData, NutmegError>;
 
     async fn match_lineup(
         &self,
@@ -108,7 +108,7 @@ pub trait ChppClient: Send + Sync {
         match_id: u32,
         team_id: u32,
         source_system: &str,
-    ) -> Result<MatchLineupData, Error>;
+    ) -> Result<MatchLineupData, NutmegError>;
 }
 
 pub struct HattrickClient;
@@ -121,7 +121,7 @@ impl HattrickClient {
 
 #[async_trait]
 impl ChppClient for HattrickClient {
-    async fn world_details(&self, data: OAuthData, key: SigningKey) -> Result<WorldDetails, Error> {
+    async fn world_details(&self, data: OAuthData, key: SigningKey) -> Result<WorldDetails, NutmegError> {
         world_details_request(data, key).await
     }
 
@@ -130,7 +130,7 @@ impl ChppClient for HattrickClient {
         data: OAuthData,
         key: SigningKey,
         team_id: Option<u32>,
-    ) -> Result<HattrickData, Error> {
+    ) -> Result<HattrickData, NutmegError> {
         team_details_request(data, key, team_id).await
     }
 
@@ -139,7 +139,7 @@ impl ChppClient for HattrickClient {
         data: OAuthData,
         key: SigningKey,
         team_id: Option<u32>,
-    ) -> Result<PlayersData, Error> {
+    ) -> Result<PlayersData, NutmegError> {
         players_request(data, key, team_id).await
     }
 
@@ -148,7 +148,7 @@ impl ChppClient for HattrickClient {
         data: OAuthData,
         key: SigningKey,
         player_id: u32,
-    ) -> Result<Player, Error> {
+    ) -> Result<Player, NutmegError> {
         player_details_request(data, key, player_id).await
     }
 
@@ -157,7 +157,7 @@ impl ChppClient for HattrickClient {
         data: OAuthData,
         key: SigningKey,
         team_id: Option<u32>,
-    ) -> Result<AvatarsData, Error> {
+    ) -> Result<AvatarsData, NutmegError> {
         crate::chpp::request::avatars_request(data, key, team_id).await
     }
 
@@ -166,7 +166,7 @@ impl ChppClient for HattrickClient {
         data: OAuthData,
         key: SigningKey,
         league_level_unit_id: u32,
-    ) -> Result<LeagueDetailsData, Error> {
+    ) -> Result<LeagueDetailsData, NutmegError> {
         league_details_request(data, key, league_level_unit_id).await
     }
 
@@ -175,7 +175,7 @@ impl ChppClient for HattrickClient {
         data: OAuthData,
         key: SigningKey,
         team_id: Option<u32>,
-    ) -> Result<MatchesData, Error> {
+    ) -> Result<MatchesData, NutmegError> {
         matches_request(data, key, team_id).await
     }
 
@@ -184,7 +184,7 @@ impl ChppClient for HattrickClient {
         data: OAuthData,
         key: SigningKey,
         team_id: Option<u32>,
-    ) -> Result<StaffListData, Error> {
+    ) -> Result<StaffListData, NutmegError> {
         crate::chpp::request::staff_list_request(data, key, team_id).await
     }
 
@@ -195,7 +195,7 @@ impl ChppClient for HattrickClient {
         team_id: Option<u32>,
         first_match_date: Option<String>,
         last_match_date: Option<String>,
-    ) -> Result<MatchesArchiveData, Error> {
+    ) -> Result<MatchesArchiveData, NutmegError> {
         matches_archive_request(data, key, team_id, first_match_date, last_match_date).await
     }
 
@@ -205,7 +205,7 @@ impl ChppClient for HattrickClient {
         key: SigningKey,
         match_id: u32,
         source_system: &str,
-    ) -> Result<MatchDetailsData, Error> {
+    ) -> Result<MatchDetailsData, NutmegError> {
         match_details_request(data, key, match_id, source_system).await
     }
 
@@ -216,7 +216,7 @@ impl ChppClient for HattrickClient {
         match_id: u32,
         team_id: u32,
         source_system: &str,
-    ) -> Result<MatchLineupData, Error> {
+    ) -> Result<MatchLineupData, NutmegError> {
         match_lineup_request(data, key, match_id, team_id, source_system).await
     }
 }

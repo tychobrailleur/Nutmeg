@@ -23,7 +23,7 @@ use thiserror::Error;
 
 #[derive(Clone, Error, Debug, glib::Boxed)]
 #[boxed_type(name = "NutmegError")]
-pub enum Error {
+pub enum NutmegError {
     #[error("Network error: {0}")]
     Network(String),
 
@@ -49,28 +49,43 @@ pub enum Error {
 
     #[error("Database error: {0}")]
     Db(String),
+
+    #[error("Application error: {0}")]
+    Application(String),
 }
 
-impl From<reqwest::Error> for Error {
+impl From<reqwest::Error> for NutmegError {
     fn from(err: reqwest::Error) -> Self {
-        Error::Network(err.to_string())
+        NutmegError::Network(err.to_string())
     }
 }
 
-impl From<serde_xml_rs::Error> for Error {
+impl From<serde_xml_rs::Error> for NutmegError {
     fn from(err: serde_xml_rs::Error) -> Self {
-        Error::Parse(err.to_string())
+        NutmegError::Parse(err.to_string())
     }
 }
 
-impl From<std::io::Error> for Error {
+impl From<std::io::Error> for NutmegError {
     fn from(err: std::io::Error) -> Self {
-        Error::Io(err.to_string())
+        NutmegError::Io(err.to_string())
     }
 }
 
-impl From<diesel::result::Error> for Error {
+impl From<diesel::result::Error> for NutmegError {
     fn from(err: diesel::result::Error) -> Self {
-        Error::Db(err.to_string())
+        NutmegError::Db(err.to_string())
+    }
+}
+
+impl From<String> for NutmegError {
+    fn from(s: String) -> Self {
+        NutmegError::Application(s)
+    }
+}
+
+impl From<&str> for NutmegError {
+    fn from(s: &str) -> Self {
+        NutmegError::Application(s.to_string())
     }
 }

@@ -26,7 +26,6 @@ static NUTMEG_USER_AGENT: &str = "Nutmeg/v1.0";
 
 //pub mod authenticator;
 pub mod client;
-pub mod error;
 pub mod metadata;
 pub mod model;
 pub mod oauth;
@@ -39,7 +38,6 @@ pub mod tests_series;
 mod tests_teamid;
 
 pub use client::ChppClient;
-pub use error::Error;
 pub use oauth::create_oauth_context;
 pub use oauth::exchange_verification_code;
 pub use oauth::get_request_token_url;

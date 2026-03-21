@@ -24,7 +24,7 @@ use oauth_1a::*;
 use serde_xml_rs::from_str;
 use std::collections::BTreeMap;
 
-use crate::chpp::error::Error;
+use crate::error::NutmegError;
 use crate::chpp::metadata::ChppEndpoints;
 use crate::chpp::model::{
     AvatarsData, ChppErrorResponse, HattrickData, LeagueDetailsData, MatchDetailsData,
@@ -41,7 +41,7 @@ pub async fn chpp_request<T: DeserializeOwned>(
     extra_params: Option<&Vec<(&str, &str)>>,
     mut data: OAuthData,
     key: SigningKey,
-) -> Result<T, Error> {
+) -> Result<T, NutmegError> {
     use crate::chpp::retry::{should_retry, RetryConfig};
 
     let config = RetryConfig::default();
@@ -100,10 +100,10 @@ async fn perform_single_request<T: DeserializeOwned>(
     extra_params: Option<&Vec<(&str, &str)>>,
     data: &mut OAuthData,
     key: &SigningKey,
-) -> Result<T, Error> {
+) -> Result<T, NutmegError> {
     let chpp_str_url = CHPP_URL.replace(":file", file).replace(":version", version);
     let chpp_url = Url::parse(chpp_str_url.as_str())
-        .map_err(|e| Error::Network(format!("Invalid URL: {}", e)))?;
+        .map_err(|e| NutmegError::Network(format!("Invalid URL: {}", e)))?;
 
     let mut params = BTreeMap::new();
     params.insert(String::from("file"), String::from(file));
@@ -124,7 +124,7 @@ async fn perform_single_request<T: DeserializeOwned>(
         }
     }
     let send_url = Url::parse(send_url_builder.as_ref())
-        .map_err(|e| Error::Network(format!("Invalid send URL: {}", e)))?;
+        .map_err(|e| NutmegError::Network(format!("Invalid send URL: {}", e)))?;
 
     data.regen_nonce();
     for (k, v) in data.parameters() {
@@ -160,13 +160,13 @@ async fn perform_single_request<T: DeserializeOwned>(
             let data_str = resp
                 .text()
                 .await
-                .map_err(|e| Error::Network(format!("Failed to read response: {}", e)))?;
+                .map_err(|e| NutmegError::Network(format!("Failed to read response: {}", e)))?;
             info!("Output: {}", data_str);
 
             // Check if this is an error response before attempting deserialization
             if data_str.contains("<ErrorCode>") {
                 let error_response: ChppErrorResponse = from_str(data_str.as_str())
-                    .map_err(|e| Error::Xml(format!("Failed to parse error response: {}", e)))?;
+                    .map_err(|e| NutmegError::Xml(format!("Failed to parse error response: {}", e)))?;
 
                 log::error!(
                     "CHPP API error {}: {} (Request: {}, GUID: {})",
@@ -176,7 +176,7 @@ async fn perform_single_request<T: DeserializeOwned>(
                     error_response.ErrorGUID.as_deref().unwrap_or("none")
                 );
 
-                return Err(Error::ChppApi {
+                return Err(NutmegError::ChppApi {
                     code: error_response.ErrorCode,
                     message: error_response.Error,
                     error_guid: error_response.ErrorGUID,
@@ -209,11 +209,11 @@ async fn perform_single_request<T: DeserializeOwned>(
 
                     // Handle common non-XML error responses from CHPP/OAuth
                     if data_str.contains("expired_token") {
-                        return Err(Error::Auth("expired_token".to_string()));
+                        return Err(NutmegError::Auth("expired_token".to_string()));
                     } else if data_str.contains("invalid_token") {
-                        return Err(Error::Auth("invalid_token".to_string()));
+                        return Err(NutmegError::Auth("invalid_token".to_string()));
                     } else if data_str.contains("version_not_supported") {
-                        return Err(Error::ChppApi {
+                        return Err(NutmegError::ChppApi {
                             code: 400,
                             message: "version_not_supported".to_string(),
                             error_guid: None,
@@ -221,19 +221,19 @@ async fn perform_single_request<T: DeserializeOwned>(
                         });
                     }
 
-                    return Err(Error::Xml(format!("Failed to deserialize XML: {}", e)));
+                    return Err(NutmegError::Xml(format!("Failed to deserialize XML: {}", e)));
                 }
             };
             Ok(hattrick_data)
         }
-        Err(e) => Err(Error::Network(e.to_string())),
+        Err(e) => Err(NutmegError::Network(e.to_string())),
     }
 }
 
 pub async fn world_details_request(
     data: OAuthData,
     key: SigningKey,
-) -> Result<WorldDetails, Error> {
+) -> Result<WorldDetails, NutmegError> {
     chpp_request::<WorldDetails>(
         ChppEndpoints::WORLD_DETAILS.name,
         ChppEndpoints::WORLD_DETAILS.version,
@@ -248,7 +248,7 @@ pub async fn team_details_request(
     data: OAuthData,
     key: SigningKey,
     team_id: Option<u32>,
-) -> Result<HattrickData, Error> {
+) -> Result<HattrickData, NutmegError> {
     if let Some(tid) = team_id {
         let tid_str = tid.to_string();
         let p = vec![("teamID", tid_str.as_str())];
@@ -276,7 +276,7 @@ pub async fn players_request(
     data: OAuthData,
     key: SigningKey,
     team_id: Option<u32>,
-) -> Result<PlayersData, Error> {
+) -> Result<PlayersData, NutmegError> {
     let mut params = Vec::new();
     let tid_str;
     if let Some(tid) = team_id {
@@ -299,7 +299,7 @@ pub async fn player_details_request(
     data: OAuthData,
     key: SigningKey,
     player_id: u32,
-) -> Result<Player, Error> {
+) -> Result<Player, NutmegError> {
     let pid_str = player_id.to_string();
     let params = vec![("playerID", pid_str.as_str())];
 
@@ -318,7 +318,7 @@ pub async fn avatars_request(
     data: OAuthData,
     key: SigningKey,
     team_id: Option<u32>,
-) -> Result<AvatarsData, Error> {
+) -> Result<AvatarsData, NutmegError> {
     let mut params = Vec::new();
     let tid_str;
     if let Some(tid) = team_id {
@@ -341,7 +341,7 @@ pub async fn league_details_request(
     data: OAuthData,
     key: SigningKey,
     league_level_unit_id: u32,
-) -> Result<LeagueDetailsData, Error> {
+) -> Result<LeagueDetailsData, NutmegError> {
     let id_str = league_level_unit_id.to_string();
     let params = vec![("leagueLevelUnitID", id_str.as_str())];
 
@@ -359,7 +359,7 @@ pub async fn matches_request(
     data: OAuthData,
     key: SigningKey,
     team_id: Option<u32>,
-) -> Result<MatchesData, Error> {
+) -> Result<MatchesData, NutmegError> {
     let mut params = Vec::new();
     let tid_str;
     if let Some(tid) = team_id {
@@ -383,7 +383,7 @@ pub async fn matches_archive_request(
     team_id: Option<u32>,
     first_match_date: Option<String>,
     last_match_date: Option<String>,
-) -> Result<MatchesArchiveData, Error> {
+) -> Result<MatchesArchiveData, NutmegError> {
     let mut params = Vec::new();
     let tid_str;
     if let Some(tid) = team_id {
@@ -413,7 +413,7 @@ pub async fn staff_list_request(
     data: OAuthData,
     key: SigningKey,
     team_id: Option<u32>,
-) -> Result<StaffListData, Error> {
+) -> Result<StaffListData, NutmegError> {
     let mut params = Vec::new();
     let tid_str;
     if let Some(tid) = team_id {
@@ -436,7 +436,7 @@ pub async fn match_details_request(
     key: SigningKey,
     match_id: u32,
     source_system: &str,
-) -> Result<MatchDetailsData, Error> {
+) -> Result<MatchDetailsData, NutmegError> {
     let mid_str = match_id.to_string();
     let params = vec![
         ("matchID", mid_str.as_str()),
@@ -460,7 +460,7 @@ pub async fn match_lineup_request(
     match_id: u32,
     team_id: u32,
     source_system: &str,
-) -> Result<MatchLineupData, Error> {
+) -> Result<MatchLineupData, NutmegError> {
     let mid_str = match_id.to_string();
     let tid_str = team_id.to_string();
     let params = vec![

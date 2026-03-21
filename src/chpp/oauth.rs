@@ -28,7 +28,7 @@ use log::info;
 use oauth_1a::*;
 pub use oauth_1a::{OAuthData, SigningKey};
 
-use crate::chpp::error::Error;
+use crate::error::NutmegError;
 use crate::chpp::CHPP_OAUTH_AUTH_URL;
 use crate::chpp::{CHPP_OAUTH_ACCESS_TOKEN_URL, CHPP_OAUTH_REQUEST_TOKEN_URL};
 
@@ -54,7 +54,7 @@ pub fn get_request_token_url(
     settings: &OauthSettings,
     consumer_key: &str,
     consumer_secret: &str,
-) -> Result<String, Error> {
+) -> Result<String, NutmegError> {
     let client_id = ClientId(consumer_key.to_string());
     let client_secret = ClientSecret(consumer_secret.to_string());
 
@@ -68,7 +68,7 @@ pub fn get_request_token_url(
 
     // Request temporary credentials (Request Token)
     let initiate = Url::parse(CHPP_OAUTH_REQUEST_TOKEN_URL)
-        .map_err(|e| Error::Parse(format!("Invalid request token URL: {}", e)))?;
+        .map_err(|e| NutmegError::Parse(format!("Invalid request token URL: {}", e)))?;
 
     settings.client_secret.replace(consumer_secret.to_string());
     settings.client_id.replace(consumer_key.to_string());
@@ -84,15 +84,15 @@ pub fn get_request_token_url(
         .header("Authorization", authorization)
         .header("Content-Length", "0")
         .send()
-        .map_err(|e| Error::Network(format!("Failed to send request: {}", e)))?
+        .map_err(|e| NutmegError::Network(format!("Failed to send request: {}", e)))?
         .text()
-        .map_err(|e| Error::Network(format!("Failed to read text: {}", e)))?;
+        .map_err(|e| NutmegError::Network(format!("Failed to read text: {}", e)))?;
 
     info!("---\n{}", resp);
     data.regen_nonce();
 
     let token = receive_token(&mut data, &mut key, &resp).map_err(|e| {
-        Error::Auth(format!(
+        NutmegError::Auth(format!(
             "Failed to receive token: {}. Response: {}",
             e, resp
         ))
@@ -101,7 +101,7 @@ pub fn get_request_token_url(
     settings.request_token.replace(token.0.clone());
     let token_secret = key
         .token_secret
-        .ok_or_else(|| Error::Auth("No token secret in key".to_string()))?;
+        .ok_or_else(|| NutmegError::Auth("No token secret in key".to_string()))?;
     match token_secret {
         TokenSecret(s) => {
             settings.oauth_secret_token.replace(s.clone());
@@ -120,7 +120,7 @@ pub fn request_token(
     consumer_key: &str,
     consumer_secret: &str,
     verif_callback: fn(&str) -> i32,
-) -> Result<OauthSettings, Error> {
+) -> Result<OauthSettings, NutmegError> {
     let client_id = ClientId(consumer_key.to_string());
     let client_secret = ClientSecret(consumer_secret.to_string());
 
@@ -134,7 +134,7 @@ pub fn request_token(
 
     // Request temporary credentials (Request Token)
     let initiate = Url::parse(CHPP_OAUTH_REQUEST_TOKEN_URL)
-        .map_err(|e| Error::Parse(format!("Invalid request token URL: {}", e)))?;
+        .map_err(|e| NutmegError::Parse(format!("Invalid request token URL: {}", e)))?;
 
     settings.client_secret.replace(consumer_secret.to_string());
     settings.client_id.replace(consumer_key.to_string());
@@ -150,22 +150,22 @@ pub fn request_token(
         .header("Authorization", authorization)
         .header("Content-Length", "0")
         .send()
-        .map_err(|e| Error::Network(format!("Failed to send request: {}", e)))?
+        .map_err(|e| NutmegError::Network(format!("Failed to send request: {}", e)))?
         .text()
-        .map_err(|e| Error::Network(format!("Failed to read text: {}", e)))?;
+        .map_err(|e| NutmegError::Network(format!("Failed to read text: {}", e)))?;
 
     info!("---\n{}", resp);
     data.regen_nonce();
 
     // authorize: https://chpp.hattrick.org/oauth/authorize.aspx
     let token = receive_token(&mut data, &mut key, &resp)
-        .map_err(|e| Error::Auth(format!("Failed to receive token: {}", e)))?;
+        .map_err(|e| NutmegError::Auth(format!("Failed to receive token: {}", e)))?;
     info!("---\n{}", token.0);
 
     settings.request_token.replace(token.0.clone());
     let token_secret = key
         .token_secret
-        .ok_or_else(|| Error::Auth("No token secret in key".to_string()))?;
+        .ok_or_else(|| NutmegError::Auth("No token secret in key".to_string()))?;
     match token_secret {
         TokenSecret(s) => {
             settings.oauth_secret_token.replace(s.clone());
@@ -186,14 +186,14 @@ pub fn request_token(
 pub fn exchange_verification_code(
     verification_code: &str,
     settings: &OauthSettings,
-) -> Result<(String, String), Error> {
+) -> Result<(String, String), NutmegError> {
     let consumer_key = settings.client_id.borrow().clone();
     let consumer_secret = settings.client_secret.borrow().clone();
     let request_token = settings.request_token.borrow().clone();
     let oauth_secret_token = settings.oauth_secret_token.borrow().clone();
 
     if consumer_key.is_empty() || consumer_secret.is_empty() {
-        return Err(Error::Auth(
+        return Err(NutmegError::Auth(
             "Consumer key or secret missing in settings".to_string(),
         ));
     }
@@ -211,7 +211,7 @@ pub fn exchange_verification_code(
     );
 
     let access_url = Url::parse(CHPP_OAUTH_ACCESS_TOKEN_URL)
-        .map_err(|e| Error::Parse(format!("Invalid URL: {}", e)))?;
+        .map_err(|e| NutmegError::Parse(format!("Invalid URL: {}", e)))?;
 
     let req = SignableRequest::new(Method::Post, access_url.clone(), Default::default());
     let access_type = AuthorizationType::AccessToken {
@@ -225,21 +225,21 @@ pub fn exchange_verification_code(
         .header("Authorization", authorization)
         .header("Content-Length", "0")
         .send()
-        .map_err(|e| Error::Network(format!("Failed to request access token: {}", e)))?
+        .map_err(|e| NutmegError::Network(format!("Failed to request access token: {}", e)))?
         .text()
-        .map_err(|e| Error::Network(format!("Failed to read response: {}", e)))?;
+        .map_err(|e| NutmegError::Network(format!("Failed to read response: {}", e)))?;
 
     data.regen_nonce();
 
     // Parse response to extract access token and secret
     let token = receive_token(&mut data, &mut key, &resp)
-        .map_err(|e| Error::Auth(format!("Failed to receive token: {}", e)))?;
+        .map_err(|e| NutmegError::Auth(format!("Failed to receive token: {}", e)))?;
 
     // Extract the token secret from the signing key
     let access_token = token.0.clone();
     let access_secret = match &key.token_secret {
         Some(secret) => secret.0.clone(),
-        None => return Err(Error::Auth("No token secret received".to_string())),
+        None => return Err(NutmegError::Auth("No token secret received".to_string())),
     };
 
     Ok((access_token, access_secret))
